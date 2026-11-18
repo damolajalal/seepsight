@@ -1,0 +1,5 @@
+finding_id,finding_type,category,entity,severity,affected_orders,identified_exposure,order_value_held_up,first_seen,last_seen,evidence,currency,status,owner,note
+TRQ-001,Short delivery,Confirmed discrepancy,Mombasa Grain Traders,High,75.0,1639142.0,0.0,2026-01-27,2026-10-18,Invoiced for 306 units that were never received,KES,Open,,
+TRQ-002,Invoice price above PO price,Confirmed discrepancy,Rift Valley Cleaning Co,High,54.0,1262843.0,0.0,2026-03-21,2026-10-18,Invoice prices averaged 5.8% above agreed PO prices,KES,Open,,
+TRQ-003,Slow approvals,Confirmed discrepancy,Kisumu branch finance approvals,High,167.0,0.0,31406242.0,2025-12-01,2026-09-29,Held orders waited 10.7 days on average for finance approval,KES,Open,,
+TRQ-004,Supplier performance decline,Confirmed discrepancy,Nyali Handling Equipment,High,,0.0,0.0,,,Average delivery delay rose from 2.0 to 9.4 days; fill rate went from 0.996 to 0.976,KES,Open,,

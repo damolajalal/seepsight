@@ -1,0 +1,9 @@
+po_id,entity,severity,risk_score,key_drivers,evidence,actual_problem,model_precision,model_recall,category,currency
+PO00772,Trans-Niger Equipment Ltd,High,0.998683234619433,"prior_late_rate_90d, supplier_profile, prior_fill_rate_90d","Order of 1 units, Port Harcourt branch, placed 2026-07-22",1,0.733,0.8,Predicted risk,NGN
+PO00406,Trans-Niger Equipment Ltd,High,0.9986205135901255,"prior_late_rate_90d, supplier_profile, prior_fill_rate_90d","Order of 4 units, Abuja branch, placed 2026-09-29",1,0.733,0.8,Predicted risk,NGN
+PO01742,Sahel Agro Inputs Ltd,High,0.9874184651239559,"prior_fill_rate_90d, supplier_profile, log_po_total","Order of 1 units, Abuja branch, placed 2026-09-03",1,0.733,0.8,Predicted risk,NGN
+PO00609,Sahel Agro Inputs Ltd,High,0.986655589659468,"prior_fill_rate_90d, supplier_profile, log_po_total","Order of 1 units, Port Harcourt branch, placed 2026-09-20",1,0.733,0.8,Predicted risk,NGN
+PO01452,Kano Handling Systems,Medium,0.6911356054046778,"log_po_total, supplier_profile, prior_deliveries_90d","Order of 1 units, Port Harcourt branch, placed 2026-06-29",0,0.733,0.8,Predicted risk,NGN
+PO01816,Kano Handling Systems,Medium,0.6274314777427134,"prior_deliveries_90d, supplier_profile, branch_profile","Order of 20 units, Abuja branch, placed 2026-07-02",0,0.733,0.8,Predicted risk,NGN
+PO00467,Ikeja Digital Systems,Medium,0.5442139873629029,"log_po_total, branch_profile, prior_deliveries_90d","Order of 2 units, Abuja branch, placed 2026-07-06",0,0.733,0.8,Predicted risk,NGN
+PO00081,Ikeja Digital Systems,Medium,0.5340586049774955,"prior_deliveries_90d, branch_profile, log_po_total","Order of 5 units, Abuja branch, placed 2026-08-07",0,0.733,0.8,Predicted risk,NGN

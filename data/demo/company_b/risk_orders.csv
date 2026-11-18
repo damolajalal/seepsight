@@ -1,0 +1,9 @@
+po_id,entity,severity,risk_score,key_drivers,evidence,actual_problem,model_precision,model_recall,category,currency
+KE-PO-01149,Nyali Handling Equipment,High,0.9928298622345617,"supplier_profile, prior_late_rate_90d, prior_fill_rate_90d","Order of 6 units, Mombasa branch, placed 2026-09-12",1,0.606,0.808,Predicted risk,KES
+KE-PO-00837,Nyali Handling Equipment,High,0.9923602896151849,"supplier_profile, prior_late_rate_90d, prior_fill_rate_90d","Order of 6 units, Mombasa branch, placed 2026-09-13",1,0.606,0.808,Predicted risk,KES
+KE-PO-00806,Mombasa Grain Traders,High,0.9652060733788291,"prior_fill_rate_90d, supplier_profile, branch_profile","Order of 38 units, Mombasa branch, placed 2026-09-23",1,0.606,0.808,Predicted risk,KES
+KE-PO-00807,Mombasa Grain Traders,High,0.9566798842824011,"prior_fill_rate_90d, supplier_profile, prior_deliveries_90d","Order of 32 units, Nairobi branch, placed 2026-09-15",0,0.606,0.808,Predicted risk,KES
+KE-PO-00623,Eldoret Handling Systems,Medium,0.7083673166197287,"fin_approval_days, supplier_profile, prior_fill_rate_90d","Order of 3 units, Kisumu branch, placed 2026-09-26",1,0.606,0.808,Predicted risk,KES
+KE-PO-01322,Eldoret Handling Systems,Medium,0.646103072825143,"supplier_profile, fin_approval_days, prior_fill_rate_90d","Order of 11 units, Kisumu branch, placed 2026-07-22",0,0.606,0.808,Predicted risk,KES
+KE-PO-01477,Kisii Grain & Oils,Medium,0.5416374136437374,"fin_approval_days, prior_deliveries_90d, log_po_total","Order of 42 units, Kisumu branch, placed 2026-08-09",0,0.606,0.808,Predicted risk,KES
+KE-PO-01523,Moi Avenue Office Mart,Medium,0.5022859723447276,"ordered_qty, branch_profile, prior_deliveries_90d","Order of 369 units, Mombasa branch, placed 2026-07-20",0,0.606,0.808,Predicted risk,KES

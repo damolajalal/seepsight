@@ -1,0 +1,5 @@
+finding_id,finding_type,category,entity,severity,affected_orders,identified_exposure,order_value_held_up,first_seen,last_seen,evidence,currency,status,owner,note
+TRQ-001,Invoice price above PO price,Confirmed discrepancy,CleanWave Chemicals Ltd,High,97.0,24547148.0,0.0,2026-03-11,2026-10-23,Invoice prices averaged 6.1% above agreed PO prices,NGN,Open,,
+TRQ-002,Short delivery,Confirmed discrepancy,Sahel Agro Inputs Ltd,High,101.0,23674910.0,0.0,2026-01-22,2026-10-24,Invoiced for 418 units that were never received,NGN,Open,,
+TRQ-003,Slow approvals,Confirmed discrepancy,Kano branch finance approvals,High,225.0,0.0,551242653.0,2025-12-03,2026-09-30,Held orders waited 10.9 days on average for finance approval,NGN,Open,,
+TRQ-004,Supplier performance decline,Confirmed discrepancy,Trans-Niger Equipment Ltd,High,,0.0,0.0,,,Average delivery delay rose from 1.6 to 9.5 days; fill rate went from 0.991 to 0.976,NGN,Open,,

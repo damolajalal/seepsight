@@ -1,0 +1,132 @@
+{
+  "company": "Demo company B (Kenya)",
+  "source_file": "simulated sample",
+  "analysed_at_utc": "2026-11-17 04:02:37",
+  "engine_version": "1.1",
+  "currency": "KES",
+  "rows_in_file": 1817,
+  "rows_used": 1800,
+  "dropped": {
+    "rows_without_order_number": 5,
+    "duplicate_orders_removed": 12
+  },
+  "warnings": [],
+  "detectors": {
+    "Short delivery": "ready",
+    "Invoice price above PO price": "ready",
+    "Slow approvals": "ready",
+    "Supplier performance decline": "ready"
+  },
+  "thresholds": {
+    "price_tolerance": 0.02,
+    "approval_limit_days": 5,
+    "late_days": 3,
+    "min_pattern": 5,
+    "decline_days": 2.0,
+    "decline_window": 3
+  },
+  "column_matches": {
+    "supplier": {
+      "column": "Vendor Name",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "po_date": {
+      "column": "Order Dt",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "ordered_qty": {
+      "column": "Qty Ord",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "po_unit_price": {
+      "column": "Unit Cost (KES)",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "department": {
+      "column": "Dept",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "product": {
+      "column": "Item",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "promised_date": {
+      "column": "Promised Delivery",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "received_date": {
+      "column": "Date Received",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "received_qty": {
+      "column": "Qty Rcvd",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "invoice_qty": {
+      "column": "Qty Billed",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "invoice_unit_price": {
+      "column": "Billed Price (KES)",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "invoice_date": {
+      "column": "Inv Date",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "approval_requested_at": {
+      "column": "Raised On",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "approval_completed_at": {
+      "column": "Finance Sign-off",
+      "confidence": 1.0,
+      "source": "name+content"
+    },
+    "po_id": {
+      "column": "Order No",
+      "confidence": 0.95,
+      "source": "name+content"
+    },
+    "branch": {
+      "column": "Branch/Site",
+      "confidence": 0.85,
+      "source": "name+content"
+    }
+  },
+  "findings": 4,
+  "evidence_rows": 331,
+  "evidence_counts_match_findings": true,
+  "total_identified_exposure": 2901985.0,
+  "total_order_value_held_up": 31406242.0,
+  "risk_model": {
+    "trained_on": 1348,
+    "tested_on": 451,
+    "test_from": "2026-07-04",
+    "problem_rate_test": 0.173,
+    "precision": 0.606,
+    "recall": 0.808,
+    "accuracy": 0.876,
+    "auc": 0.885
+  },
+  "scorecard": {
+    "planted": 4,
+    "found": 4,
+    "missed": 0,
+    "false_alarms": 0
+  },
+  "note": "Amounts are identified exposure, not recovered money, until the business confirms recovery."
+}
