@@ -1,3 +1,4 @@
+
 import streamlit as st
 
 st.set_page_config(
@@ -33,5 +34,19 @@ pages = {
 }
 
 page = st.navigation(pages)
+
 ui.sidebar_header()
+
+# Temporary Firestore diagnostic.
+# This will be removed after the connection is verified.
+with st.sidebar.expander("Developer diagnostics"):
+    if st.button("Test Firestore connection", key="firestore_connection_test"):
+        try:
+            from seepsight.firestore_db import test_firestore_connection
+
+            test_firestore_connection()
+            st.success("Firestore connection successful!")
+        except Exception as exc:
+            st.error(f"Firestore connection failed: {exc}")
+
 page.run()
