@@ -32,3 +32,27 @@ def get_firestore_client():
         app = firebase_admin.initialize_app(credential)
 
     return firestore.client(app=app)
+
+def test_firestore_connection():
+    """Verify that the app can communicate with Firestore."""
+
+    client = get_firestore_client()
+
+    test_ref = (
+        client.collection("_system")
+        .document("connection_test")
+    )
+
+    test_ref.set({
+        "status": "connected",
+        "purpose": "temporary_connection_test",
+    })
+
+    snapshot = test_ref.get()
+
+    if not snapshot.exists:
+        raise RuntimeError("Firestore test document could not be read.")
+
+    test_ref.delete()
+
+    return True
