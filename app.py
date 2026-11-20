@@ -1,10 +1,21 @@
 import streamlit as st
 
-st.set_page_config(page_title="Seepsight", page_icon="🔎", layout="wide")
+st.set_page_config(
+    page_title="Seepsight",
+    page_icon="🔎",
+    layout="wide",
+)
+
+from seepsight import auth  # noqa: E402
+
+# Users must authenticate before accessing application pages.
+if not auth.require_auth():
+    st.stop()
 
 from seepsight import ui  # noqa: E402
 
 ui.inject_css()
+
 pages = {
     "": [
         st.Page("pages/overview.py", title="Overview", icon=":material/home:", default=True),
@@ -20,6 +31,7 @@ pages = {
         st.Page("pages/settings.py", title="Settings", icon=":material/settings:"),
     ],
 }
+
 page = st.navigation(pages)
 ui.sidebar_header()
 page.run()
