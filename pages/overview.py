@@ -26,101 +26,68 @@ if w is None:
         account.get("company_name")
         or account.get("company")
         or "your company"
-    )
+    ).strip()
 
-    first_name = (
-        account.get("display_name")
-        or account.get("first_name")
-        or account.get("email", "").split("@")[0]
-        or "there"
-    )
-
-    first_name = first_name.split()[0].capitalize()
+    display_company = company_name.title()
 
     ui.page_header(
-        f"Welcome, {first_name}",
-        f"Your {company_name} procurement intelligence workspace "
-        "is ready to get started.",
+        f"Welcome to {display_company}",
+        "Your procurement intelligence workspace is ready. "
+        "Connect your company's data to get started.",
     )
 
-    st.markdown(
-        """
-        <div style="
-            background: #FFFFFF;
-            border: 1px solid #E6E5DF;
-            border-radius: 14px;
-            padding: 28px;
-            margin: 12px 0 22px;
-        ">
-            <div style="
-                color: #47796B;
-                font-size: 11px;
-                font-weight: 750;
-                letter-spacing: 1.5px;
-                margin-bottom: 12px;
-            ">YOUR NEXT STEP</div>
+    st.markdown("")
 
-            <h2 style="
-                color: #142B3B;
-                font-size: 25px;
-                font-weight: 750;
-                letter-spacing: -0.7px;
-                margin: 0 0 12px;
-            ">Bring your procurement data into focus.</h2>
+    with st.container(border=True):
 
-            <p style="
-                color: #71808A;
-                font-size: 15px;
-                line-height: 1.8;
-                max-width: 700px;
-                margin-bottom: 22px;
-            ">
-                Connect your purchasing records to let Seepsight
-                analyse procurement activity, uncover potential
-                financial leakage, identify supplier risks and
-                highlight opportunities for improvement.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        st.caption("YOUR NEXT STEP")
 
-    st.markdown("### Get started")
+        st.subheader("Bring your procurement data into focus.")
+
+        st.write(
+            "Connect your purchasing records to let Seepsight "
+            "analyse procurement activity, uncover potential "
+            "financial leakage, identify supplier risks and "
+            "highlight opportunities for improvement."
+        )
+
+        st.markdown("")
+
+        st.page_link(
+            "pages/connect.py",
+            label="Connect your procurement data",
+            icon=":material/database_upload:",
+            use_container_width=True,
+        )
+
+    st.markdown("### How Seepsight works")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown("**01 · Connect**")
         st.write(
-            "Upload your procurement files or connect a database."
+            "Upload procurement files or connect your company's "
+            "database."
         )
 
     with col2:
         st.markdown("**02 · Analyse**")
         st.write(
-            "Let Seepsight examine your records and identify "
-            "potential risks."
+            "Let Seepsight examine purchasing records and "
+            "identify potential risks."
         )
 
     with col3:
         st.markdown("**03 · Take action**")
         st.write(
-            "Review evidence, investigate findings and "
-            "track corrective actions."
+            "Review supporting evidence, investigate findings "
+            "and track corrective actions."
         )
 
-    st.markdown("")
-
-    st.page_link(
-        "pages/connect.py",
-        label="Connect your procurement data",
-        icon=":material/database_upload:",
-        use_container_width=True,
-    )
-
-    st.caption(
-        "Your dashboard will populate with your company's "
-        "actual analysis results after data is connected."
+    st.info(
+        "Your procurement dashboard will populate with your "
+        "company's actual analysis results after data is connected."
     )
 
     st.stop()
@@ -240,21 +207,26 @@ else:
         "Low": 2,
     }
 
-    if "severity" in f.columns:
-        ordered = f.assign(
-            _priority=f["severity"].map(rank).fillna(3)
-        ).sort_values(
-            "_priority",
-            ascending=True,
-        )
-    else:
-        ordered = f
+    ordered = f.copy()
+
+    ordered["_priority"] = (
+        ordered["severity"].map(rank).fillna(3)
+        if "severity" in ordered.columns
+        else 3
+    )
 
     if "identified_exposure" in ordered.columns:
-        ordered = ordered.sort_values(
-            ["_priority", "identified_exposure"],
-            ascending=[True, False],
-        ) if "_priority" in ordered.columns else ordered
+        ordered["_exposure"] = pd.to_numeric(
+            ordered["identified_exposure"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        ordered["_exposure"] = 0
+
+    ordered = ordered.sort_values(
+        ["_priority", "_exposure"],
+        ascending=[True, False],
+    )
 
     for _, r in ordered.head(5).iterrows():
 
@@ -284,9 +256,7 @@ else:
                 unsafe_allow_html=True,
             )
 
-            a.write(
-                plain.what_we_found(r, ev, cur)
-            )
+            a.write(plain.what_we_found(r, ev, cur))
 
             if b.button(
                 "View details",
@@ -463,15 +433,15 @@ else:
 
 
 # =========================================================
-# 8. DATA CONTEXT
+# 8. ANALYSIS CONTEXT
 # =========================================================
 
 with st.expander("About this procurement analysis"):
 
     st.write(
         "Seepsight analyses the procurement records connected "
-        "to your company. Findings and risk signals are intended "
-        "to support human review and informed business decisions."
+        "to your company. Findings and risk signals support "
+        "human review and informed business decisions."
     )
 
     st.write(
