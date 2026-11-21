@@ -1,5 +1,9 @@
 
-"""Company-aware workspaces for Seepsight."""
+"""Company-aware workspaces for Seepsight.
+
+Customer workspaces contain only data uploaded or connected by
+the authenticated company. Demonstration datasets are not loaded here.
+"""
 
 import json
 import os
@@ -10,27 +14,24 @@ import streamlit as st
 
 from seepsight import engine
 
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DEMOS = {
-    "A": (
-        "Demo company A · Nigeria (simulated)",
-        "data/demo/company_a",
-    ),
-    "B": (
-        "Demo company B · Kenya (simulated)",
-        "data/demo/company_b",
-    ),
-}
-
+# =========================================================
+# 1. ANALYSIS DATA LOADING
+# =========================================================
 
 def _read(folder, name):
+    """Read an analysis CSV when it exists."""
+
     path = os.path.join(folder, name)
-    return pd.read_csv(path) if os.path.exists(path) else None
+
+    if not os.path.exists(path):
+        return None
+
+    return pd.read_csv(path)
 
 
 def load_pack(folder, name, kind):
-    """Load an existing Seepsight analysis data pack."""
+    """Load a Seepsight analysis data pack."""
 
     with open(
         os.path.join(folder, "run_log.json"),
@@ -41,7 +42,7 @@ def load_pack(folder, name, kind):
     return {
         "name": name,
         "kind": kind,
-        "cur": log["currency"],
+        "cur": log.get("currency", "NGN"),
         "log": log,
         "findings": _read(folder, "findings.csv"),
         "evidence": _read(folder, "evidence.csv"),
@@ -54,28 +55,16 @@ def load_pack(folder, name, kind):
     }
 
 
-@st.cache_data(show_spinner=False)
-def demo(key):
-    """Load a simulated demonstration workspace."""
-
-    if key not in DEMOS:
-        raise ValueError("Unknown demonstration workspace.")
-
-    label, rel = DEMOS[key]
-
-    return load_pack(
-        os.path.join(BASE, rel),
-        label,
-        "demo",
-    )
-
+# =========================================================
+# 2. BUILD A COMPANY WORKSPACE
+# =========================================================
 
 def from_result(result, company, company_id):
     """
-    Build an analysis workspace associated with an authenticated company.
+    Build an analysis workspace for the authenticated company.
 
-    Analysis files are temporary. The resulting DataFrames remain available
-    in the current Streamlit session only.
+    Generated analysis files are temporary. DataFrames are loaded
+    into the current Streamlit session.
     """
 
     if not isinstance(company_id, str) or not company_id.strip():
@@ -91,10 +80,11 @@ def from_result(result, company, company_id):
         raise ValueError("Please provide a company name.")
 
     with tempfile.TemporaryDirectory() as folder:
+
         engine.build_data_pack(
             result,
             company,
-            "uploaded files",
+            "connected company data",
             out_dir=folder,
             zip_it=False,
         )
@@ -102,7 +92,7 @@ def from_result(result, company, company_id):
         pack = load_pack(
             folder,
             company,
-            "upload",
+            "company",
         )
 
     pack["company_id"] = company_id
@@ -110,101 +100,145 @@ def from_result(result, company, company_id):
     return pack
 
 
-def workspace_picker():
-    """
-    Display available workspaces.
+# =========================================================
+# 3. AUTHENTICATED COMPANY ACCESS
+# =========================================================
 
-    Real company uploads are associated with the authenticated company.
-    Demonstration workspaces remain separate.
-    """
-
-    if "_ws_next" in st.session_state:
-        st.session_state["ws_key"] = st.session_state.pop("_ws_next")
-
-    options = {
-        key: value[0]
-        for key, value in DEMOS.items()
-    }
+def _authenticated_company():
+    """Return the authenticated company identity."""
 
     account = st.session_state.get("seepsight_auth", {})
+
+    if not isinstance(account, dict):
+        return None, None
+
     company_id = account.get("company_id")
+    company_name = account.get("company_name")
+
+    if not company_id:
+        return None, company_name
+
+    return str(company_id).strip(), company_name
+
+
+def has_company_data():
+    """Check whether this company has an active analysis workspace."""
+
+    company_id, _ = _authenticated_company()
+    mine = st.session_state.get("mine")
+
+    return bool(
+        company_id
+        and isinstance(mine, dict)
+        and mine.get("company_id") == company_id
+    )
+
+
+# =========================================================
+# 4. CUSTOMER WORKSPACE DISPLAY
+# =========================================================
+
+def workspace_picker():
+    """
+    Display the authenticated company's workspace identity.
+
+    There is no customer-facing demo selector.
+    """
+
+    company_id, company_name = _authenticated_company()
+
+    if not company_id:
+        st.caption("Company workspace unavailable.")
+        return
 
     mine = st.session_state.get("mine")
 
     if (
-        mine
-        and company_id
+        isinstance(mine, dict)
         and mine.get("company_id") == company_id
     ):
-        options["mine"] = "Your company · " + mine["name"]
+        workspace_name = mine.get("name", company_name or "Your company")
 
-    if st.session_state.get("ws_key") not in options:
-        st.session_state["ws_key"] = (
-            "mine" if "mine" in options else "A"
+        st.caption("ACTIVE COMPANY")
+        st.write(workspace_name)
+
+    else:
+        st.caption("COMPANY WORKSPACE")
+        st.write(company_name or "Your company")
+        st.caption("No procurement data connected yet.")
+
+
+# =========================================================
+# 5. GET THE CURRENT COMPANY WORKSPACE
+# =========================================================
+
+def current(allow_empty=False):
+    """
+    Return the active company's analysis workspace.
+
+    If no data has been connected:
+    - allow_empty=True returns None.
+    - allow_empty=False shows a friendly connection message
+      and stops the current page.
+
+    A workspace belonging to another company is never returned.
+    """
+
+    company_id, _ = _authenticated_company()
+
+    if not company_id:
+        raise PermissionError(
+            "Please sign in to access your company workspace."
         )
 
-    st.selectbox(
-        "Workspace",
-        list(options),
-        format_func=options.get,
-        key="ws_key",
-    )
-
-
-def current():
-    """Return the active workspace."""
-
-    account = st.session_state.get("seepsight_auth", {})
-    company_id = account.get("company_id")
-
-    key = st.session_state.get("ws_key", "A")
     mine = st.session_state.get("mine")
 
-    # A real company workspace must belong to the signed-in company.
-    if key == "mine":
-        if not company_id:
-            raise PermissionError(
-                "Please sign in to access your company workspace."
-            )
+    if not isinstance(mine, dict):
+        mine = None
 
-        if not mine or mine.get("company_id") != company_id:
+    if mine is not None:
+        if mine.get("company_id") != company_id:
             raise PermissionError(
                 "This workspace does not belong to your company."
             )
 
-        return mine
+    if mine is None:
+        if allow_empty:
+            return None
 
-    # Keep the demonstration datasets separate.
-    if key in DEMOS:
-        return demo(key)
+        st.info(
+            "Your procurement workspace is ready. "
+            "Connect your company's data to start analysing "
+            "purchasing activity, identifying risks and "
+            "monitoring supplier performance."
+        )
 
-    # Do not silently substitute another company's data.
-    raise PermissionError("The requested workspace is unavailable.")
+        st.page_link(
+            "pages/connect.py",
+            label="Connect your data",
+            icon=":material/upload_file:",
+        )
 
+        st.stop()
+
+    # Never use a simulated or fallback workspace.
+    return mine
+
+
+# =========================================================
+# 6. COMPANY-SPECIFIC CASES
+# =========================================================
 
 def cases():
-    """Return the current session's cases for the active workspace."""
+    """Return cases belonging only to the authenticated company."""
 
-    account = st.session_state.get("seepsight_auth", {})
-    company_id = account.get("company_id")
+    company_id, _ = _authenticated_company()
 
-    key = st.session_state.get("ws_key", "A")
+    if not company_id:
+        raise PermissionError(
+            "A company login is required to access these cases."
+        )
 
-    if key == "mine":
-        if not company_id:
-            raise PermissionError(
-                "A company login is required to access these cases."
-            )
+    all_cases = st.session_state.setdefault("cases", {})
 
-        mine = st.session_state.get("mine")
-
-        if not mine or mine.get("company_id") != company_id:
-            raise PermissionError(
-                "This workspace does not belong to your company."
-            )
-
-        key = company_id
-
-    return st.session_state.setdefault(
-        "cases", {}
-    ).setdefault(key, {})
+    return all_cases.setdefault(company_id, {})
