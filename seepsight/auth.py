@@ -29,11 +29,7 @@ def _request(endpoint, payload):
     url = f"{BASE_URL}:{endpoint}?key={key}"
 
     try:
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=TIMEOUT,
-        )
+        response = requests.post(url, json=payload, timeout=TIMEOUT)
         data = response.json()
 
         if response.ok:
@@ -70,10 +66,7 @@ def _friendly_error(message):
 def _send_verification(id_token):
     return _request(
         "sendOobCode",
-        {
-            "requestType": "VERIFY_EMAIL",
-            "idToken": id_token,
-        },
+        {"requestType": "VERIFY_EMAIL", "idToken": id_token},
     )
 
 
@@ -188,9 +181,7 @@ def _resend_pending_verification():
 
 def _login():
     st.subheader("Welcome back")
-    st.write(
-        "Sign in to access your company's procurement workspace."
-    )
+    st.write("Sign in to access your company's procurement workspace.")
 
     with st.form("company_login"):
         email = st.text_input("Company email")
@@ -260,12 +251,17 @@ def _login():
 
     _resend_pending_verification()
 
+    st.write("")
+    if st.button(
+        "Forgot your password?",
+        key="forgot_password_link",
+    ):
+        _set_auth_view("reset")
+
 
 def _password_reset():
     st.subheader("Reset your password")
-    st.write(
-        "Enter your company email to receive a password reset link."
-    )
+    st.write("Enter your company email to receive a password reset link.")
 
     with st.form("password_reset"):
         email = st.text_input("Company email")
@@ -299,40 +295,70 @@ def _public_welcome():
     st.markdown(
         """
         <style>
+        /* Keep the public page below Streamlit's top toolbar. */
+        .stMainBlockContainer,
         .block-container {
-            max-width: 1160px;
-            padding-top: 1.5rem;
-            padding-bottom: 3rem;
+            max-width: 1160px !important;
+            padding-top: 4.5rem !important;
+            padding-bottom: 3rem !important;
         }
 
-        .ss-brand {
-            font-size: 2.15rem;
-            font-weight: 800;
-            letter-spacing: -1.3px;
-            line-height: 1.1;
-            color: #173449;
-        }
-
-        .ss-brand-subtitle {
-            font-size: 0.68rem;
-            font-weight: 750;
-            letter-spacing: 2px;
-            color: #A66C3F;
-            margin-top: 5px;
+        .ss-header {
+            display: flex;
+            align-items: center;
+            min-height: 76px;
+            padding: 8px 0 18px 0;
+            gap: 14px;
         }
 
         .ss-logo {
-            background: #173449;
-            color: white;
-            width: 50px;
-            height: 50px;
+            width: 52px;
+            height: 52px;
+            min-width: 52px;
             border-radius: 11px;
+            background: #173449;
+            color: #FFFFFF;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 27px;
-            font-weight: 700;
-            flex-shrink: 0;
+            font-size: 29px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .ss-brand {
+            display: block;
+            color: #173449;
+            font-size: 2.25rem;
+            font-weight: 800;
+            letter-spacing: -1.4px;
+            line-height: 1.25;
+            padding: 2px 0;
+            white-space: nowrap;
+        }
+
+        .ss-brand-subtitle {
+            color: #A66C3F;
+            font-size: 0.68rem;
+            font-weight: 750;
+            letter-spacing: 2px;
+            line-height: 1.5;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
+
+        /* Give header buttons enough height for their labels. */
+        div[data-testid="stButton"] > button {
+            min-height: 46px !important;
+            height: auto !important;
+            padding: 10px 14px !important;
+            line-height: 1.35 !important;
+            white-space: nowrap !important;
+        }
+
+        div[data-testid="stButton"] > button p {
+            line-height: 1.35 !important;
+            overflow: visible !important;
         }
 
         .ss-eyebrow {
@@ -392,14 +418,31 @@ def _public_welcome():
             line-height: 1.7;
             max-width: 760px;
         }
+
+        @media (max-width: 700px) {
+            .ss-brand {
+                font-size: 1.75rem;
+            }
+
+            .ss-brand-subtitle {
+                font-size: 0.57rem;
+                letter-spacing: 1.4px;
+            }
+
+            .ss-logo {
+                width: 44px;
+                height: 44px;
+                min-width: 44px;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # Prominent brand and account navigation.
+    # Public header: brand on the left, account actions on the right.
     header_brand, header_signin, header_register = st.columns(
-        [3, 1, 1.55],
+        [3.2, 1, 1.55],
         vertical_alignment="center",
         gap="small",
     )
@@ -407,7 +450,7 @@ def _public_welcome():
     with header_brand:
         st.markdown(
             """
-            <div style="display:flex;align-items:center;gap:12px;">
+            <div class="ss-header">
                 <div class="ss-logo">S</div>
                 <div>
                     <div class="ss-brand">Seepsight</div>
@@ -440,10 +483,7 @@ def _public_welcome():
     st.divider()
 
     # Hero section.
-    hero_left, hero_right = st.columns(
-        [1.45, 0.75],
-        gap="large",
-    )
+    hero_left, hero_right = st.columns([1.45, 0.75], gap="large")
 
     with hero_left:
         st.markdown(
@@ -565,10 +605,7 @@ def _public_welcome():
         ),
     ]
 
-    for column, (number, heading, description) in zip(
-        steps,
-        workflow,
-    ):
+    for column, (number, heading, description) in zip(steps, workflow):
         with column:
             st.caption(number)
             st.subheader(heading)
@@ -580,9 +617,7 @@ def _public_welcome():
 
     with footer_left:
         st.markdown("**Seepsight**")
-        st.caption(
-            "See the gaps. Show the impact. Act with confidence."
-        )
+        st.caption("See the gaps. Show the impact. Act with confidence.")
 
     with footer_right:
         if st.button(
@@ -594,7 +629,7 @@ def _public_welcome():
 
 
 def _authentication_screen():
-    """Render the selected authentication screen."""
+    """Render the selected public authentication screen."""
 
     view = st.session_state.get("seepsight_auth_view", "welcome")
 
@@ -605,10 +640,7 @@ def _authentication_screen():
     st.markdown("### Seepsight")
     st.caption("See the gaps. Show the impact. Act with confidence.")
 
-    if st.button(
-        "← Back to welcome page",
-        key="auth_back",
-    ):
+    if st.button("← Back to welcome page", key="auth_back"):
         _set_auth_view("welcome")
 
     st.divider()
@@ -639,10 +671,7 @@ def require_auth():
         st.sidebar.write(account["company_name"])
         st.sidebar.caption(account["email"])
 
-        if st.sidebar.button(
-            "Sign out",
-            use_container_width=True,
-        ):
+        if st.sidebar.button("Sign out", use_container_width=True):
             logout()
 
         return True
