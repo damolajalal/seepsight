@@ -1,80 +1,486 @@
+
+"""Seepsight company procurement overview."""
+
 import pandas as pd
 import streamlit as st
 
 from seepsight import plain, ui, workspace
 
-w = workspace.current()
-cur, f, mo = w["cur"], w["findings"], w["monthly"]
-ui.page_header("Welcome to Seepsight", f"Here is what is happening across the purchasing activities of {w['name']} "
-                                       "and the issues that may need your attention.")
-if w["kind"] == "demo":
-    st.info("You are looking at simulated demonstration data, not a real company. To review your own records, open **Connect your data**.")
+
+# =========================================================
+# 1. COMPANY WORKSPACE
+# =========================================================
+
+w = workspace.current(allow_empty=True)
+
+
+# =========================================================
+# 2. FIRST-TIME COMPANY EXPERIENCE
+# =========================================================
+
+if w is None:
+
+    account = st.session_state.get("seepsight_auth", {})
+
+    company_name = (
+        account.get("company_name")
+        or account.get("company")
+        or "your company"
+    )
+
+    first_name = (
+        account.get("display_name")
+        or account.get("first_name")
+        or account.get("email", "").split("@")[0]
+        or "there"
+    )
+
+    first_name = first_name.split()[0].capitalize()
+
+    ui.page_header(
+        f"Welcome, {first_name}",
+        f"Your {company_name} procurement intelligence workspace "
+        "is ready to get started.",
+    )
+
+    st.markdown(
+        """
+        <div style="
+            background: #FFFFFF;
+            border: 1px solid #E6E5DF;
+            border-radius: 14px;
+            padding: 28px;
+            margin: 12px 0 22px;
+        ">
+            <div style="
+                color: #47796B;
+                font-size: 11px;
+                font-weight: 750;
+                letter-spacing: 1.5px;
+                margin-bottom: 12px;
+            ">YOUR NEXT STEP</div>
+
+            <h2 style="
+                color: #142B3B;
+                font-size: 25px;
+                font-weight: 750;
+                letter-spacing: -0.7px;
+                margin: 0 0 12px;
+            ">Bring your procurement data into focus.</h2>
+
+            <p style="
+                color: #71808A;
+                font-size: 15px;
+                line-height: 1.8;
+                max-width: 700px;
+                margin-bottom: 22px;
+            ">
+                Connect your purchasing records to let Seepsight
+                analyse procurement activity, uncover potential
+                financial leakage, identify supplier risks and
+                highlight opportunities for improvement.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Get started")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**01 · Connect**")
+        st.write(
+            "Upload your procurement files or connect a database."
+        )
+
+    with col2:
+        st.markdown("**02 · Analyse**")
+        st.write(
+            "Let Seepsight examine your records and identify "
+            "potential risks."
+        )
+
+    with col3:
+        st.markdown("**03 · Take action**")
+        st.write(
+            "Review evidence, investigate findings and "
+            "track corrective actions."
+        )
+
+    st.markdown("")
+
+    st.page_link(
+        "pages/connect.py",
+        label="Connect your procurement data",
+        icon=":material/database_upload:",
+        use_container_width=True,
+    )
+
+    st.caption(
+        "Your dashboard will populate with your company's "
+        "actual analysis results after data is connected."
+    )
+
+    st.stop()
+
+
+# =========================================================
+# 3. ACTIVE COMPANY ANALYTICS
+# =========================================================
+
+cur = w.get("cur", "NGN")
+
+f = w.get("findings")
+mo = w.get("monthly")
+evidence = w.get("evidence")
+risk = w.get("risk")
+
+if f is None:
+    f = pd.DataFrame()
+
+if mo is None:
+    mo = pd.DataFrame()
+
+if evidence is None:
+    evidence = pd.DataFrame()
+
+if risk is None:
+    risk = pd.DataFrame()
+
+company_name = w.get("name", "Your company")
+
+ui.page_header(
+    "Procurement overview",
+    f"Here is the latest view of procurement activity, "
+    f"potential risks and opportunities across {company_name}.",
+)
+
+
+# =========================================================
+# 4. KEY PROCUREMENT METRICS
+# =========================================================
+
+spend = (
+    pd.to_numeric(mo["spend"], errors="coerce").sum()
+    if "spend" in mo.columns
+    else 0
+)
+
+exposure = (
+    pd.to_numeric(
+        f["identified_exposure"],
+        errors="coerce",
+    ).sum()
+    if "identified_exposure" in f.columns
+    else 0
+)
+
+issue_count = len(f)
+
+held_value = (
+    pd.to_numeric(
+        f["order_value_held_up"],
+        errors="coerce",
+    ).sum()
+    if "order_value_held_up" in f.columns
+    else 0
+)
 
 c = st.columns(4)
-c[0].metric("Purchasing spend reviewed", ui.money(cur, mo["spend"].sum()), help="The total value of all the orders we reviewed.")
-c[1].metric("Potential extra cost to review", ui.money(cur, f["identified_exposure"].sum()),
-            help="Money that may have been overpaid, or paid for goods that did not arrive. It is not a confirmed loss until the company checks.")
-c[2].metric("Issues identified", len(f), help="Problems our checks found in the records.")
-c[3].metric("Value of orders awaiting attention", ui.money(cur, f["order_value_held_up"].sum()),
-            help="The value of orders that waited a long time for approval.")
 
-st.markdown("### What needs your attention")
-if len(f) == 0:
-    st.success("Our checks did not find any issues in these records.")
-rank = {"High": 0, "Medium": 1, "Low": 2}
-for _, r in f.assign(_o=f["severity"].map(rank)).sort_values(["_o", "identified_exposure"], ascending=[True, False]).head(3).iterrows():
-    ev = w["evidence"][w["evidence"]["finding_id"] == r["finding_id"]]
-    with st.container(border=True):
-        a, b = st.columns([6, 1])
-        a.markdown(f"{ui.chip(ui.SEV_LABEL[r['severity']], ui.SEV_KIND[r['severity']])} &nbsp; **{plain.title(r)}**", unsafe_allow_html=True)
-        a.write(plain.what_we_found(r, ev, cur))
-        if b.button("Open", key=f"open_{r['finding_id']}"):
-            st.session_state["selected"] = r["finding_id"]
-            st.switch_page("pages/findings.py")
+c[0].metric(
+    "Purchasing spend reviewed",
+    ui.money(cur, spend),
+    help="Total purchasing value represented in the connected records.",
+)
 
+c[1].metric(
+    "Potential cost exposure",
+    ui.money(cur, exposure),
+    help=(
+        "Potential overpayments or value associated with "
+        "delivery discrepancies. These are amounts to investigate, "
+        "not confirmed losses."
+    ),
+)
+
+c[2].metric(
+    "Issues identified",
+    f"{issue_count:,}",
+    help="Findings identified by Seepsight's procurement checks.",
+)
+
+c[3].metric(
+    "Orders awaiting attention",
+    ui.money(cur, held_value),
+    help="Value associated with orders flagged for further attention.",
+)
+
+
+# =========================================================
+# 5. PRIORITY FINDINGS
+# =========================================================
+
+st.markdown("### Priority findings")
+
+if f.empty:
+
+    st.success(
+        "No procurement findings are currently available "
+        "for this analysis."
+    )
+
+else:
+
+    rank = {
+        "High": 0,
+        "Medium": 1,
+        "Low": 2,
+    }
+
+    if "severity" in f.columns:
+        ordered = f.assign(
+            _priority=f["severity"].map(rank).fillna(3)
+        ).sort_values(
+            "_priority",
+            ascending=True,
+        )
+    else:
+        ordered = f
+
+    if "identified_exposure" in ordered.columns:
+        ordered = ordered.sort_values(
+            ["_priority", "identified_exposure"],
+            ascending=[True, False],
+        ) if "_priority" in ordered.columns else ordered
+
+    for _, r in ordered.head(5).iterrows():
+
+        severity = str(r.get("severity", "Low"))
+        kind = ui.SEV_KIND.get(severity, "blue")
+        label = ui.SEV_LABEL.get(severity, "Review")
+
+        finding_id = r.get("finding_id")
+
+        if (
+            finding_id is not None
+            and "finding_id" in evidence.columns
+        ):
+            ev = evidence[
+                evidence["finding_id"] == finding_id
+            ]
+        else:
+            ev = pd.DataFrame()
+
+        with st.container(border=True):
+
+            a, b = st.columns([6, 1])
+
+            a.markdown(
+                f"{ui.chip(label, kind)} "
+                f"&nbsp; **{plain.title(r)}**",
+                unsafe_allow_html=True,
+            )
+
+            a.write(
+                plain.what_we_found(r, ev, cur)
+            )
+
+            if b.button(
+                "View details",
+                key=f"open_{finding_id}",
+            ):
+                st.session_state["selected"] = finding_id
+                st.switch_page("pages/findings.py")
+
+
+# =========================================================
+# 6. PROCUREMENT TRENDS
+# =========================================================
 
 def trend_note(series, unit, worse):
-    s = series.dropna()
+    """Describe the direction of a sufficiently populated trend."""
+
+    s = pd.to_numeric(series, errors="coerce").dropna()
+
     if len(s) < 6:
         return ""
-    a, b = s.iloc[:3].mean(), s.iloc[-3:].mean()
-    trend = worse if b > a + 0.5 else "stayed about the same" if abs(b - a) <= 0.5 else "improved"
-    return f"At the start it averaged {a:.1f} {unit}; recently {b:.1f} {unit}. This has {trend}."
 
+    first = s.iloc[:3].mean()
+    recent = s.iloc[-3:].mean()
 
-st.markdown("### How things are changing")
-x, y = st.columns(2)
-with x:
-    st.markdown("**How late are deliveries arriving?**")
-    st.line_chart(mo.set_index("po_month")["avg_days_late"], height=220, color="#1d6fb8")
-    st.caption(trend_note(mo["avg_days_late"], "days late", "got worse"))
-with y:
-    st.markdown("**How long do orders wait for approval?**")
-    if mo["avg_approval_days"].notna().any():
-        st.line_chart(mo.set_index("po_month")["avg_approval_days"], height=220, color="#d97706")
-        st.caption(trend_note(mo["avg_approval_days"], "days", "got worse"))
+    if recent > first + 0.5:
+        trend = worse
+    elif abs(recent - first) <= 0.5:
+        trend = "stayed about the same"
     else:
-        st.caption("Approval dates were not included in these records.")
+        trend = "improved"
 
-st.markdown("### Early warnings")
-st.caption("Orders our system warned about during testing. They are warnings for a person to review, not confirmed problems.")
-risk = w["risk"]
-if risk is None or len(risk) == 0:
-    st.write("There are no early warnings for these records.")
+    return (
+        f"Previously averaging {first:.1f} {unit}; "
+        f"recently {recent:.1f} {unit}. "
+        f"The trend has {trend}."
+    )
+
+
+st.markdown("### Procurement performance trends")
+
+trend_columns = st.columns(2)
+
+with trend_columns[0]:
+
+    st.markdown("**Delivery delays**")
+
+    if (
+        not mo.empty
+        and {"po_month", "avg_days_late"}.issubset(mo.columns)
+    ):
+
+        delivery = mo.set_index("po_month")["avg_days_late"]
+
+        if delivery.notna().any():
+
+            st.line_chart(
+                delivery,
+                height=230,
+                color="#47796B",
+            )
+
+            st.caption(
+                trend_note(
+                    mo["avg_days_late"],
+                    "days late",
+                    "increased",
+                )
+            )
+
+        else:
+            st.caption(
+                "There is not enough delivery information "
+                "to display this trend."
+            )
+
+    else:
+        st.caption(
+            "Delivery trend information is not available "
+            "in the connected records."
+        )
+
+
+with trend_columns[1]:
+
+    st.markdown("**Approval turnaround**")
+
+    if (
+        not mo.empty
+        and {"po_month", "avg_approval_days"}.issubset(mo.columns)
+    ):
+
+        approval = mo["avg_approval_days"]
+
+        if approval.notna().any():
+
+            st.line_chart(
+                mo.set_index("po_month")["avg_approval_days"],
+                height=230,
+                color="#D18A58",
+            )
+
+            st.caption(
+                trend_note(
+                    approval,
+                    "days",
+                    "increased",
+                )
+            )
+
+        else:
+            st.caption(
+                "Approval dates were not available "
+                "in the connected records."
+            )
+
+    else:
+        st.caption(
+            "Approval trend information is not available "
+            "in the connected records."
+        )
+
+
+# =========================================================
+# 7. PROCUREMENT RISK SIGNALS
+# =========================================================
+
+st.markdown("### Procurement risk signals")
+
+st.caption(
+    "These are orders flagged for further review. "
+    "A risk signal is not proof of wrongdoing or a confirmed loss."
+)
+
+if risk.empty:
+
+    st.write(
+        "No procurement risk signals are currently available."
+    )
+
 else:
-    st.dataframe(pd.DataFrame({"Order number": risk["po_id"], "Supplier": risk["entity"],
-                               "Warning level": risk["risk_score"].map(plain.warning_level),
-                               "Main reasons": risk["key_drivers"].map(plain.driver_text),
-                               "What actually happened": risk["actual_problem"].map({1: "Late or incomplete", 0: "As expected"})}),
-                 hide_index=True, width="stretch")
 
-with st.expander("How well did our checks perform in testing?"):
-    log, rm, sc = w["log"], w["log"].get("risk_model"), w["log"].get("scorecard")
-    if sc:
-        st.write(f"In this simulated company, {sc['planted']} issues were deliberately included to test us. We identified {sc['found']} of them "
-                 f"and raised {sc['false_alarms']} false alarms. This does not prove we will find every problem in a real company.")
-    if rm:
-        st.write(f"About {round(rm['precision'] * 10)} in 10 of our early warnings were correct, and we caught about {round(rm['recall'] * 10)} in 10 "
-                 "of the orders that really had problems.")
-        st.caption(f"Technical details: precision {rm['precision']}, recall {rm['recall']}, AUC {rm['auc']}, tested on {rm['tested_on']:,} orders.")
-    st.caption("Results on real companies will differ. Please have a person review every warning.")
+    display = pd.DataFrame()
+
+    if "po_id" in risk.columns:
+        display["Order number"] = risk["po_id"]
+
+    if "entity" in risk.columns:
+        display["Supplier"] = risk["entity"]
+
+    if "risk_score" in risk.columns:
+        display["Risk level"] = risk["risk_score"].map(
+            plain.warning_level
+        )
+
+    if "key_drivers" in risk.columns:
+        display["Why it was flagged"] = risk[
+            "key_drivers"
+        ].map(plain.driver_text)
+
+    if not display.empty:
+
+        st.dataframe(
+            display,
+            hide_index=True,
+            width="stretch",
+        )
+
+    else:
+
+        st.caption(
+            "Risk records are available, but the expected "
+            "display fields were not found."
+        )
+
+
+# =========================================================
+# 8. DATA CONTEXT
+# =========================================================
+
+with st.expander("About this procurement analysis"):
+
+    st.write(
+        "Seepsight analyses the procurement records connected "
+        "to your company. Findings and risk signals are intended "
+        "to support human review and informed business decisions."
+    )
+
+    st.write(
+        "Potential financial exposure should not be interpreted "
+        "as a confirmed loss until the underlying transactions "
+        "and supporting evidence have been checked."
+    )
+
+    st.caption(
+        "The analysis reflects the records available to "
+        "Seepsight at the time of processing."
+    )
