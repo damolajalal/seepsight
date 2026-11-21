@@ -1,121 +1,95 @@
-    "fingerprint": st.session_state.get("connect_upload_fingerprint"),
-    "company_id": str(company_id),
-    "company_name": company_name,
-    "currency": currency,
-    "kinds": sorted(kinds.items()),
-    "mappings": selected_mappings,
+"""Seepsight company data onboarding.
+
+The page supports the twelve procurement dataset schemas exposed by the
+engine. Dataset ingestion, mapping and relationship checks are distinct from
+detector coverage: only the four established detector pipelines generate
+procurement findings in this version.
+"""
+
+import hashlib
+import os
+import tempfile
+
+import pandas as pd
+import streamlit as st
+
+from seepsight import engine, plain, ui, workspace
+
+
+ui.page_header(
+    "Connect your data",
+    "Bring your company's procurement records into Seepsight. Preview the data, "
+    "confirm its structure, map up to twelve procurement dataset types and review data quality before analysis.",
+)
+
+# Uploads and results currently live in the Streamlit session. Keep this notice
+# until durable, tenant-isolated storage has been implemented and verified.
+st.warning(
+    "Data storage is currently session-based. Uploaded records and analysis "
+    "results are not yet permanently stored. Do not upload confidential or "
+    "production customer data in this version."
+)
+
+CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
+NOT_MAPPED = "— Not present in this file —"
+
+# All registered procurement dataset schemas can now be uploaded, mapped,
+# normalised and quality-checked by engine.onboard_tables(). The established
+# findings engine still has four detector families; ingestion is not detector
+# coverage.
+CORE_DATASETS = {key: value["label"] for key, value in engine.DATASET_REGISTRY.items()}
+DATASET_LABELS = {
+    key: value["label"] for key, value in engine.DATASET_REGISTRY.items()
 }
-check_signature = hashlib.sha256(repr(signature_payload).encode("utf-8")).hexdigest()
-if st.session_state.get("connect_check_signature") != check_signature:
-    st.session_state.pop("connect_check", None)
-    st.session_state.pop("_done", None)
+LABEL_TO_DATASET = {label: key for key, label in DATASET_LABELS.items()}
 
-st.markdown("### Step 4. Validate your procurement records")
-st.caption("The check uses the mappings shown above. Review uncertain matches before proceeding.")
 
-if st.button("Validate and analyse records", type="primary", use_container_width=True, key="run_connect_check"):
-    config = {"currency": currency}
+def _account():
+    value = st.session_state.get("seepsight_auth")
+    return value if isinstance(value, dict) else {}
+
+
+def _read_upload(upload):
+    suffix = os.path.splitext(upload.name)[1].lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(upload.getvalue())
+        path = tmp.name
     try:
-        with st.spinner("Recognising fields, validating records and running available checks..."):
-            if single_file:
-                filename = next(iter(core_files))
-                result = engine.onboard(
-                    df=raw[filename],
-                    overrides=mapping_overrides,
-                    config=config,
-                    verbose=False,
-                )
-            else:
-                tables = {}
-                table_overrides = {}
-                for filename, kind in core_files.items():
-                    tables[kind] = raw[filename]
-                    table_overrides[kind] = mapping_overrides.get(kind, {})
-                result = engine.onboard_tables(
-                    tables,
-                    overrides=table_overrides,
-                    config=config,
-                    verbose=False,
-                )
-        st.session_state["connect_check"] = result
-        st.session_state["connect_check_signature"] = check_signature
-        st.session_state.pop("_done", None)
-    except Exception as exc:
-        st.error(f"We could not validate these records: {exc}")
-        st.stop()
+        return engine.read_any(path)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
-result = st.session_state.get("connect_check")
-if result and st.session_state.get("connect_check_signature") == check_signature:
-    quality = result.get("quality", {})
-    st.markdown("### Step 5. Review validation results")
 
-    if result.get("stopped"):
-        st.error(result["stopped"])
-        missing = result.get("needs_choice", [])
-        if missing:
-            st.write("Fields still requiring a match: " + ", ".join(plain.FIELD_LABELS.get(field, field) for field in missing))
-    else:
-        rows_in = int(quality.get("rows_in_file", 0) or 0)
-        rows_used = int(quality.get("rows_used", 0) or 0)
-        st.success(f"Validation completed: {rows_used:,} of {rows_in:,} order rows are available for analysis.")
+def _fingerprint(uploaded_files):
+    digest = hashlib.sha256()
+    for item in sorted(uploaded_files, key=lambda x: x.name.lower()):
+        digest.update(item.name.encode("utf-8", errors="replace"))
+        digest.update(item.getvalue())
+    return digest.hexdigest()
 
-        dropped = quality.get("dropped", {})
-        if dropped:
-            for reason, count in dropped.items():
-                if count:
-                    st.write(f"• {str(reason).replace('_', ' ').capitalize()}: {count:,}")
 
-        warnings = quality.get("warnings", [])
-        if warnings:
-            st.markdown("**Items to review**")
-            for warning in warnings:
-                st.warning(warning)
-        else:
-            st.write("No additional data-quality warnings were returned by the current checks.")
-
-        st.markdown("**Available procurement checks**")
-        for detector, status in quality.get("detectors", {}).items():
-            label = plain.CHECK_LABELS.get(detector, detector)
-            if status == "ready":
-                st.write(f"✓ {label} — ready")
-            else:
-                st.write(f"• {label} — not ready: {status}")
-
-        with st.expander("Review confirmed column mappings"):
-            mapping_rows = []
-            for field, info in result.get("mapping", {}).items():
-                mapping_rows.append({
-                    "Seepsight field": plain.FIELD_LABELS.get(field.split(".")[-1], field),
-                    "Source column": info.get("column"),
-                    "Confidence": f"{float(info.get('confidence', 0)):.0%}",
-                    "Mapping source": info.get("source", "automatic"),
-                })
-            if mapping_rows:
-                st.dataframe(pd.DataFrame(mapping_rows), hide_index=True, width="stretch")
-            else:
-                st.info("No column mappings were returned.")
-
-        if supplemental:
-            st.info(
-                "Remember: additional recognised datasets listed above have not been "
-                "included in this analysis yet. Only the supported core datasets were processed."
-            )
-
-        st.markdown("### Step 6. Open your company workspace")
-        st.caption("Your results will be attached to the signed-in company identity shown at the top of this page.")
-        if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
-            try:
-                with st.status("Preparing your company procurement workspace...", expanded=True) as status:
-                    st.write("Using the validated procurement records")
-                    st.write("Preparing findings and supporting evidence")
-                    pack = workspace.from_result(result, company_name, company_id)
-                    st.session_state["mine"] = pack
-                    status.update(label="Your procurement review is ready", state="complete")
-                st.session_state["_ws_next"] = "mine"
-                st.session_state["_done"] = True
-                st.rerun()
-            except Exception as exc:
-                st.error(f"We could not prepare your workspace: {exc}")
-
-if st.session_state.get("_done"):
-    st.success("Your review is ready. Open Overview in the navigation menu to view your procurement intelligence.")
+def _template_csv():
+    sample = {
+        "po_id": "PO-0001",
+        "supplier": "Example Supplies Ltd",
+        "po_date": "2026-01-15",
+        "ordered_qty": 100,
+        "po_unit_price": 250.00,
+        "branch": "Main branch",
+        "department": "Operations",
+        "product": "Cartons",
+        "promised_date": "2026-01-25",
+        "received_date": "2026-01-24",
+        "received_qty": 95,
+        "invoice_qty": 100,
+        "invoice_unit_price": 250.00,
+        "invoice_date": "2026-01-30",
+        "approval_requested_at": "2026-01-15 09:00",
+        "approval_completed_at": "2026-01-16 14:00",
+    }
+    columns = [plain.FIELD_LABELS.get(field, field) for field in engine.FLAT_FIELDS]
+    row = [sample.get(field, "") for field in engine.FLAT_FIELDS]
+    return pd.DataFrame([row], columns=columns).to_csv(index=False)
