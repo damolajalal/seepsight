@@ -1,5 +1,5 @@
 
-"""Seepsight public landing page and Firebase company authentication."""
+"""Seepsight AI-powered procurement intelligence and Firebase authentication."""
 
 import requests
 import streamlit as st
@@ -30,11 +30,9 @@ def _request(endpoint, payload):
     if not key:
         return None
 
-    url = f"{BASE_URL}:{endpoint}?key={key}"
-
     try:
         response = requests.post(
-            url,
+            f"{BASE_URL}:{endpoint}?key={key}",
             json=payload,
             timeout=TIMEOUT,
         )
@@ -65,9 +63,7 @@ def _friendly_error(message):
         "USER_DISABLED": "This account has been disabled.",
         "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many attempts. Please try again later.",
         "INVALID_PASSWORD": "Email or password is incorrect.",
-        "OPERATION_NOT_ALLOWED": (
-            "Email and password sign-in is not enabled in Firebase."
-        ),
+        "OPERATION_NOT_ALLOWED": "Email and password sign-in is not enabled in Firebase.",
         "API_KEY_INVALID": "The Firebase API key is invalid.",
     }
     return errors.get(message, f"Authentication error: {message}")
@@ -76,10 +72,7 @@ def _friendly_error(message):
 def _send_verification(id_token):
     return _request(
         "sendOobCode",
-        {
-            "requestType": "VERIFY_EMAIL",
-            "idToken": id_token,
-        },
+        {"requestType": "VERIFY_EMAIL", "idToken": id_token},
     )
 
 
@@ -98,13 +91,14 @@ def _set_auth_view(view):
 
 
 # ---------------------------------------------------------
-# COMPANY REGISTRATION
+# REGISTRATION
 # ---------------------------------------------------------
 
 def _register():
     st.subheader("Create your company account")
     st.write(
-        "Set up your company's secure procurement intelligence workspace."
+        "Get started with your company's AI-powered procurement "
+        "intelligence workspace."
     )
 
     with st.form("company_registration"):
@@ -194,19 +188,17 @@ def _resend_pending_verification():
         use_container_width=True,
         key="resend_verification",
     ):
-        result = _send_verification(token)
-
-        if result:
+        if _send_verification(token):
             st.success("A new verification email has been sent.")
 
 
 # ---------------------------------------------------------
-# COMPANY SIGN IN
+# SIGN IN
 # ---------------------------------------------------------
 
 def _login():
     st.subheader("Welcome back")
-    st.write("Sign in to access your company's procurement workspace.")
+    st.write("Access your company's procurement intelligence workspace.")
 
     with st.form("company_login"):
         email = st.text_input("Company email")
@@ -276,12 +268,7 @@ def _login():
 
     _resend_pending_verification()
 
-    st.write("")
-
-    if st.button(
-        "Forgot your password?",
-        key="forgot_password_link",
-    ):
+    if st.button("Forgot your password?", key="forgot_password_link"):
         _set_auth_view("reset")
 
     if st.button(
@@ -301,7 +288,6 @@ def _password_reset():
 
     with st.form("password_reset"):
         email = st.text_input("Company email")
-
         submitted = st.form_submit_button(
             "Send reset email",
             use_container_width=True,
@@ -327,38 +313,25 @@ def _password_reset():
 
 
 # ---------------------------------------------------------
-# PUBLIC WEBSITE
+# PUBLIC LANDING PAGE
 # ---------------------------------------------------------
 
 def _public_welcome():
-    """Render the public Seepsight landing page."""
 
     st.markdown(
         """
         <style>
-        /* Give the page enough room below Streamlit's top toolbar. */
         .stApp [data-testid="stMainBlockContainer"] {
             max-width: 1160px;
             padding-top: 3.5rem !important;
             padding-bottom: 3rem !important;
         }
 
-        /* Brand header */
-        .ss-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            width: 100%;
-            min-height: 76px;
-            padding: 8px 0 18px 0;
-            box-sizing: border-box;
-        }
-
         .ss-brand-group {
             display: flex;
             align-items: center;
             gap: 14px;
-            min-height: 60px;
+            min-height: 64px;
         }
 
         .ss-logo {
@@ -366,7 +339,7 @@ def _public_welcome():
             height: 54px;
             border-radius: 11px;
             background: #173449;
-            color: #FFFFFF;
+            color: white;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -381,7 +354,6 @@ def _public_welcome():
             font-weight: 800;
             letter-spacing: -1.3px;
             line-height: 1.2;
-            white-space: nowrap;
         }
 
         .ss-brand-subtitle {
@@ -390,17 +362,28 @@ def _public_welcome():
             font-weight: 750;
             letter-spacing: 2px;
             margin-top: 3px;
-            white-space: nowrap;
         }
 
-        /* Hero */
         .ss-eyebrow {
             color: #A66C3F;
             font-size: 0.76rem;
-            font-weight: 700;
+            font-weight: 750;
             letter-spacing: 2px;
             text-transform: uppercase;
-            margin-bottom: 0.7rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .ss-ai-label {
+            display: inline-block;
+            color: #173449;
+            background: #E7EFEC;
+            border: 1px solid #D1E0DA;
+            border-radius: 5px;
+            padding: 7px 12px;
+            font-size: 0.75rem;
+            font-weight: 750;
+            letter-spacing: 1.2px;
+            margin-bottom: 12px;
         }
 
         .ss-hero {
@@ -409,7 +392,7 @@ def _public_welcome():
             letter-spacing: -2px;
             font-weight: 750;
             color: #173449;
-            margin: 1.2rem 0;
+            margin: 1rem 0;
         }
 
         .ss-lead {
@@ -419,13 +402,12 @@ def _public_welcome():
             max-width: 700px;
         }
 
-        /* Feature panels */
         .ss-panel {
             background: #F5F3ED;
             border: 1px solid #E5E0D6;
             border-radius: 14px;
             padding: 1.5rem;
-            min-height: 150px;
+            min-height: 165px;
             box-sizing: border-box;
         }
 
@@ -437,7 +419,7 @@ def _public_welcome():
 
         .ss-panel p {
             color: #64717A;
-            line-height: 1.6;
+            line-height: 1.65;
             font-size: 0.92rem;
         }
 
@@ -454,7 +436,22 @@ def _public_welcome():
             max-width: 760px;
         }
 
-        /* Avoid clipping on smaller screens. */
+        .ss-highlight {
+            background: #173449;
+            color: #FFFFFF;
+            border-radius: 14px;
+            padding: 26px;
+        }
+
+        .ss-highlight h3 {
+            color: #FFFFFF;
+        }
+
+        .ss-highlight p {
+            color: #E1E9ED;
+            line-height: 1.7;
+        }
+
         @media (max-width: 700px) {
             .ss-brand {
                 font-size: 1.7rem;
@@ -476,14 +473,14 @@ def _public_welcome():
         unsafe_allow_html=True,
     )
 
-    # Brand and account navigation.
-    header_brand, header_signin, header_register = st.columns(
+    # HEADER
+    brand, signin, register = st.columns(
         [3, 1, 1.55],
         vertical_alignment="center",
         gap="small",
     )
 
-    with header_brand:
+    with brand:
         st.markdown(
             """
             <div class="ss-brand-group">
@@ -491,7 +488,7 @@ def _public_welcome():
                 <div>
                     <div class="ss-brand">Seepsight</div>
                     <div class="ss-brand-subtitle">
-                        PROCUREMENT INTELLIGENCE
+                        AI-POWERED PROCUREMENT INTELLIGENCE
                     </div>
                 </div>
             </div>
@@ -499,7 +496,7 @@ def _public_welcome():
             unsafe_allow_html=True,
         )
 
-    with header_signin:
+    with signin:
         if st.button(
             "Sign in",
             use_container_width=True,
@@ -507,7 +504,7 @@ def _public_welcome():
         ):
             _set_auth_view("signin")
 
-    with header_register:
+    with register:
         if st.button(
             "Create account",
             type="primary",
@@ -518,15 +515,19 @@ def _public_welcome():
 
     st.divider()
 
-    # Hero section.
-    hero_left, hero_right = st.columns(
-        [1.45, 0.75],
-        gap="large",
-    )
+    # HERO
+    left, right = st.columns([1.45, 0.75], gap="large")
 
-    with hero_left:
+    with left:
         st.markdown(
-            '<div class="ss-eyebrow">A clearer view of procurement</div>',
+            '<div class="ss-ai-label">'
+            '✦ AI-POWERED PROCUREMENT INTELLIGENCE'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="ss-eyebrow">Intelligence for smarter procurement</div>',
             unsafe_allow_html=True,
         )
 
@@ -541,23 +542,26 @@ def _public_welcome():
 
         st.markdown(
             '<div class="ss-lead">'
-            'Understand your procurement operations, uncover potential '
-            'financial leakage and identify risks that deserve attention. '
-            'Seepsight helps turn purchasing data into clearer decisions.'
+            'Seepsight is an AI-powered procurement intelligence platform '
+            'that helps businesses uncover potential financial leakages, '
+            'identify procurement risks, understand supplier performance '
+            'and make more informed purchasing decisions.'
             '</div>',
             unsafe_allow_html=True,
         )
 
-    with hero_right:
+    with right:
         st.markdown(
             """
-            <div class="ss-panel">
-                <div class="ss-eyebrow">The Seepsight approach</div>
-                <h4>From purchasing records to better decisions.</h4>
+            <div class="ss-highlight">
+                <div class="ss-eyebrow" style="color:#D8AA82;">
+                    INTELLIGENT PROCUREMENT
+                </div>
+                <h3>From procurement data to actionable intelligence.</h3>
                 <p>
-                    Bring procurement information into focus, examine
-                    important signals, review supporting evidence and
-                    coordinate the actions that follow.
+                    Bring purchasing information into focus. Use intelligent
+                    analysis to surface potential issues, understand their
+                    impact and support better decisions.
                 </p>
             </div>
             """,
@@ -567,48 +571,55 @@ def _public_welcome():
     st.write("")
     st.divider()
 
-    # Capabilities.
-    st.markdown("## Procurement deserves a clearer picture")
+    # AI CAPABILITIES
+    st.markdown("## Intelligence behind better procurement decisions")
 
     st.markdown(
         '<div class="ss-section-intro">'
-        'Important procurement issues can be difficult to spot when '
-        'purchasing information is scattered across different records '
-        'and processes.'
+        'Seepsight brings procurement analytics, intelligent risk detection '
+        'and AI-assisted explanations together to help organisations '
+        'understand what is happening across their purchasing operations.'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    feature_columns = st.columns(4, gap="medium")
-
-    features = [
+    capabilities = [
         (
             "01",
-            "Financial visibility",
-            "Examine purchasing activity and investigate potential financial leakage.",
+            "AI-powered procurement intelligence",
+            "Turn procurement information into meaningful insights that support better decisions.",
         ),
         (
             "02",
-            "Risk detection",
-            "Bring potential price, quantity and delivery discrepancies to attention.",
+            "Intelligent risk detection",
+            "Identify potential price changes, delivery discrepancies and procurement risks.",
         ),
         (
             "03",
-            "Supplier intelligence",
-            "Understand supplier activity and identify performance concerns.",
+            "Financial leakage analysis",
+            "Investigate potential financial exposure and understand where purchasing value may be lost.",
         ),
         (
             "04",
-            "Action management",
-            "Review findings, supporting evidence and follow-up actions.",
+            "Supplier intelligence",
+            "Examine supplier performance, purchasing patterns and operational concerns.",
+        ),
+        (
+            "05",
+            "AI-assisted explanations",
+            "Make findings easier to understand through contextual explanations and supporting evidence.",
+        ),
+        (
+            "06",
+            "Procurement action management",
+            "Prioritise findings, investigate issues and track corrective actions.",
         ),
     ]
 
-    for column, (number, heading, description) in zip(
-        feature_columns,
-        features,
-    ):
-        with column:
+    columns = st.columns(3, gap="medium")
+
+    for index, (number, heading, description) in enumerate(capabilities):
+        with columns[index % 3]:
             st.markdown(
                 f"""
                 <div class="ss-panel">
@@ -619,12 +630,20 @@ def _public_welcome():
                 """,
                 unsafe_allow_html=True,
             )
+            st.write("")
 
-    st.write("")
     st.divider()
 
-    # Workflow.
+    # WORKFLOW
     st.markdown("## How Seepsight works")
+
+    st.markdown(
+        '<div class="ss-section-intro">'
+        'A connected approach to understanding procurement activity '
+        'and acting on important findings.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     steps = st.columns(3, gap="large")
 
@@ -632,24 +651,21 @@ def _public_welcome():
         (
             "01 · CONNECT",
             "Bring your data together",
-            "Start by connecting your company's procurement records.",
+            "Connect your company's procurement records and prepare them for analysis.",
         ),
         (
             "02 · ANALYSE",
-            "Understand what is happening",
-            "Examine purchasing activity and review potential risk signals.",
+            "Discover what matters",
+            "Use procurement analytics and intelligent detection to examine purchasing activity.",
         ),
         (
             "03 · TAKE ACTION",
-            "Move from insight to action",
-            "Investigate findings, examine evidence and track corrective actions.",
+            "Turn insights into action",
+            "Review findings, examine evidence and track corrective actions.",
         ),
     ]
 
-    for column, (number, heading, description) in zip(
-        steps,
-        workflow,
-    ):
+    for column, (number, heading, description) in zip(steps, workflow):
         with column:
             st.caption(number)
             st.subheader(heading)
@@ -657,14 +673,13 @@ def _public_welcome():
 
     st.divider()
 
-    # Footer.
+    # FOOTER
     footer_left, footer_right = st.columns([2, 1])
 
     with footer_left:
         st.markdown("**Seepsight**")
-        st.caption(
-            "See the gaps. Show the impact. Act with confidence."
-        )
+        st.caption("AI-powered procurement intelligence.")
+        st.caption("See the gaps. Show the impact. Act with confidence.")
 
     with footer_right:
         if st.button(
@@ -676,7 +691,7 @@ def _public_welcome():
 
 
 # ---------------------------------------------------------
-# AUTHENTICATION PAGE ROUTING
+# AUTHENTICATION ROUTING
 # ---------------------------------------------------------
 
 def _authentication_screen():
@@ -687,7 +702,7 @@ def _authentication_screen():
         return
 
     st.markdown("### Seepsight")
-    st.caption("See the gaps. Show the impact. Act with confidence.")
+    st.caption("AI-powered procurement intelligence.")
 
     if st.button("← Back to welcome page", key="auth_back"):
         _set_auth_view("welcome")
@@ -703,10 +718,6 @@ def _authentication_screen():
     else:
         _public_welcome()
 
-
-# ---------------------------------------------------------
-# LOGOUT AND AUTHENTICATION GATE
-# ---------------------------------------------------------
 
 def logout():
     st.session_state.pop("seepsight_auth", None)
@@ -724,10 +735,7 @@ def require_auth():
         st.sidebar.write(account["company_name"])
         st.sidebar.caption(account["email"])
 
-        if st.sidebar.button(
-            "Sign out",
-            use_container_width=True,
-        ):
+        if st.sidebar.button("Sign out", use_container_width=True):
             logout()
 
         return True
