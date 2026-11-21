@@ -104,6 +104,36 @@ TABLE_FIELDS = {   # fields expected in each file when a company sends separate 
     "approvals": ["po_id", "approval_stage", "approval_requested_at", "approval_completed_at"],
 }
 
+# Extensible dataset catalogue. These definitions describe the procurement data
+# structures the onboarding layer can recognise; optional datasets do not block
+# analysis when a company does not maintain them.
+DATASET_REGISTRY = {
+    "orders": {"label": "Purchase orders", "required": ["po_id", "supplier", "po_date"],
+               "signals": ["po", "purchaseorder", "order", "orderedqty", "unitprice"]},
+    "receipts": {"label": "Goods receipts / deliveries", "required": ["po_id"],
+                 "signals": ["grn", "goodsreceipt", "receipt", "receivedqty", "delivery"]},
+    "invoices": {"label": "Supplier invoices", "required": ["po_id"],
+                 "signals": ["invoice", "bill", "billedqty", "invoicedate"]},
+    "approvals": {"label": "Approvals", "required": ["po_id"],
+                  "signals": ["approval", "approver", "signoff", "approvedon"]},
+    "suppliers": {"label": "Supplier master", "required": ["supplier"],
+                  "signals": ["supplier", "vendor", "payee", "suppliercode"]},
+    "products": {"label": "Products / items", "required": [],
+                 "signals": ["product", "item", "sku", "material", "commodity"]},
+    "inventory": {"label": "Inventory / stock", "required": [],
+                   "signals": ["inventory", "stock", "onhand", "reorder", "warehouse"]},
+    "payments": {"label": "Payments", "required": [],
+                 "signals": ["payment", "paid", "remittance", "transaction"]},
+    "requisitions": {"label": "Purchase requisitions", "required": [],
+                     "signals": ["requisition", "requestor", "requestedby", "purchase request"]},
+    "contracts": {"label": "Contracts", "required": [],
+                  "signals": ["contract", "agreement", "contractprice", "validfrom"]},
+    "quotations": {"label": "Quotations / bids", "required": [],
+                   "signals": ["quotation", "quote", "rfq", "bid", "tender"]},
+    "returns": {"label": "Returns / disputes", "required": [],
+                "signals": ["return", "rejected", "dispute", "claim", "creditnote"]},
+}
+
 DEFAULT_CONFIG = dict(
     currency="NGN",
     price_tolerance=0.02,        # invoice price must exceed PO price by more than this share
@@ -313,12 +343,18 @@ def content_fit(series, kind):
     return 0.4 if pure > 0.9 else 1.0     # names are rarely pure numbers (order ids may be)
 
 
-def suggest_mapping(df, accept_score=0.60, fields=None):
-    """Match columns to contract fields. Returns (mapping, unmapped_columns, needs_choice)."""
+def mapping_candidates(df, fields=None, top_n=3):
+    """Return ranked candidate columns for every canonical field.
+
+    Scores combine header similarity and sampled-value compatibility. This is
+    deliberately advisory: ambiguous matches are surfaced instead of silently
+    choosing a potentially wrong column.
+    """
     fields = fields or FLAT_FIELDS
-    cands = []
+    ranked = {}
     for field in fields:
         spec = CONTRACT[field]
+        candidates = []
         for col in df.columns:
             ns = name_score(col, spec)
             if ns <= 0:
@@ -328,20 +364,93 @@ def suggest_mapping(df, accept_score=0.60, fields=None):
                 score = ns * 0.3
             else:
                 score = ns * (0.6 + 0.4 * fit)
-            if field == "po_id" and spec["kind"] == "text":
-                score = ns * 0.95 if fit > 0 else 0      # ids may be all digits
+            if field == "po_id":
+                score = ns * 0.95 if fit > 0 else 0
             if field == "approval_stage":
                 score = ns * 0.9 if fit > 0.5 else 0
-            cands.append((score, field, col, ns, fit))
+            candidates.append({"column": col, "confidence": round(float(score), 3),
+                               "name_score": round(float(ns), 3), "content_fit": round(float(fit), 3)})
+        ranked[field] = sorted(candidates, key=lambda x: x["confidence"], reverse=True)[:top_n]
+    return ranked
+
+
+def suggest_mapping(df, accept_score=0.60, fields=None, ambiguity_margin=0.08):
+    """Find a globally consistent one-to-one field/column mapping.
+
+    Unlike the former greedy assignment, this maximises total match quality
+    across the whole table. Close alternatives are withheld for user review.
+    The three-value return signature is retained for existing callers.
+    """
+    fields = fields or FLAT_FIELDS
+    ranked = mapping_candidates(df, fields=fields, top_n=max(3, len(df.columns)))
+    columns = list(df.columns)
+    if not fields or not columns:
+        return {}, columns, list(fields)
+
+    scores = np.zeros((len(fields), len(columns)), dtype=float)
+    for i, field in enumerate(fields):
+        for candidate in ranked[field]:
+            j = columns.index(candidate["column"])
+            scores[i, j] = candidate["confidence"]
+
+    # scipy is already a transitive dependency of the ML stack in normal
+    # deployments. Keep a deterministic greedy fallback for lean environments.
+    try:
+        from scipy.optimize import linear_sum_assignment
+        row_idx, col_idx = linear_sum_assignment(-scores)
+        assignments = list(zip(row_idx.tolist(), col_idx.tolist()))
+    except Exception:
+        pairs = sorted(((scores[i, j], i, j) for i in range(len(fields))
+                        for j in range(len(columns))), reverse=True)
+        used_fields, used_columns, assignments = set(), set(), []
+        for score, i, j in pairs:
+            if score <= 0 or i in used_fields or j in used_columns:
+                continue
+            assignments.append((i, j))
+            used_fields.add(i)
+            used_columns.add(j)
+
     mapping, used_cols = {}, set()
-    for score, field, col, ns, fit in sorted(cands, key=lambda t: -t[0]):
-        if field in mapping or col in used_cols or score < accept_score:
+    assigned_columns = {columns[j] for i, j in assignments if scores[i, j] >= accept_score}
+    for i, j in assignments:
+        field, col = fields[i], columns[j]
+        score = float(scores[i, j])
+        if score < accept_score:
             continue
-        mapping[field] = dict(column=col, confidence=round(score, 2), source="name+content")
+        options = ranked[field]
+        next_score = next((x["confidence"] for x in options
+                           if x["column"] != col and x["column"] not in assigned_columns), 0.0)
+        # A close alternative means the engine must not silently accept it.
+        if next_score and score - next_score < ambiguity_margin:
+            continue
+        mapping[field] = {"column": col, "confidence": round(score, 2),
+                          "source": "global name+content match",
+                          "alternatives": options[:3], "status": "suggested" if score < 0.8 else "high_confidence"}
         used_cols.add(col)
-    unmapped = [c for c in df.columns if c not in used_cols]
+
+    unmapped = [c for c in columns if c not in used_cols]
     needs_choice = [f for f in fields if f not in mapping]
     return mapping, unmapped, needs_choice
+
+
+def detect_dataset_type(df, filename=""):
+    """Suggest a procurement dataset type from its filename and column headers.
+
+    Returns a ranked list so the onboarding UI can ask the user to confirm when
+    the evidence is weak or two dataset types are similarly plausible.
+    """
+    header_tokens = {"".join(_tokens(c)) for c in df.columns}
+    file_token = "".join(_tokens(os.path.basename(str(filename))))
+    results = []
+    for kind, spec in DATASET_REGISTRY.items():
+        signals = spec["signals"]
+        hits = sum(1 for signal in signals
+                   if any(signal in h or h in signal for h in header_tokens if h))
+        file_hit = sum(1 for signal in signals if signal in file_token)
+        score = (hits / max(len(signals), 1)) * 0.85 + (file_hit / max(len(signals), 1)) * 0.15
+        results.append({"dataset": kind, "label": spec["label"], "confidence": round(score, 3),
+                        "header_hits": hits, "filename_hits": file_hit})
+    return sorted(results, key=lambda x: x["confidence"], reverse=True)
 
 
 def nim_suggest_mapping(client, model, df, fields):
@@ -719,7 +828,7 @@ def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=
 
 
 def _id_key(series):
-    """Join key for order numbers: ignores case, spaces, dashes and leading zeros ('PO-0012' = 'po0012')."""
+    """Normalise case and separators; preserve leading zeroes in prefixed IDs."""
     def k(v):
         if _is_blank(v):
             return None
@@ -785,11 +894,14 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
             agg["_val"] = ("_val", "sum")
         elif "invoice_unit_price" in v:
             agg["invoice_unit_price"] = ("invoice_unit_price", "mean")
-        g = v.groupby("_key").agg(**agg).reset_index()
-        if "_val" in g:
-            g["invoice_unit_price"] = g["_val"] / g["invoice_qty"].where(g["invoice_qty"] > 0)
-            g = g.drop(columns="_val")
-        o = o.merge(g, on="_key", how="left")
+        if agg:
+            g = v.groupby("_key").agg(**agg).reset_index()
+            if "_val" in g:
+                g["invoice_unit_price"] = g["_val"] / g["invoice_qty"].where(g["invoice_qty"] > 0)
+                g = g.drop(columns="_val")
+            o = o.merge(g, on="_key", how="left")
+        else:
+            warnings.append("The invoices dataset was recognised but contained no mapped invoice measures to aggregate.")
     if "approvals" in typed_tables and {"approval_requested_at", "approval_completed_at"} <= set(typed_tables["approvals"].columns):
         a = typed_tables["approvals"].copy()
         if "approval_stage" in a and a["approval_stage"].astype(str).str.contains("financ", case=False, na=False).any():
@@ -864,7 +976,7 @@ def print_summary(mapping, unmapped, needs, report, findings, cfg=None, risk=Non
 
 
 # ---------------------------------------------------------------- dashboard data pack
-ENGINE_VERSION = "1.1"
+ENGINE_VERSION = "1.2"
 
 # Answer keys for the simulated test companies (the leaks that were planted on purpose).
 ANSWER_KEYS = {
@@ -1027,3 +1139,12 @@ def build_data_pack(result, company, source_file="", answer_key=None, explanatio
         except ImportError:
             pass
     return out_dir
+
+# Public helpers for the company onboarding layer.
+__all__ = [
+    "CONTRACT", "REQUIRED", "FLAT_FIELDS", "TABLE_FIELDS", "DATASET_REGISTRY",
+    "DEFAULT_CONFIG", "DETECTORS", "ENGINE_VERSION", "read_any",
+    "suggest_mapping", "mapping_candidates", "detect_dataset_type",
+    "onboard", "onboard_tables", "apply_mapping", "quality_report",
+    "detect", "to_trace", "build_data_pack", "build_evidence",
+]
