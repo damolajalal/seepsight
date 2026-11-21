@@ -1,5 +1,5 @@
 
-"""Seepsight public website and Firebase company authentication."""
+"""Seepsight public landing page and Firebase company authentication."""
 
 import requests
 import streamlit as st
@@ -9,6 +9,10 @@ from seepsight import company_store
 TIMEOUT = 20
 BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts"
 
+
+# ---------------------------------------------------------
+# FIREBASE AUTHENTICATION
+# ---------------------------------------------------------
 
 def _api_key():
     try:
@@ -29,7 +33,11 @@ def _request(endpoint, payload):
     url = f"{BASE_URL}:{endpoint}?key={key}"
 
     try:
-        response = requests.post(url, json=payload, timeout=TIMEOUT)
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=TIMEOUT,
+        )
         data = response.json()
 
         if response.ok:
@@ -57,7 +65,9 @@ def _friendly_error(message):
         "USER_DISABLED": "This account has been disabled.",
         "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many attempts. Please try again later.",
         "INVALID_PASSWORD": "Email or password is incorrect.",
-        "OPERATION_NOT_ALLOWED": "Email and password sign-in is not enabled in Firebase.",
+        "OPERATION_NOT_ALLOWED": (
+            "Email and password sign-in is not enabled in Firebase."
+        ),
         "API_KEY_INVALID": "The Firebase API key is invalid.",
     }
     return errors.get(message, f"Authentication error: {message}")
@@ -66,7 +76,10 @@ def _friendly_error(message):
 def _send_verification(id_token):
     return _request(
         "sendOobCode",
-        {"requestType": "VERIFY_EMAIL", "idToken": id_token},
+        {
+            "requestType": "VERIFY_EMAIL",
+            "idToken": id_token,
+        },
     )
 
 
@@ -83,6 +96,10 @@ def _set_auth_view(view):
     st.session_state["seepsight_auth_view"] = view
     st.rerun()
 
+
+# ---------------------------------------------------------
+# COMPANY REGISTRATION
+# ---------------------------------------------------------
 
 def _register():
     st.subheader("Create your company account")
@@ -162,6 +179,10 @@ def _register():
         )
 
 
+# ---------------------------------------------------------
+# EMAIL VERIFICATION
+# ---------------------------------------------------------
+
 def _resend_pending_verification():
     token = st.session_state.get("seepsight_pending_verification_token")
 
@@ -178,6 +199,10 @@ def _resend_pending_verification():
         if result:
             st.success("A new verification email has been sent.")
 
+
+# ---------------------------------------------------------
+# COMPANY SIGN IN
+# ---------------------------------------------------------
 
 def _login():
     st.subheader("Welcome back")
@@ -252,12 +277,23 @@ def _login():
     _resend_pending_verification()
 
     st.write("")
+
     if st.button(
         "Forgot your password?",
         key="forgot_password_link",
     ):
         _set_auth_view("reset")
 
+    if st.button(
+        "Don't have a company account? Create one",
+        key="register_from_login",
+    ):
+        _set_auth_view("register")
+
+
+# ---------------------------------------------------------
+# PASSWORD RESET
+# ---------------------------------------------------------
 
 def _password_reset():
     st.subheader("Reset your password")
@@ -265,6 +301,7 @@ def _password_reset():
 
     with st.form("password_reset"):
         email = st.text_input("Company email")
+
         submitted = st.form_submit_button(
             "Send reset email",
             use_container_width=True,
@@ -289,32 +326,44 @@ def _password_reset():
             )
 
 
+# ---------------------------------------------------------
+# PUBLIC WEBSITE
+# ---------------------------------------------------------
+
 def _public_welcome():
     """Render the public Seepsight landing page."""
 
     st.markdown(
         """
         <style>
-        /* Keep the public page below Streamlit's top toolbar. */
-        .stMainBlockContainer,
-        .block-container {
-            max-width: 1160px !important;
-            padding-top: 4.5rem !important;
+        /* Give the page enough room below Streamlit's top toolbar. */
+        .stApp [data-testid="stMainBlockContainer"] {
+            max-width: 1160px;
+            padding-top: 3.5rem !important;
             padding-bottom: 3rem !important;
         }
 
+        /* Brand header */
         .ss-header {
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            width: 100%;
             min-height: 76px;
             padding: 8px 0 18px 0;
+            box-sizing: border-box;
+        }
+
+        .ss-brand-group {
+            display: flex;
+            align-items: center;
             gap: 14px;
+            min-height: 60px;
         }
 
         .ss-logo {
-            width: 52px;
-            height: 52px;
-            min-width: 52px;
+            width: 54px;
+            height: 54px;
             border-radius: 11px;
             background: #173449;
             color: #FFFFFF;
@@ -323,17 +372,15 @@ def _public_welcome():
             justify-content: center;
             font-size: 29px;
             font-weight: 800;
-            line-height: 1;
+            flex-shrink: 0;
         }
 
         .ss-brand {
-            display: block;
             color: #173449;
             font-size: 2.25rem;
             font-weight: 800;
-            letter-spacing: -1.4px;
-            line-height: 1.25;
-            padding: 2px 0;
+            letter-spacing: -1.3px;
+            line-height: 1.2;
             white-space: nowrap;
         }
 
@@ -342,25 +389,11 @@ def _public_welcome():
             font-size: 0.68rem;
             font-weight: 750;
             letter-spacing: 2px;
-            line-height: 1.5;
-            margin-top: 2px;
+            margin-top: 3px;
             white-space: nowrap;
         }
 
-        /* Give header buttons enough height for their labels. */
-        div[data-testid="stButton"] > button {
-            min-height: 46px !important;
-            height: auto !important;
-            padding: 10px 14px !important;
-            line-height: 1.35 !important;
-            white-space: nowrap !important;
-        }
-
-        div[data-testid="stButton"] > button p {
-            line-height: 1.35 !important;
-            overflow: visible !important;
-        }
-
+        /* Hero */
         .ss-eyebrow {
             color: #A66C3F;
             font-size: 0.76rem;
@@ -386,12 +419,14 @@ def _public_welcome():
             max-width: 700px;
         }
 
+        /* Feature panels */
         .ss-panel {
             background: #F5F3ED;
             border: 1px solid #E5E0D6;
             border-radius: 14px;
             padding: 1.5rem;
             min-height: 150px;
+            box-sizing: border-box;
         }
 
         .ss-panel h4 {
@@ -419,20 +454,21 @@ def _public_welcome():
             max-width: 760px;
         }
 
+        /* Avoid clipping on smaller screens. */
         @media (max-width: 700px) {
             .ss-brand {
-                font-size: 1.75rem;
+                font-size: 1.7rem;
             }
 
             .ss-brand-subtitle {
-                font-size: 0.57rem;
-                letter-spacing: 1.4px;
+                font-size: 0.55rem;
+                letter-spacing: 1.2px;
             }
 
             .ss-logo {
-                width: 44px;
-                height: 44px;
-                min-width: 44px;
+                width: 46px;
+                height: 46px;
+                font-size: 24px;
             }
         }
         </style>
@@ -440,9 +476,9 @@ def _public_welcome():
         unsafe_allow_html=True,
     )
 
-    # Public header: brand on the left, account actions on the right.
+    # Brand and account navigation.
     header_brand, header_signin, header_register = st.columns(
-        [3.2, 1, 1.55],
+        [3, 1, 1.55],
         vertical_alignment="center",
         gap="small",
     )
@@ -450,7 +486,7 @@ def _public_welcome():
     with header_brand:
         st.markdown(
             """
-            <div class="ss-header">
+            <div class="ss-brand-group">
                 <div class="ss-logo">S</div>
                 <div>
                     <div class="ss-brand">Seepsight</div>
@@ -483,7 +519,10 @@ def _public_welcome():
     st.divider()
 
     # Hero section.
-    hero_left, hero_right = st.columns([1.45, 0.75], gap="large")
+    hero_left, hero_right = st.columns(
+        [1.45, 0.75],
+        gap="large",
+    )
 
     with hero_left:
         st.markdown(
@@ -528,6 +567,7 @@ def _public_welcome():
     st.write("")
     st.divider()
 
+    # Capabilities.
     st.markdown("## Procurement deserves a clearer picture")
 
     st.markdown(
@@ -583,6 +623,7 @@ def _public_welcome():
     st.write("")
     st.divider()
 
+    # Workflow.
     st.markdown("## How Seepsight works")
 
     steps = st.columns(3, gap="large")
@@ -605,7 +646,10 @@ def _public_welcome():
         ),
     ]
 
-    for column, (number, heading, description) in zip(steps, workflow):
+    for column, (number, heading, description) in zip(
+        steps,
+        workflow,
+    ):
         with column:
             st.caption(number)
             st.subheader(heading)
@@ -613,11 +657,14 @@ def _public_welcome():
 
     st.divider()
 
+    # Footer.
     footer_left, footer_right = st.columns([2, 1])
 
     with footer_left:
         st.markdown("**Seepsight**")
-        st.caption("See the gaps. Show the impact. Act with confidence.")
+        st.caption(
+            "See the gaps. Show the impact. Act with confidence."
+        )
 
     with footer_right:
         if st.button(
@@ -628,9 +675,11 @@ def _public_welcome():
             _set_auth_view("signin")
 
 
-def _authentication_screen():
-    """Render the selected public authentication screen."""
+# ---------------------------------------------------------
+# AUTHENTICATION PAGE ROUTING
+# ---------------------------------------------------------
 
+def _authentication_screen():
     view = st.session_state.get("seepsight_auth_view", "welcome")
 
     if view == "welcome":
@@ -655,6 +704,10 @@ def _authentication_screen():
         _public_welcome()
 
 
+# ---------------------------------------------------------
+# LOGOUT AND AUTHENTICATION GATE
+# ---------------------------------------------------------
+
 def logout():
     st.session_state.pop("seepsight_auth", None)
     st.rerun()
@@ -671,7 +724,10 @@ def require_auth():
         st.sidebar.write(account["company_name"])
         st.sidebar.caption(account["email"])
 
-        if st.sidebar.button("Sign out", use_container_width=True):
+        if st.sidebar.button(
+            "Sign out",
+            use_container_width=True,
+        ):
             logout()
 
         return True
