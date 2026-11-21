@@ -1,5 +1,5 @@
 
-"""Seepsight public welcome experience and Firebase company authentication."""
+"""Seepsight public website and Firebase company authentication."""
 
 import requests
 import streamlit as st
@@ -93,7 +93,9 @@ def _set_auth_view(view):
 
 def _register():
     st.subheader("Create your company account")
-    st.write("Set up your company's secure procurement intelligence workspace.")
+    st.write(
+        "Set up your company's secure procurement intelligence workspace."
+    )
 
     with st.form("company_registration"):
         company_name = st.text_input("Company name")
@@ -186,7 +188,9 @@ def _resend_pending_verification():
 
 def _login():
     st.subheader("Welcome back")
-    st.write("Sign in to access your company's procurement workspace.")
+    st.write(
+        "Sign in to access your company's procurement workspace."
+    )
 
     with st.form("company_login"):
         email = st.text_input("Company email")
@@ -223,7 +227,10 @@ def _login():
             _resend_pending_verification()
             return
 
-        st.session_state.pop("seepsight_pending_verification_token", None)
+        st.session_state.pop(
+            "seepsight_pending_verification_token",
+            None,
+        )
 
         try:
             company = company_store.ensure_company_for_user(
@@ -256,7 +263,9 @@ def _login():
 
 def _password_reset():
     st.subheader("Reset your password")
-    st.write("Enter your company email to receive a password reset link.")
+    st.write(
+        "Enter your company email to receive a password reset link."
+    )
 
     with st.form("password_reset"):
         email = st.text_input("Company email")
@@ -285,22 +294,47 @@ def _password_reset():
 
 
 def _public_welcome():
-    """Render the public Seepsight landing page and authentication entry points."""
+    """Render the public Seepsight landing page."""
 
     st.markdown(
         """
         <style>
         .block-container {
-            max-width: 1120px;
-            padding-top: 2rem;
+            max-width: 1160px;
+            padding-top: 1.5rem;
             padding-bottom: 3rem;
         }
+
         .ss-brand {
-            font-size: 1.65rem;
-            font-weight: 750;
-            letter-spacing: -0.7px;
+            font-size: 2.15rem;
+            font-weight: 800;
+            letter-spacing: -1.3px;
+            line-height: 1.1;
             color: #173449;
         }
+
+        .ss-brand-subtitle {
+            font-size: 0.68rem;
+            font-weight: 750;
+            letter-spacing: 2px;
+            color: #A66C3F;
+            margin-top: 5px;
+        }
+
+        .ss-logo {
+            background: #173449;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 27px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
         .ss-eyebrow {
             color: #A66C3F;
             font-size: 0.76rem;
@@ -309,6 +343,7 @@ def _public_welcome():
             text-transform: uppercase;
             margin-bottom: 0.7rem;
         }
+
         .ss-hero {
             font-size: clamp(2.5rem, 5vw, 4.1rem);
             line-height: 1.08;
@@ -317,12 +352,14 @@ def _public_welcome():
             color: #173449;
             margin: 1.2rem 0;
         }
+
         .ss-lead {
             font-size: 1.12rem;
             line-height: 1.8;
             color: #586773;
             max-width: 700px;
         }
+
         .ss-panel {
             background: #F5F3ED;
             border: 1px solid #E5E0D6;
@@ -330,45 +367,99 @@ def _public_welcome():
             padding: 1.5rem;
             min-height: 150px;
         }
+
         .ss-panel h4 {
             color: #173449;
             margin-top: 0.5rem;
             font-size: 1.05rem;
         }
+
         .ss-panel p {
             color: #64717A;
             line-height: 1.6;
             font-size: 0.92rem;
         }
+
         .ss-number {
             color: #B5794B;
             font-weight: 750;
             font-size: 0.82rem;
             letter-spacing: 1px;
         }
+
+        .ss-section-intro {
+            color: #64717A;
+            line-height: 1.7;
+            max-width: 760px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="ss-brand">Seepsight</div>', unsafe_allow_html=True)
-    st.caption("PROCUREMENT INTELLIGENCE")
+    # Prominent brand and account navigation.
+    header_brand, header_signin, header_register = st.columns(
+        [3, 1, 1.55],
+        vertical_alignment="center",
+        gap="small",
+    )
+
+    with header_brand:
+        st.markdown(
+            """
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="ss-logo">S</div>
+                <div>
+                    <div class="ss-brand">Seepsight</div>
+                    <div class="ss-brand-subtitle">
+                        PROCUREMENT INTELLIGENCE
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with header_signin:
+        if st.button(
+            "Sign in",
+            use_container_width=True,
+            key="header_signin",
+        ):
+            _set_auth_view("signin")
+
+    with header_register:
+        if st.button(
+            "Create account",
+            type="primary",
+            use_container_width=True,
+            key="header_register",
+        ):
+            _set_auth_view("register")
 
     st.divider()
 
-    hero_left, hero_right = st.columns([1.45, 0.75], gap="large")
+    # Hero section.
+    hero_left, hero_right = st.columns(
+        [1.45, 0.75],
+        gap="large",
+    )
 
     with hero_left:
         st.markdown(
             '<div class="ss-eyebrow">A clearer view of procurement</div>',
             unsafe_allow_html=True,
         )
+
         st.markdown(
             '<div class="ss-hero">'
-            'See the gaps.<br>Show the impact.<br>Act with confidence.'
+            'See the gaps.<br>'
+            'Show the impact.<br>'
+            'Act with confidence.'
             '</div>',
             unsafe_allow_html=True,
         )
+
         st.markdown(
             '<div class="ss-lead">'
             'Understand your procurement operations, uncover potential '
@@ -377,26 +468,6 @@ def _public_welcome():
             '</div>',
             unsafe_allow_html=True,
         )
-
-        st.write("")
-        action_left, action_right = st.columns(2)
-
-        with action_left:
-            if st.button(
-                "Create company account",
-                type="primary",
-                use_container_width=True,
-                key="landing_register",
-            ):
-                _set_auth_view("register")
-
-        with action_right:
-            if st.button(
-                "Sign in",
-                use_container_width=True,
-                key="landing_signin",
-            ):
-                _set_auth_view("signin")
 
     with hero_right:
         st.markdown(
@@ -418,10 +489,14 @@ def _public_welcome():
     st.divider()
 
     st.markdown("## Procurement deserves a clearer picture")
-    st.write(
-        "Important procurement issues can be difficult to spot when "
-        "purchasing information is scattered across different records "
-        "and processes."
+
+    st.markdown(
+        '<div class="ss-section-intro">'
+        'Important procurement issues can be difficult to spot when '
+        'purchasing information is scattered across different records '
+        'and processes.'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     feature_columns = st.columns(4, gap="medium")
@@ -490,7 +565,10 @@ def _public_welcome():
         ),
     ]
 
-    for column, (number, heading, description) in zip(steps, workflow):
+    for column, (number, heading, description) in zip(
+        steps,
+        workflow,
+    ):
         with column:
             st.caption(number)
             st.subheader(heading)
@@ -502,7 +580,9 @@ def _public_welcome():
 
     with footer_left:
         st.markdown("**Seepsight**")
-        st.caption("See the gaps. Show the impact. Act with confidence.")
+        st.caption(
+            "See the gaps. Show the impact. Act with confidence."
+        )
 
     with footer_right:
         if st.button(
@@ -518,10 +598,17 @@ def _authentication_screen():
 
     view = st.session_state.get("seepsight_auth_view", "welcome")
 
+    if view == "welcome":
+        _public_welcome()
+        return
+
     st.markdown("### Seepsight")
     st.caption("See the gaps. Show the impact. Act with confidence.")
 
-    if st.button("← Back to welcome page", key="auth_back"):
+    if st.button(
+        "← Back to welcome page",
+        key="auth_back",
+    ):
         _set_auth_view("welcome")
 
     st.divider()
@@ -542,7 +629,7 @@ def logout():
 
 
 def require_auth():
-    """Display the public website or authentication screen for visitors."""
+    """Display the public website or authenticate company users."""
 
     account = st.session_state.get("seepsight_auth")
 
@@ -552,7 +639,10 @@ def require_auth():
         st.sidebar.write(account["company_name"])
         st.sidebar.caption(account["email"])
 
-        if st.sidebar.button("Sign out", use_container_width=True):
+        if st.sidebar.button(
+            "Sign out",
+            use_container_width=True,
+        ):
             logout()
 
         return True
