@@ -94,3 +94,1278 @@ CONTRACT = {
                                          "approveddate", "signedoff", "approvedat", "signoff", "completedon", "completeddate",
                                          "completedat", "completed", "datecompleted", "dateapproved", "closedon", "whenapprovalwasgiven", "approvalgiven"]),
     # Extended procurement entities. These fields are optional in a flat order export;
+    # they become available when their dedicated datasets are supplied.
+    "supplier_id": dict(kind="text", required=False, desc="Stable supplier/vendor identifier",
+                         names=["supplierid", "vendorid", "suppliercode", "vendorcode", "suppliernumber", "vendornumber"]),
+    "supplier_status": dict(kind="text", required=False, desc="Supplier active / approved status",
+                             names=["supplierstatus", "vendorstatus", "status", "approvalstatus", "supplierstate"]),
+    "supplier_country": dict(kind="text", required=False, desc="Supplier country",
+                              names=["country", "suppliercountry", "vendorcountry", "countryofregistration"]),
+    "payment_terms": dict(kind="text", required=False, desc="Agreed supplier payment terms",
+                          names=["paymentterms", "termsofpayment", "creditterms", "paymentterm"]),
+    "product_id": dict(kind="text", required=False, desc="Stable product/item identifier",
+                        names=["productid", "itemid", "materialid", "productcode", "itemcode", "materialcode"]),
+    "sku": dict(kind="text", required=False, desc="Stock keeping unit",
+                names=["sku", "skucode", "stockkeepingunit", "itemsku"]),
+    "category": dict(kind="text", required=False, desc="Product or spend category",
+                      names=["category", "productcategory", "commodity", "commoditygroup", "spendcategory"]),
+    "unit_of_measure": dict(kind="text", required=False, desc="Unit of measure",
+                             names=["unitofmeasure", "uom", "measureunit", "unit"]),
+    "warehouse": dict(kind="text", required=False, desc="Warehouse or stock location",
+                       names=["warehouse", "warehouseid", "stocklocation", "storeroom", "depot"]),
+    "stock_on_hand": dict(kind="number", required=False, desc="Available stock quantity",
+                           names=["stockonhand", "onhand", "availablequantity", "stockquantity", "closingstock", "quantityonhand"]),
+    "reorder_level": dict(kind="number", required=False, desc="Inventory reorder threshold",
+                           names=["reorderlevel", "reorderpoint", "minimumstock", "minimumlevel", "reorderquantity"]),
+    "as_of_date": dict(kind="date", required=False, desc="Date inventory position was recorded",
+                        names=["asofdate", "snapshotdate", "stockdate", "inventorydate", "countdate"]),
+    "invoice_id": dict(kind="text", required=False, desc="Supplier invoice identifier",
+                        names=["invoiceid", "invoiceno", "invoicenumber", "billnumber", "billno", "documentnumber"]),
+    "payment_id": dict(kind="text", required=False, desc="Payment transaction identifier",
+                        names=["paymentid", "paymentreference", "transactionid", "transactionreference", "remittanceid"]),
+    "payment_date": dict(kind="date", required=False, desc="Date payment was made",
+                          names=["paymentdate", "paiddate", "datepaid", "transactiondate", "remittancedate"]),
+    "payment_amount": dict(kind="number", required=False, desc="Amount paid",
+                            names=["paymentamount", "amountpaid", "paidamount", "transactionamount", "remittanceamount", "amount"]),
+    "payment_status": dict(kind="text", required=False, desc="Payment status",
+                            names=["paymentstatus", "status", "settlementstatus", "transactionstatus"]),
+    "currency": dict(kind="text", required=False, desc="Currency code",
+                      names=["currency", "currencycode", "curr", "isoCurrency"]),
+    "requisition_id": dict(kind="text", required=False, desc="Purchase requisition identifier",
+                            names=["requisitionid", "requisitionno", "requestid", "prnumber", "prno", "requestnumber"]),
+    "requester": dict(kind="text", required=False, desc="Person who raised the requisition",
+                       names=["requester", "requestedby", "requestor", "raisedby", "originator"]),
+    "requisition_date": dict(kind="date", required=False, desc="Date requisition was raised",
+                              names=["requisitiondate", "requestdate", "requesteddate", "raiseddate", "createddate"]),
+    "requisition_qty": dict(kind="number", required=False, desc="Quantity requested",
+                             names=["requisitionqty", "requestedqty", "requestquantity", "quantityrequested"]),
+    "requisition_unit_price": dict(kind="number", required=False, desc="Estimated/requested unit price",
+                                    names=["estimatedunitprice", "requestunitprice", "requisitionprice", "estimatedprice"]),
+    "contract_id": dict(kind="text", required=False, desc="Contract/agreement identifier",
+                         names=["contractid", "contractno", "contractnumber", "agreementid", "agreementnumber"]),
+    "contract_start_date": dict(kind="date", required=False, desc="Contract effective date",
+                                 names=["contractstartdate", "validfrom", "effectivedate", "startdate"]),
+    "contract_end_date": dict(kind="date", required=False, desc="Contract expiry date",
+                               names=["contractenddate", "validto", "expirydate", "expirationdate", "enddate"]),
+    "contract_unit_price": dict(kind="number", required=False, desc="Contracted unit price",
+                                 names=["contractunitprice", "contractprice", "agreedunitprice", "contractrate"]),
+    "quote_id": dict(kind="text", required=False, desc="Quotation/bid identifier",
+                      names=["quoteid", "quotationid", "quotationnumber", "quoteno", "bidid", "rfqid"]),
+    "quote_date": dict(kind="date", required=False, desc="Quotation date",
+                        names=["quotedate", "quotationdate", "biddate", "submissiondate"]),
+    "quote_unit_price": dict(kind="number", required=False, desc="Quoted unit price",
+                              names=["quoteunitprice", "quotedprice", "quotationprice", "bidprice", "unitpricequoted"]),
+    "return_id": dict(kind="text", required=False, desc="Return/claim identifier",
+                       names=["returnid", "returnnumber", "returnno", "claimid", "creditnoteid"]),
+    "return_date": dict(kind="date", required=False, desc="Date goods were returned or disputed",
+                         names=["returndate", "date returned", "creditnotedate", "claimdate"]),
+    "return_qty": dict(kind="number", required=False, desc="Quantity returned",
+                        names=["returnqty", "returnedqty", "quantityreturned", "rejectedqty", "disputedquantity"]),
+    "return_reason": dict(kind="text", required=False, desc="Reason for return/dispute",
+                           names=["returnreason", "reason", "disputereason", "rejectionreason", "claimreason"]),
+}
+REQUIRED = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price"]
+# Preserve the flat-file contract so new optional entities do not appear as missing
+# fields in the existing single-file onboarding screen.
+FLAT_FIELDS = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price", "branch", "department", "product",
+               "promised_date", "received_date", "received_qty", "invoice_qty", "invoice_unit_price", "invoice_date",
+               "approval_requested_at", "approval_completed_at"]
+TABLE_FIELDS = {
+    "orders": ["po_id", "supplier", "supplier_id", "po_date", "ordered_qty", "po_unit_price", "branch", "department", "product", "product_id", "promised_date"],
+    "receipts": ["po_id", "received_date", "received_qty", "product_id", "warehouse"],
+    "invoices": ["invoice_id", "po_id", "supplier_id", "invoice_qty", "invoice_unit_price", "invoice_date", "currency"],
+    "approvals": ["po_id", "approval_stage", "approval_requested_at", "approval_completed_at"],
+    "suppliers": ["supplier_id", "supplier", "supplier_status", "supplier_country", "payment_terms"],
+    "products": ["product_id", "sku", "product", "category", "unit_of_measure"],
+    "inventory": ["product_id", "sku", "warehouse", "stock_on_hand", "reorder_level", "as_of_date"],
+    "payments": ["payment_id", "po_id", "supplier_id", "payment_date", "payment_amount", "payment_status", "currency"],
+    "requisitions": ["requisition_id", "po_id", "requester", "department", "requisition_date", "requisition_qty", "requisition_unit_price"],
+    "contracts": ["contract_id", "supplier_id", "supplier", "product_id", "product", "contract_start_date", "contract_end_date", "contract_unit_price", "currency"],
+    "quotations": ["quote_id", "requisition_id", "supplier_id", "supplier", "product_id", "quote_date", "quote_unit_price", "currency"],
+    "returns": ["return_id", "po_id", "product_id", "supplier_id", "return_date", "return_qty", "return_reason"],
+}
+
+# Extensible dataset catalogue. These definitions describe the procurement data
+# structures the onboarding layer can recognise; optional datasets do not block
+# analysis when a company does not maintain them.
+DATASET_REGISTRY = {
+    "orders": {"label": "Purchase orders", "required": ["po_id", "supplier", "po_date"],
+               "signals": ["po", "purchaseorder", "order", "orderedqty", "unitprice"]},
+    "receipts": {"label": "Goods receipts / deliveries", "required": ["po_id"],
+                 "signals": ["grn", "goodsreceipt", "receipt", "receivedqty", "delivery"]},
+    "invoices": {"label": "Supplier invoices", "required": ["po_id"],
+                 "signals": ["invoice", "bill", "billedqty", "invoicedate"]},
+    "approvals": {"label": "Approvals", "required": ["po_id"],
+                  "signals": ["approval", "approver", "signoff", "approvedon"]},
+    "suppliers": {"label": "Supplier master", "required": ["supplier"],
+                  "signals": ["supplier", "vendor", "payee", "suppliercode"]},
+    "products": {"label": "Products / items", "required": ["product"],
+                 "signals": ["product", "item", "sku", "material", "commodity"]},
+    "inventory": {"label": "Inventory / stock", "required": ["product_id"],
+                   "signals": ["inventory", "stock", "onhand", "reorder", "warehouse"]},
+    "payments": {"label": "Payments", "required": ["payment_amount"],
+                 "signals": ["payment", "paid", "remittance", "transaction"]},
+    "requisitions": {"label": "Purchase requisitions", "required": ["requisition_id"],
+                     "signals": ["requisition", "requestor", "requestedby", "purchase request"]},
+    "contracts": {"label": "Contracts", "required": ["contract_id"],
+                  "signals": ["contract", "agreement", "contractprice", "validfrom"]},
+    "quotations": {"label": "Quotations / bids", "required": ["quote_id"],
+                   "signals": ["quotation", "quote", "rfq", "bid", "tender"]},
+    "returns": {"label": "Returns / disputes", "required": ["return_id"],
+                "signals": ["return", "rejected", "dispute", "claim", "creditnote"]},
+}
+
+DEFAULT_CONFIG = dict(
+    currency="NGN",
+    price_tolerance=0.02,        # invoice price must exceed PO price by more than this share
+    approval_limit_days=5,       # approvals slower than this are "slow"
+    late_days=3,                 # delivery later than this many days counts as late
+    min_pattern=5,               # minimum orders before a pattern is reported
+    decline_days=2.0,            # supplier delay must worsen by more than this many days
+    decline_window=3,            # compare the first and last N months
+    min_months=6,                # months of history needed for the decline detector
+    accept_score=0.60,           # minimum confidence to accept a column match automatically
+)
+
+DETECTORS = {   # fields each detector needs
+    "Short delivery": ["supplier", "received_qty", "invoice_qty", "invoice_unit_price"],
+    "Invoice price above PO price": ["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"],
+    "Slow approvals": ["approval_requested_at", "approval_completed_at"],
+    "Supplier performance decline": ["supplier", "po_date", "promised_date", "received_date"],
+}
+
+# ---------------------------------------------------------------- reading files
+def read_any(path, sheet=None):
+    """Read CSV / Excel / JSON into a table of raw values, whatever the delimiter or encoding."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".xlsx", ".xlsm", ".xls"):
+        with pd.ExcelFile(path) as xl:
+            if sheet is None:   # choose the sheet with the most rows
+                sheet = max(xl.sheet_names, key=lambda s: len(xl.parse(s, header=None)))
+            df = xl.parse(sheet, dtype=object)
+    elif ext == ".json":
+        with open(path, "rb") as fh:
+            data = json.loads(fh.read().decode("utf-8-sig"))
+        if isinstance(data, dict):
+            data = next((v for v in data.values() if isinstance(v, list)), [data])
+        df = pd.json_normalize(data).astype(object)
+    else:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        text = None
+        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        df = pd.read_csv(io.StringIO(text), sep=None, engine="python", dtype=object)
+    df = _fix_header(df)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+
+
+def _fix_header(df):
+    """If the sheet has title rows above the real header, find the header row and use it."""
+    unnamed = sum(str(c).startswith("Unnamed") for c in df.columns)
+    if unnamed < max(2, len(df.columns) // 2):
+        return df
+    best, best_i = 0, None
+    for i in range(min(15, len(df))):
+        texty = sum(isinstance(v, str) for v in df.iloc[i])
+        if texty >= 0.6 * len(df.columns) and texty > best:
+            best, best_i = texty, i
+    if best_i is None:
+        return df
+    out = df.iloc[best_i + 1:].copy()
+    out.columns = [str(v).strip() if not _is_blank(v) else f"Unnamed {k}" for k, v in enumerate(df.iloc[best_i])]
+    return out.reset_index(drop=True)
+
+
+# ---------------------------------------------------------------- cleaning values
+MISSING = {"", "n/a", "na", "nan", "-", "--", "null", "none", "nil", "#n/a", "tbc", "pending"}
+
+
+def to_number(v):
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return np.nan
+    if isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool):
+        return float(v)
+    s = str(v).strip()
+    if s.lower() in MISSING:
+        return np.nan
+    neg = s.startswith("(") and s.endswith(")")
+    s = re.sub(r"[^\d,.\-]", "", s)         # drop currency symbols, letters and spaces
+    if not re.search(r"\d", s):
+        return np.nan
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".") if s.rfind(",") > s.rfind(".") else s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", "") if re.fullmatch(r"-?\d{1,3}(,\d{3})+", s) else s.replace(",", ".")
+    elif s.count(".") > 1:
+        s = s.replace(".", "")
+    try:
+        x = float(s)
+    except ValueError:
+        return np.nan
+    return -x if neg else x
+
+
+DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d", "%d-%b-%Y", "%d %b %Y",
+                "%d-%b-%y", "%b %d, %Y", "%d %B %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S",
+                "%d/%m/%Y %H:%M", "%m/%d/%Y %H:%M", "%d.%m.%Y %H:%M", "%d-%m-%Y %H:%M"]
+
+
+def to_dates(series):
+    """Parse dates in mixed formats. Prefers day-first when a format is ambiguous."""
+    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    todo = pd.Series(False, index=series.index)
+    for idx, v in series.items():
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            continue
+        if isinstance(v, (pd.Timestamp, np.datetime64)) or hasattr(v, "year"):
+            out.at[idx] = pd.Timestamp(v)
+        elif isinstance(v, (int, float, np.integer, np.floating)) and 20000 < float(v) < 80000:
+            out.at[idx] = pd.Timestamp("1899-12-30") + pd.Timedelta(days=float(v))   # Excel serial date
+        else:
+            s = str(v).strip()
+            if s.lower() not in MISSING:
+                todo.at[idx] = True
+    if todo.any():
+        strs = series[todo].astype(str).str.strip()
+        rates = []
+        for fmt in ["ISO8601"] + DATE_FORMATS:       # ISO8601 covers 2025-10-02T13:21:45.123456 and similar
+            try:
+                parsed = pd.to_datetime(strs, format=fmt, errors="coerce")
+            except (ValueError, TypeError):
+                continue
+            rates.append((parsed.notna().mean(), -(["ISO8601"] + DATE_FORMATS).index(fmt), fmt, parsed))
+        remaining = strs.index
+        for rate, _, fmt, parsed in sorted(rates, key=lambda t: (t[0], t[1]), reverse=True):
+            if rate == 0:
+                break
+            fill = parsed.reindex(remaining).dropna()
+            if len(fill):
+                out.loc[fill.index] = fill
+                remaining = remaining.difference(fill.index)
+            if len(remaining) == 0:
+                break
+    return out
+
+
+def _is_blank(v):
+    return v is None or v is pd.NA or (isinstance(v, float) and v != v)
+
+
+def clean_text(series):
+    def tidy(v):
+        if _is_blank(v):
+            return None
+        t = " ".join(str(v).split())
+        return None if t.lower() in MISSING else t
+    return series.astype("object").map(tidy)
+
+
+def canonical_names(series):
+    """Treat 'ACME LTD ', 'Acme Ltd' and 'acme ltd' as one name (use the most common spelling)."""
+    key = series.map(lambda v: None if _is_blank(v) else v.casefold())
+    best = {}
+    for k, grp in series.groupby(key):
+        best[k] = grp.value_counts().idxmax()
+    return key.map(lambda k: None if _is_blank(k) else best.get(k))
+
+
+# ---------------------------------------------------------------- column matching
+CURRENCY_WORDS = {"kes", "ngn", "usd", "eur", "gbp", "zar", "ghs", "tzs", "ugx", "inr", "naira", "shillings", "cedis"}
+
+
+def _tokens(name):
+    s = re.sub(r"[^a-z0-9]+", " ", str(name).lower())
+    return [t for t in s.split() if t not in CURRENCY_WORDS]
+
+
+def name_score(col, spec):
+    toks = _tokens(col)
+    n = "".join(toks)
+    if not n:
+        return 0.0
+    best = 0.0
+    reordered = {"".join(p) for p in permutations(toks)} if len(toks) <= 3 else set()
+    for syn in spec["names"]:
+        syn = syn.replace(" ", "")
+        if n == syn:
+            return 1.0
+        if syn in reordered:
+            best = max(best, 0.95)
+        if syn in toks:
+            best = max(best, 0.85)
+        if len(syn) >= 5 and syn in n:
+            best = max(best, 0.8 * len(syn) / len(n) + 0.15)
+        elif len(n) >= 5 and n in syn:
+            best = max(best, 0.7 * len(n) / len(syn) + 0.1)
+        r = SequenceMatcher(None, n, syn).ratio()
+        if r >= 0.8:
+            best = max(best, 0.9 * r)
+    return min(best, 0.95)
+
+
+def content_fit(series, kind):
+    """Share of non-empty values that look like the expected type (0 to 1)."""
+    vals = series.dropna()
+    vals = vals[~vals.astype(str).str.strip().str.lower().isin(MISSING)]
+    if len(vals) == 0:
+        return 0.0
+    sample = vals.head(300)
+    if kind == "number":
+        return float(sample.map(to_number).notna().mean())
+    if kind == "date":
+        return float(to_dates(sample.reset_index(drop=True)).notna().mean())
+    pure = sample.astype(str).str.fullmatch(r"[\s\d.,\-+()%]*\d[\s\d.,\-+()%]*").mean()
+    return 0.4 if pure > 0.9 else 1.0     # names are rarely pure numbers (order ids may be)
+
+
+def mapping_candidates(df, fields=None, top_n=3):
+    """Return ranked candidate columns for every canonical field.
+
+    Scores combine header similarity and sampled-value compatibility. This is
+    deliberately advisory: ambiguous matches are surfaced instead of silently
+    choosing a potentially wrong column.
+    """
+    fields = fields or FLAT_FIELDS
+    ranked = {}
+    for field in fields:
+        spec = CONTRACT[field]
+        candidates = []
+        for col in df.columns:
+            ns = name_score(col, spec)
+            if ns <= 0:
+                continue
+            fit = content_fit(df[col], spec["kind"])
+            if spec["kind"] in ("number", "date") and fit < 0.7:
+                score = ns * 0.3
+            else:
+                score = ns * (0.6 + 0.4 * fit)
+            if field == "po_id":
+                score = ns * 0.95 if fit > 0 else 0
+            if field == "approval_stage":
+                score = ns * 0.9 if fit > 0.5 else 0
+            candidates.append({"column": col, "confidence": round(float(score), 3),
+                               "name_score": round(float(ns), 3), "content_fit": round(float(fit), 3)})
+        ranked[field] = sorted(candidates, key=lambda x: x["confidence"], reverse=True)[:top_n]
+    return ranked
+
+
+def suggest_mapping(df, accept_score=0.60, fields=None, ambiguity_margin=0.08):
+    """Find a globally consistent one-to-one field/column mapping.
+
+    Unlike the former greedy assignment, this maximises total match quality
+    across the whole table. Close alternatives are withheld for user review.
+    The three-value return signature is retained for existing callers.
+    """
+    fields = fields or FLAT_FIELDS
+    ranked = mapping_candidates(df, fields=fields, top_n=max(3, len(df.columns)))
+    columns = list(df.columns)
+    if not fields or not columns:
+        return {}, columns, list(fields)
+
+    scores = np.zeros((len(fields), len(columns)), dtype=float)
+    for i, field in enumerate(fields):
+        for candidate in ranked[field]:
+            j = columns.index(candidate["column"])
+            scores[i, j] = candidate["confidence"]
+
+    # scipy is already a transitive dependency of the ML stack in normal
+    # deployments. Keep a deterministic greedy fallback for lean environments.
+    try:
+        from scipy.optimize import linear_sum_assignment
+        row_idx, col_idx = linear_sum_assignment(-scores)
+        assignments = list(zip(row_idx.tolist(), col_idx.tolist()))
+    except Exception:
+        pairs = sorted(((scores[i, j], i, j) for i in range(len(fields))
+                        for j in range(len(columns))), reverse=True)
+        used_fields, used_columns, assignments = set(), set(), []
+        for score, i, j in pairs:
+            if score <= 0 or i in used_fields or j in used_columns:
+                continue
+            assignments.append((i, j))
+            used_fields.add(i)
+            used_columns.add(j)
+
+    mapping, used_cols = {}, set()
+    assigned_columns = {columns[j] for i, j in assignments if scores[i, j] >= accept_score}
+    for i, j in assignments:
+        field, col = fields[i], columns[j]
+        score = float(scores[i, j])
+        if score < accept_score:
+            continue
+        options = ranked[field]
+        next_score = next((x["confidence"] for x in options
+                           if x["column"] != col and x["column"] not in assigned_columns), 0.0)
+        # A close alternative means the engine must not silently accept it.
+        if next_score and score - next_score < ambiguity_margin:
+            continue
+        mapping[field] = {"column": col, "confidence": round(score, 2),
+                          "source": "global name+content match",
+                          "alternatives": options[:3], "status": "suggested" if score < 0.8 else "high_confidence"}
+        used_cols.add(col)
+
+    unmapped = [c for c in columns if c not in used_cols]
+    needs_choice = [f for f in fields if f not in mapping]
+    return mapping, unmapped, needs_choice
+
+
+def detect_dataset_type(df, filename=""):
+    """Suggest a procurement dataset type from its filename and column headers.
+
+    Returns a ranked list so the onboarding UI can ask the user to confirm when
+    the evidence is weak or two dataset types are similarly plausible.
+    """
+    header_tokens = {"".join(_tokens(c)) for c in df.columns}
+    file_token = "".join(_tokens(os.path.basename(str(filename))))
+    results = []
+    for kind, spec in DATASET_REGISTRY.items():
+        signals = spec["signals"]
+        hits = sum(1 for signal in signals
+                   if any(signal in h or h in signal for h in header_tokens if h))
+        file_hit = sum(1 for signal in signals if signal in file_token)
+        score = (hits / max(len(signals), 1)) * 0.85 + (file_hit / max(len(signals), 1)) * 0.15
+        results.append({"dataset": kind, "label": spec["label"], "confidence": round(score, 3),
+                        "header_hits": hits, "filename_hits": file_hit})
+    return sorted(results, key=lambda x: x["confidence"], reverse=True)
+
+
+def nim_suggest_mapping(client, model, df, fields):
+    """Optional: ask an LLM to propose matches for fields the rules could not match.
+    Suggestions are only kept if the column exists and its content fits the field type."""
+    samples = df.head(3).to_dict(orient="records")
+    prompt = (
+        "Map spreadsheet columns to these fields. Reply with JSON only: {field: column name or null}.\n"
+        "Fields: " + json.dumps({f: CONTRACT[f]["desc"] for f in fields}) + "\n"
+        "Columns: " + json.dumps(list(df.columns)) + "\nSample rows: " + json.dumps(samples, default=str)[:2500])
+    try:
+        resp = client.chat.completions.create(
+            model=model, messages=[{"role": "user", "content": prompt}], temperature=0, max_tokens=900)
+        text = re.sub(r"<think>.*?</think>", "", resp.choices[0].message.content or "", flags=re.S)
+        data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+    except Exception:
+        return {}
+    out = {}
+    for field, col in data.items():
+        min_fit = 0.4 if field == "po_id" else 0.7      # order numbers can be all digits
+        if field in fields and col in df.columns and content_fit(df[col], CONTRACT[field]["kind"]) >= min_fit:
+            out[field] = col
+    return out
+
+
+# ---------------------------------------------------------------- build the ledger
+def apply_mapping(df, mapping):
+    out = pd.DataFrame(index=df.index)
+    for field, info in mapping.items():
+        kind, s = CONTRACT[field]["kind"], df[info["column"]]
+        if kind == "number":
+            out[field] = s.map(to_number)
+        elif kind == "date":
+            out[field] = to_dates(s)
+        else:
+            t = clean_text(s)
+            out[field] = canonical_names(t) if field in ("supplier", "branch", "product", "department") else t
+    return out
+
+
+def finalize_ledger(led):
+    """Derive the measures the detectors use. Works on any table that already has contract field names."""
+    led = led.copy()
+    led["po_total"] = led["ordered_qty"] * led["po_unit_price"]
+    led["po_month"] = led["po_date"].dt.to_period("M").astype(str)
+    if {"received_date", "promised_date"} <= set(led.columns):
+        led["days_late"] = (led["received_date"] - led["promised_date"]).dt.days
+    if {"received_qty", "invoice_qty"} <= set(led.columns):
+        led["short_units"] = (led["invoice_qty"] - led["received_qty"]).clip(lower=0)
+    if {"invoice_unit_price", "po_unit_price"} <= set(led.columns):
+        led["price_gap_pct"] = (led["invoice_unit_price"] - led["po_unit_price"]) / led["po_unit_price"]
+    if {"approval_requested_at", "approval_completed_at"} <= set(led.columns):
+        led["approval_days"] = (led["approval_completed_at"] - led["approval_requested_at"]).dt.total_seconds() / 86400
+    return led
+
+
+# ---------------------------------------------------------------- data quality
+def quality_report(raw_rows, ledger, mapping, dropped, config):
+    q = {"rows_in_file": raw_rows, "rows_used": len(ledger), "dropped": dropped, "fields": {}, "warnings": []}
+    for f in CONTRACT:
+        if f in ledger.columns:
+            q["fields"][f] = round(float(ledger[f].notna().mean()), 3)
+    for f in REQUIRED:
+        if f not in ledger.columns:
+            q["warnings"].append(f"Required field '{f}' is not mapped.")
+        elif ledger[f].notna().mean() < 0.9:
+            q["warnings"].append(f"Required field '{f}' is empty in {1 - ledger[f].notna().mean():.0%} of rows.")
+    if {"po_date", "received_date"} <= set(ledger.columns):
+        bad = int((ledger["received_date"] < ledger["po_date"]).sum())
+        if bad:
+            q["warnings"].append(f"{bad} orders show goods received BEFORE the order date.")
+    for f in ("ordered_qty", "po_unit_price", "received_qty", "invoice_qty", "invoice_unit_price"):
+        if f in ledger.columns and (ledger[f] < 0).any():
+            q["warnings"].append(f"{int((ledger[f] < 0).sum())} negative values in '{f}'.")
+    for f, info in mapping.items():
+        if f in ledger.columns and info.get("column") is not None:
+            pass
+    q["detectors"] = {}
+    for name, need in DETECTORS.items():
+        missing = [f for f in need if f not in ledger.columns or ledger[f].notna().mean() < 0.3]
+        q["detectors"][name] = "ready" if not missing else "skipped - needs: " + ", ".join(missing)
+    return q
+
+
+# ---------------------------------------------------------------- detectors
+def _severity_by_share(amount, spend, high=0.003, medium=0.0005):
+    share = amount / spend if spend else 0
+    return "High" if share >= high else "Medium" if share >= medium else "Low"
+
+
+def detect(led, config=None):
+    """Run every detector whose data is available. Returns the findings register."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    spend = float(led["po_total"].sum())
+    rows = []
+
+    def ok(name):
+        return all(f in led.columns and led[f].notna().mean() >= 0.3 for f in DETECTORS[name])
+
+    if ok("Short delivery"):
+        d = led[(led["invoice_qty"] > led["received_qty"]) & led["received_qty"].notna()].copy()
+        d["leak"] = (d["invoice_qty"] - d["received_qty"]) * d["invoice_unit_price"]
+        for sup, g in d.groupby("supplier"):
+            if len(g) >= cfg["min_pattern"]:
+                rows.append(dict(finding_type="Short delivery", entity=sup, affected_orders=len(g),
+                                 leakage=round(g["leak"].sum()), orders_held=0.0,
+                                 first_seen=g["invoice_date"].min() if "invoice_date" in g else g["po_date"].min(),
+                                 last_seen=g["invoice_date"].max() if "invoice_date" in g else g["po_date"].max(),
+                                 evidence=f"Invoiced for {int((g['invoice_qty'] - g['received_qty']).sum())} units that were never received",
+                                 severity=_severity_by_share(g["leak"].sum(), spend)))
+    if ok("Invoice price above PO price"):
+        d = led[led["price_gap_pct"] > cfg["price_tolerance"]].copy()
+        d["leak"] = (d["invoice_unit_price"] - d["po_unit_price"]) * d["invoice_qty"]
+        for sup, g in d.groupby("supplier"):
+            if len(g) >= cfg["min_pattern"]:
+                rows.append(dict(finding_type="Invoice price above PO price", entity=sup, affected_orders=len(g),
+                                 leakage=round(g["leak"].sum()), orders_held=0.0,
+                                 first_seen=g["invoice_date"].min() if "invoice_date" in g else g["po_date"].min(),
+                                 last_seen=g["invoice_date"].max() if "invoice_date" in g else g["po_date"].max(),
+                                 evidence=f"Invoice prices averaged {g['price_gap_pct'].mean() * 100:.1f}% above agreed PO prices",
+                                 severity=_severity_by_share(g["leak"].sum(), spend)))
+    if ok("Slow approvals"):
+        d = led[led["approval_days"] > cfg["approval_limit_days"]]
+        group_col = "branch" if "branch" in led.columns else None
+        groups = d.groupby(group_col) if group_col else [("company-wide", d)]
+        for name, g in groups:
+            if len(g) >= cfg["min_pattern"]:
+                label = f"{name} branch finance approvals" if group_col else "Company-wide finance approvals"
+                rows.append(dict(finding_type="Slow approvals", entity=label, affected_orders=len(g),
+                                 leakage=0.0, orders_held=round(g["po_total"].sum()),
+                                 first_seen=g["po_date"].min(), last_seen=g["po_date"].max(),
+                                 evidence=f"Held orders waited {g['approval_days'].mean():.1f} days on average for finance approval",
+                                 severity=_severity_by_share(g["po_total"].sum(), spend, high=0.05, medium=0.01)))
+    if ok("Supplier performance decline"):
+        has_fill = {"received_qty", "ordered_qty"} <= set(led.columns)
+        for sup, g in led.dropna(subset=["days_late"]).groupby("supplier"):
+            m = g.groupby("po_month").agg(delay=("days_late", "mean"),
+                                          rec=("received_qty", "sum") if has_fill else ("days_late", "size"),
+                                          ordq=("ordered_qty", "sum"))
+            if len(m) < max(cfg["min_months"], 2 * cfg["decline_window"]):
+                continue
+            w = cfg["decline_window"]
+            early, recent = m["delay"].iloc[:w].mean(), m["delay"].iloc[-w:].mean()
+            if recent - early > cfg["decline_days"]:
+                ev = f"Average delivery delay rose from {early:.1f} to {recent:.1f} days"
+                if has_fill:
+                    fe = m["rec"].iloc[:w].sum() / m["ordq"].iloc[:w].sum()
+                    fr = m["rec"].iloc[-w:].sum() / m["ordq"].iloc[-w:].sum()
+                    ev += f"; fill rate went from {fe:.3f} to {fr:.3f}"
+                rows.append(dict(finding_type="Supplier performance decline", entity=sup, affected_orders=None,
+                                 leakage=0.0, orders_held=0.0, first_seen=None, last_seen=None, evidence=ev,
+                                 severity="High" if recent - early >= 5 else "Medium"))
+    cols = ["finding_id", "finding_type", "entity", "severity", "affected_orders", "leakage", "orders_held",
+            "first_seen", "last_seen", "evidence"]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    f = pd.DataFrame(rows).sort_values(["leakage", "orders_held"], ascending=False).reset_index(drop=True)
+    f.insert(0, "finding_id", [f"TRQ-{i + 1:03d}" for i in range(len(f))])
+    return f[cols]
+
+
+def to_trace(findings, config=None):
+    """Convert findings to the decision_trace layout used by the NIM explanation script."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    method = {
+        "Short delivery": "Rule: invoiced quantity exceeds received quantity; reported when "
+                          f"{cfg['min_pattern']} or more orders show the pattern",
+        "Invoice price above PO price": f"Rule: invoice unit price more than {cfg['price_tolerance']:.0%} above PO price; "
+                                        f"reported when {cfg['min_pattern']} or more orders show the pattern",
+        "Slow approvals": f"Rule: finance approval took more than {cfg['approval_limit_days']} days; reported when "
+                          f"{cfg['min_pattern']} or more orders show the pattern",
+        "Supplier performance decline": f"Rule: average delivery delay rose by more than {cfg['decline_days']:g} days "
+                                        f"between the first and last {cfg['decline_window']} months",
+    }
+    t = pd.DataFrame({
+        "trace_id": [f"TR-{i + 1:05d}" for i in range(len(findings))],
+        "source": "RULE_ENGINE", "record_ref": findings["finding_id"], "entity": findings["entity"],
+        "decision": findings["finding_type"], "method": findings["finding_type"].map(method),
+        "evidence": findings["evidence"], "severity": findings["severity"], "risk_score": np.nan,
+        "key_drivers": None,
+        "amount": np.where(findings["leakage"] > 0, findings["leakage"],
+                               np.where(findings["orders_held"] > 0, findings["orders_held"], np.nan)),
+        "amount_basis": np.where(findings["leakage"] > 0, "leakage",
+                                 np.where(findings["orders_held"] > 0, "orders held", None)),
+        "later_outcome": pd.NA, "affected_orders": findings["affected_orders"], "currency": cfg["currency"]})
+    return t
+
+
+# ---------------------------------------------------------------- per-company risk model (ML)
+def _prior_history(led, cfg, window_days=90):
+    """For each order: how this supplier's EARLIER deliveries went (only orders that arrived before this one
+    was placed, so the model never sees the future)."""
+    n = len(led)
+    po = led["po_date"].values.astype("datetime64[D]")
+    rec = led["received_date"].values.astype("datetime64[D]") if "received_date" in led else np.full(n, np.datetime64("NaT"))
+    late = (led["days_late"].values > cfg["late_days"]) if "days_late" in led else np.full(n, np.nan)
+    fill = (led["received_qty"] / led["ordered_qty"]).values if "received_qty" in led else np.full(n, np.nan)
+    pl, pf, pn = np.full(n, np.nan), np.full(n, np.nan), np.zeros(n)
+    sup = led["supplier"].values
+    for s_name in pd.unique(sup):
+        pos = np.where(sup == s_name)[0]
+        for i in pos:
+            m = ~np.isnat(rec[pos]) & (rec[pos] < po[i]) & (rec[pos] >= po[i] - np.timedelta64(window_days, "D"))
+            sel = pos[m]
+            pn[i] = len(sel)
+            if len(sel):
+                with np.errstate(all="ignore"):
+                    pl[i] = np.nanmean(late[sel].astype(float)) if not np.all(np.isnan(late[sel].astype(float))) else np.nan
+                    pf[i] = np.nanmean(fill[sel]) if not np.all(np.isnan(fill[sel])) else np.nan
+    return pl, pf, pn
+
+
+def risk_model(led, config=None, top_n=8):
+    """Train a simple, explainable model on this company's own history to predict which orders will arrive
+    late or short, test it on the most recent orders, and explain each high-risk order."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    out = dict(metrics=None, scored=pd.DataFrame(), skipped=None)
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+        from sklearn.preprocessing import StandardScaler
+    except ImportError:
+        out["skipped"] = "scikit-learn is not installed (pip install scikit-learn)"
+        return out
+    led = led.sort_values("po_date").reset_index(drop=True)
+    parts = []
+    if "days_late" in led:
+        parts.append(led["days_late"] > cfg["late_days"])
+    if {"received_qty", "ordered_qty"} <= set(led.columns):
+        parts.append(led["received_qty"] < 0.95 * led["ordered_qty"])
+    known = (led["received_date"].notna() if "received_date" in led else False) | \
+            (led["received_qty"].notna() if "received_qty" in led else False)
+    if not parts or not np.any(known):
+        out["skipped"] = "needs delivery results (received date with promised date, or received quantity)"
+        return out
+    label = parts[0].fillna(False) if len(parts) == 1 else (parts[0].fillna(False) | parts[1].fillna(False))
+    led["label"] = np.where(known, label.astype(int), np.nan)
+    pl, pf, pn = _prior_history(led, cfg)
+    X = pd.DataFrame({"ordered_qty": led["ordered_qty"], "log_po_total": np.log1p(led["po_total"]),
+                      "prior_deliveries_90d": pn})
+    if "days_late" in led:
+        X["prior_late_rate_90d"] = pl
+    if "received_qty" in led:
+        X["prior_fill_rate_90d"] = pf
+    if "approval_days" in led and led["approval_days"].notna().mean() > 0.3:
+        X["fin_approval_days"] = led["approval_days"]
+    for cat, name in (("supplier", "supplier"), ("branch", "branch")):
+        if cat in led and 1 < led[cat].nunique() <= 40:
+            X = X.join(pd.get_dummies(led[cat], prefix=name, prefix_sep="=").astype(float))
+    lab = led["label"]
+    cutoff = led["po_date"].quantile(0.75)
+    train = lab.notna() & (led["po_date"] < cutoff)
+    test = lab.notna() & (led["po_date"] >= cutoff)
+    if lab.notna().sum() < 300 or lab[train].sum() < 25 or lab[test].sum() < 5 or lab[train].nunique() < 2:
+        out["skipped"] = (f"not enough history ({int(lab.notna().sum())} orders with results, "
+                          f"{int(lab[train].sum())} problem orders in training); needs about 300 orders and 25 problems")
+        return out
+    med = X[train].median()
+    X = X.fillna(med).fillna(0)
+    sc = StandardScaler().fit(X[train])
+    Xs = pd.DataFrame(sc.transform(X), columns=X.columns, index=X.index)
+    model = LogisticRegression(class_weight="balanced", max_iter=2000).fit(Xs[train], lab[train].astype(int))
+    prob = model.predict_proba(Xs[test])[:, 1]
+    y = lab[test].astype(int).values
+    pred = (prob >= 0.5).astype(int)
+    metrics = dict(
+        trained_on=int(train.sum()), tested_on=int(test.sum()), test_from=str(cutoff.date()),
+        problem_rate_test=round(float(y.mean()), 3), precision=round(float(precision_score(y, pred, zero_division=0)), 3),
+        recall=round(float(recall_score(y, pred, zero_division=0)), 3), accuracy=round(float(accuracy_score(y, pred)), 3),
+        auc=round(float(roc_auc_score(y, prob)), 3) if len(set(y)) > 1 else None)
+    contrib = Xs[test] * model.coef_[0]
+    groups = {}
+    for c in contrib.columns:
+        key = "supplier_profile" if c.startswith("supplier=") else "branch_profile" if c.startswith("branch=") else c
+        groups.setdefault(key, []).append(c)
+    gc = pd.DataFrame({k: contrib[v].sum(axis=1) for k, v in groups.items()})
+    drivers = gc.apply(lambda r: ", ".join(f"{k} ({v:.2f})" for k, v in r.nlargest(3).items() if v > 0), axis=1)
+    scored = led.loc[test, [c for c in ("po_id", "supplier", "branch", "po_date", "ordered_qty") if c in led]].copy()
+    scored["risk_score"], scored["key_drivers"], scored["actual_problem"] = prob, drivers.values, y
+    out.update(metrics=metrics, scored=scored.sort_values("risk_score", ascending=False).reset_index(drop=True))
+    flagged = out["scored"][out["scored"]["risk_score"] >= 0.5]
+    # show a spread of suppliers (best 2 per supplier), not just the single worst one
+    out["top"] = flagged.groupby("supplier").head(2).sort_values("risk_score", ascending=False).head(top_n)
+    return out
+
+
+def ml_trace(top, cutoff_text, start=1, metrics=None):
+    rows = []
+    metrics = metrics or {}
+    for i, r in enumerate(top.itertuples(), start=start):
+        branch = f", {r.branch} branch" if hasattr(r, "branch") and isinstance(r.branch, str) else ""
+        rows.append(dict(trace_id=f"TR-{i:05d}", source="ML_MODEL", record_ref=r.po_id, entity=r.supplier,
+                         decision="Predicted late or short delivery",
+                         method=f"ML: logistic regression trained on this company's orders before {cutoff_text}",
+                         evidence=f"Order of {r.ordered_qty:g} units{branch}, placed {r.po_date.date()}",
+                         severity="High" if r.risk_score >= 0.8 else "Medium", risk_score=float(r.risk_score),
+                         key_drivers=r.key_drivers, amount=np.nan, amount_basis=None, later_outcome=int(r.actual_problem),
+                         affected_orders=np.nan, model_precision=metrics.get("precision"),
+                         model_recall=metrics.get("recall")))
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------- the pipelines
+def _map_table(raw, fields, cfg, overrides=None, label=""):
+    mapping, unmapped, needs = suggest_mapping(raw, cfg["accept_score"], fields)
+    for field, col in (overrides or {}).items():            # your corrections always win
+        if col is None:
+            mapping.pop(field, None)
+        elif col in raw.columns:
+            mapping = {f: i for f, i in mapping.items() if i["column"] != col or f == field}
+            mapping[field] = dict(column=col, confidence=1.0, source="you")
+        else:
+            print(f"  note: column '{col}' (for {label}{field}) is not in the file; ignored")
+    return mapping
+
+
+def _ai_fill(raw, mapping, fields, client, model):
+    gaps = [f for f in fields if f not in mapping]
+    free = raw[[c for c in raw.columns if c not in {i["column"] for i in mapping.values()}]]
+    if gaps and len(free.columns) and client is not None and model:
+        for field, col in nim_suggest_mapping(client, model, free, gaps).items():
+            mapping[field] = dict(column=col, confidence=0.7, source="AI suggestion - please confirm")
+    return mapping
+
+
+def _analyze(typed, shown_mapping, unmapped, needs, raw_rows, dropped, cfg, verbose, with_ml, extra_warnings=()):
+    missing_required = [f for f in REQUIRED if f not in typed.columns]
+    if missing_required:
+        report = quality_report(raw_rows, typed, shown_mapping, dropped, cfg)
+        report["warnings"] = list(extra_warnings) + report["warnings"]
+        if verbose:
+            print_summary(shown_mapping, unmapped, needs, report, None)
+        return dict(mapping=shown_mapping, unmapped=unmapped, needs_choice=needs, quality=report, ledger=typed,
+                    findings=pd.DataFrame(), trace_all=pd.DataFrame(), risk=None,
+                    stopped=f"Required fields not mapped: {missing_required}")
+    typed = typed.dropna(subset=["po_date", "ordered_qty", "po_unit_price"]).reset_index(drop=True)
+    led = finalize_ledger(typed)
+    report = quality_report(raw_rows, led, shown_mapping, dropped, cfg)
+    report["warnings"] = list(extra_warnings) + report["warnings"]
+    findings = detect(led, cfg)
+    trace = to_trace(findings, cfg) if len(findings) else pd.DataFrame()
+    risk = None
+    if with_ml:
+        risk = risk_model(led, cfg)
+        if risk["metrics"] and len(risk.get("top", [])):
+            mt = ml_trace(risk["top"], risk["metrics"]["test_from"], start=len(trace) + 1, metrics=risk["metrics"])
+            mt["currency"] = cfg["currency"]
+            trace = pd.concat([trace, mt], ignore_index=True)
+    result = dict(mapping=shown_mapping, unmapped=unmapped, needs_choice=needs, quality=report, ledger=led,
+                  findings=findings, trace_all=trace, risk=risk, config=cfg)
+    if verbose:
+        print_summary(shown_mapping, unmapped, needs, report, findings, cfg, risk)
+    return result
+
+
+def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=None, model=None,
+            verbose=True, with_ml=True):
+    """ONE file with one row per order. Read -> match columns -> clean -> quality -> detect -> ML risk."""
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    raw = df if df is not None else read_any(path, sheet)
+    mapping = _map_table(raw, FLAT_FIELDS, cfg, overrides)
+    mapping = _ai_fill(raw, mapping, FLAT_FIELDS, client, model)
+    unmapped = [c for c in raw.columns if c not in {i["column"] for i in mapping.values()}]
+    needs = [f for f in FLAT_FIELDS if f not in mapping]
+    typed = apply_mapping(raw, mapping)
+    dropped = {}
+    if "po_id" in typed.columns:
+        n0 = len(typed)
+        typed = typed[typed["po_id"].notna()]
+        dropped["rows_without_order_number"] = n0 - len(typed)
+        n1 = len(typed)
+        typed = typed.drop_duplicates(subset="po_id", keep="first")
+        dropped["duplicate_orders_removed"] = n1 - len(typed)
+    return _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
+
+
+def _id_key(series):
+    """Normalise case and separators; preserve leading zeroes in prefixed IDs."""
+    def k(v):
+        if _is_blank(v):
+            return None
+        t = re.sub(r"[^A-Za-z0-9]", "", str(v)).upper()
+        return t.lstrip("0") if t.isdigit() else t
+    return series.map(k)
+
+
+def _ambiguous_date_warnings(raw, mapping, dataset_name):
+    """Flag slash dates whose day/month interpretation cannot be inferred safely."""
+    warnings = []
+    for field, info in mapping.items():
+        if CONTRACT[field]["kind"] != "date":
+            continue
+        col = info.get("column")
+        if col not in raw.columns:
+            continue
+        values = raw[col].dropna().astype(str).str.strip().head(1000)
+        ambiguous = values.str.match(r"^\d{1,2}/\d{1,2}/\d{4}(?:\s|$)")
+        if ambiguous.any():
+            parts = values[ambiguous].str.extract(r"^(\d{1,2})/(\d{1,2})/(\d{4})")
+            both_valid = parts[0].astype(int).between(1, 12) & parts[1].astype(int).between(1, 12)
+            if both_valid.any():
+                warnings.append(f"{dataset_name}: '{col}' contains date values such as {values[ambiguous].iloc[0]!r} that may mean either day/month or month/day. Confirm the source date convention before relying on date-based findings.")
+                break
+    return warnings
+
+
+def _table_key_fields(name, table):
+    candidates = {
+        "orders": ["po_id"], "suppliers": ["supplier_id", "supplier"],
+        "products": ["product_id", "sku", "product"], "invoices": ["invoice_id"],
+        "payments": ["payment_id"], "requisitions": ["requisition_id"],
+        "contracts": ["contract_id"], "quotations": ["quote_id"], "returns": ["return_id"],
+    }.get(name, [])
+    return next(([c] for c in candidates if c in table.columns), [])
+
+
+def _relationship_quality(tables):
+    """Report cross-dataset key coverage without dropping unmatched source records."""
+    report = {}
+    warnings = []
+    orders = tables.get("orders")
+    suppliers = tables.get("suppliers")
+    products = tables.get("products")
+    if orders is not None and "po_id" in orders:
+        order_keys = set(_id_key(orders["po_id"]).dropna())
+        for name, table in tables.items():
+            if name == "orders" or "po_id" not in table.columns:
+                continue
+            keys = set(_id_key(table["po_id"]).dropna())
+            matched = len(keys & order_keys)
+            coverage = matched / max(len(keys), 1)
+            report[f"{name}_to_orders"] = {"matched_keys": matched, "source_keys": len(keys), "coverage": round(coverage, 3)}
+            if coverage < 0.8:
+                warnings.append(f"Only {coverage:.0%} of distinct purchase-order references in {name} matched the orders dataset. Unmatched rows were retained for review, not joined into order analysis.")
+    if suppliers is not None and orders is not None:
+        if "supplier_id" in suppliers.columns and "supplier_id" in orders.columns:
+            parent = set(_id_key(suppliers["supplier_id"]).dropna())
+            child = set(_id_key(orders["supplier_id"]).dropna())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_suppliers"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of supplier IDs in orders matched the supplier master. Check supplier identifiers.")
+        elif "supplier" in suppliers.columns and "supplier" in orders.columns:
+            parent = set(clean_text(suppliers["supplier"]).dropna().str.casefold())
+            child = set(clean_text(orders["supplier"]).dropna().str.casefold())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_suppliers"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3), "key_type": "supplier_name"}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of supplier names in orders matched the supplier master. Check spelling or use stable supplier IDs.")
+    if products is not None and orders is not None:
+        key = "product_id" if "product_id" in products.columns and "product_id" in orders.columns else None
+        if key:
+            parent, child = set(_id_key(products[key]).dropna()), set(_id_key(orders[key]).dropna())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_products"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of product IDs in orders matched the product master.")
+    return report, warnings
+
+
+def _supplemental_quality(name, raw, table, mapping):
+    key_fields = _table_key_fields(name, table)
+    duplicate_rows = int(table.duplicated().sum()) if len(table) else 0
+    duplicate_keys = 0
+    if key_fields:
+        duplicate_keys = int(table.duplicated(subset=key_fields, keep=False).sum())
+    invalid_numbers = {}
+    for field in table.columns:
+        if field in CONTRACT and CONTRACT[field]["kind"] == "number":
+            invalid_numbers[field] = int(table[field].isna().sum())
+    required = DATASET_REGISTRY.get(name, {}).get("required", [])
+    missing_required = [field for field in required if field not in table.columns or table[field].notna().sum() == 0]
+    # Alternative identifiers are acceptable where a dataset can use either a
+    # stable code or a human-readable name/reference.
+    alternatives = {"suppliers": [["supplier_id", "supplier"]],
+                    "products": [["product_id", "sku", "product"]],
+                    "inventory": [["product_id", "sku"]],
+                    "payments": [["payment_id", "po_id"]],
+                    "contracts": [["contract_id", "supplier_id"]],
+                    "quotations": [["quote_id", "requisition_id"]],
+                    "returns": [["return_id", "po_id"]]}
+    for group in alternatives.get(name, []):
+        if any(field in table.columns and table[field].notna().any() for field in group):
+            missing_required = [field for field in missing_required if field not in group]
+    return {
+        "rows_in_file": int(len(raw)), "rows_normalised": int(len(table)),
+        "mapped_fields": list(mapping), "unmapped_columns": [str(c) for c in raw.columns if c not in {v["column"] for v in mapping.values()}],
+        "key_field": key_fields[0] if key_fields else None,
+        "duplicate_rows": duplicate_rows, "duplicate_key_rows": duplicate_keys,
+        "missing_numeric_values": invalid_numbers,
+        "missing_required_fields": missing_required,
+        "readiness": "ready for relationship review" if not missing_required else "incomplete - required fields missing",
+    }
+
+
+def onboard_tables(files, sheets=None, overrides=None, config=None, client=None, model=None, verbose=True, with_ml=True):
+    """Ingest multiple procurement datasets.
+
+    The four core datasets (orders, receipts, invoices, approvals) continue to
+    feed the established order ledger and four existing detectors. Additional
+    registered datasets are mapped, normalised, retained in supplemental_tables,
+    and checked for duplicate keys and relationships. They are not silently
+    folded into detector calculations that do not yet consume them.
+    """
+    cfg = {**DEFAULT_CONFIG, **(config or {})}
+    if "orders" not in files:
+        raise ValueError("files must include an 'orders' file, e.g. {'orders': 'orders.csv'}")
+    unknown = sorted(set(files) - set(TABLE_FIELDS))
+    if unknown:
+        raise ValueError(f"Unsupported procurement dataset(s): {unknown}. Supported dataset keys: {sorted(TABLE_FIELDS)}")
+
+    shown, unmapped_all, warnings, dropped = {}, [], [], {}
+    typed_tables, raw_tables, dataset_quality = {}, {}, {}
+    for name in TABLE_FIELDS:
+        if name not in files:
+            continue
+        raw = files[name] if isinstance(files[name], pd.DataFrame) else read_any(files[name], (sheets or {}).get(name))
+        raw = _fix_header(raw.copy())
+        raw_tables[name] = raw
+        fields = TABLE_FIELDS[name]
+        mp = _map_table(raw, fields, cfg, (overrides or {}).get(name), label=f"{name}.")
+        mp = _ai_fill(raw, mp, fields, client, model)
+        for field, info in mp.items():
+            shown[field if name == "orders" else f"{name}.{field}"] = info
+        unmapped_all.extend([f"{name}: {c}" for c in raw.columns if c not in {i["column"] for i in mp.values()}])
+        warnings.extend(_ambiguous_date_warnings(raw, mp, name))
+        typed = apply_mapping(raw, mp)
+        if name == "orders" and "po_id" in typed:
+            typed = typed[typed["po_id"].notna()].copy()
+        if "po_id" in typed.columns:
+            typed["_key"] = _id_key(typed["po_id"])
+        typed_tables[name] = typed
+        dataset_quality[name] = _supplemental_quality(name, raw, typed, mp)
+
+    orders = typed_tables.get("orders", pd.DataFrame())
+    if "po_id" not in orders.columns or orders["po_id"].notna().sum() == 0:
+        return dict(mapping=shown, unmapped=unmapped_all, needs_choice=["po_id"],
+                    quality=dict(rows_in_file=len(raw_tables.get("orders", [])), rows_used=0, dropped={}, fields={}, detectors={}, warnings=warnings),
+                    ledger=pd.DataFrame(), findings=pd.DataFrame(), trace_all=pd.DataFrame(), risk=None,
+                    supplemental_tables={k: v for k, v in typed_tables.items() if k not in ("orders", "receipts", "invoices", "approvals")},
+                    dataset_quality=dataset_quality, relationships={}, stopped="The orders file has no matched order-number column")
+
+    # Preserve historical order deduplication behaviour for detector calculations,
+    # but report duplicate records explicitly in the dataset quality section.
+    o = orders.copy()
+    n0 = len(o)
+    o = o.drop_duplicates(subset="_key", keep="first")
+    dropped["duplicate_orders_removed"] = n0 - len(o)
+    order_keys = set(o["_key"].dropna())
+
+    if "receipts" in typed_tables:
+        r = typed_tables["receipts"]
+        if "_key" in r and ({"received_date", "received_qty"} & set(r.columns)):
+            agg = {}
+            if "received_date" in r.columns:
+                agg["received_date"] = ("received_date", "min")
+            if "received_qty" in r.columns:
+                agg["received_qty"] = ("received_qty", "sum")
+            if agg:
+                o = o.merge(r.groupby("_key").agg(**agg).reset_index(), on="_key", how="left")
+
+    if "invoices" in typed_tables:
+        v = typed_tables["invoices"].copy()
+        agg = {}
+        if "_key" in v and "invoice_qty" in v:
+            agg["invoice_qty"] = ("invoice_qty", "sum")
+        if "_key" in v and "invoice_date" in v:
+            agg["invoice_date"] = ("invoice_date", "min")
+        if "_key" in v and {"invoice_qty", "invoice_unit_price"} <= set(v.columns):
+            v["_val"] = v["invoice_qty"] * v["invoice_unit_price"]
+            agg["_val"] = ("_val", "sum")
+        elif "_key" in v and "invoice_unit_price" in v:
+            agg["invoice_unit_price"] = ("invoice_unit_price", "mean")
+        if agg:
+            g = v.groupby("_key").agg(**agg).reset_index()
+            if "_val" in g:
+                g["invoice_unit_price"] = g["_val"] / g["invoice_qty"].where(g["invoice_qty"] > 0)
+                g = g.drop(columns="_val")
+            o = o.merge(g, on="_key", how="left")
+        else:
+            warnings.append("The invoices dataset was recognised but contained no mapped invoice measures to aggregate.")
+
+    if "approvals" in typed_tables:
+        a = typed_tables["approvals"].copy()
+        if "_key" in a and {"approval_requested_at", "approval_completed_at"} <= set(a.columns):
+            if "approval_stage" in a and a["approval_stage"].astype(str).str.contains("financ", case=False, na=False).any():
+                a = a[a["approval_stage"].astype(str).str.contains("financ", case=False, na=False)]
+            a = a.sort_values("approval_completed_at").groupby("_key").tail(1)
+            o = o.merge(a[["_key", "approval_requested_at", "approval_completed_at"]], on="_key", how="left")
+
+    # Relationship coverage is diagnostic only: unmatched source rows are kept.
+    rel_tables = {k: v.drop(columns=["_key"], errors="ignore") for k, v in typed_tables.items()}
+    relationships, rel_warnings = _relationship_quality(rel_tables)
+    warnings.extend(rel_warnings)
+    supplemental = {k: v.drop(columns=["_key"], errors="ignore").copy()
+                    for k, v in typed_tables.items() if k not in ("orders", "receipts", "invoices", "approvals")}
+
+    o = o.drop(columns=["_key"], errors="ignore")
+    needs = [f for f in TABLE_FIELDS["orders"] if f in ("po_id", "supplier", "po_date", "ordered_qty", "po_unit_price") and f not in shown]
+    result = _analyze(o, shown, unmapped_all, needs, len(raw_tables["orders"]), dropped, cfg, verbose, with_ml, warnings)
+    result["supplemental_tables"] = supplemental
+    result["dataset_quality"] = dataset_quality
+    result["relationships"] = relationships
+    result["dataset_types_received"] = list(typed_tables)
+    return result
+
+
+def save_outputs(result, folder="traceiq_output"):
+    """Write everything to CSV/JSON so it can be uploaded to BigQuery or shared."""
+    os.makedirs(folder, exist_ok=True)
+    paths = []
+    for name in ("ledger", "findings", "trace_all"):
+        df = result.get(name)
+        if df is not None and len(df):
+            path = os.path.join(folder, f"{name}.csv")
+            df.to_csv(path, index=False)
+            paths.append(path)
+    meta = dict(mapping={k: v["column"] for k, v in result["mapping"].items()}, quality=result["quality"],
+                ml=(result.get("risk") or {}).get("metrics"))
+    path = os.path.join(folder, "run_summary.json")
+    with open(path, "w") as fh:
+        json.dump(meta, fh, indent=2, default=str)
+    return paths + [path]
+
+
+def print_summary(mapping, unmapped, needs, report, findings, cfg=None, risk=None):
+    print("\nCOLUMN MATCHES (confirm these):")
+    for f, i in mapping.items():
+        flag = "" if i["confidence"] >= 0.8 else "   <-- check"
+        print(f"  {f:28s} <- {i['column']!r:30s} confidence {i['confidence']:.2f} ({i['source']}){flag}")
+    still = [f for f in needs if f in CONTRACT and CONTRACT[f]["required"]]
+    if still:
+        print("\nREQUIRED FIELDS STILL NEEDING YOUR CHOICE:", ", ".join(still))
+    if unmapped:
+        print("Columns not used:", ", ".join(map(str, unmapped)))
+    print(f"\nDATA QUALITY: {report['rows_used']} of {report['rows_in_file']} rows used; {report['dropped']}")
+    for w in report["warnings"]:
+        print("  warning:", w)
+    print("DETECTORS:")
+    for k, v in report["detectors"].items():
+        print(f"  {k:32s} {v}")
+    if findings is not None:
+        cur = (cfg or {}).get("currency", "")
+        print(f"\nFINDINGS ({len(findings)}):")
+        for _, r in findings.iterrows():
+            amt = f"{cur} {r['leakage']:,.0f} leakage" if r["leakage"] else (
+                f"{cur} {r['orders_held']:,.0f} orders held" if r["orders_held"] else "")
+            n = "" if pd.isna(r["affected_orders"]) else f"{int(r['affected_orders'])} orders, "
+            print(f"  {r['finding_id']} [{r['severity']}] {r['finding_type']}: {r['entity']} - {n}{amt}")
+            print(f"           {r['evidence']}")
+    if risk is not None:
+        print("\nRISK MODEL (predicts late or short deliveries; trained on this company's own history):")
+        if risk["metrics"]:
+            m = risk["metrics"]
+            print(f"  trained on {m['trained_on']} orders, tested on {m['tested_on']} orders from {m['test_from']} onward "
+                  f"({m['problem_rate_test']:.0%} were problems)")
+            print(f"  precision {m['precision']}, recall {m['recall']}, accuracy {m['accuracy']}, AUC {m['auc']}")
+        else:
+            print("  skipped:", risk["skipped"])
+
+
+# ---------------------------------------------------------------- dashboard data pack
+ENGINE_VERSION = "1.3"
+
+# Answer keys for the simulated test companies (the leaks that were planted on purpose).
+ANSWER_KEYS = {
+    "company_a": [("Short delivery", "Sahel Agro Inputs Ltd"), ("Invoice price above PO price", "CleanWave Chemicals Ltd"),
+                  ("Slow approvals", "Kano branch finance approvals"), ("Supplier performance decline", "Trans-Niger Equipment Ltd")],
+    "company_b": [("Short delivery", "Mombasa Grain Traders"), ("Invoice price above PO price", "Rift Valley Cleaning Co"),
+                  ("Slow approvals", "Kisumu branch finance approvals"), ("Supplier performance decline", "Nyali Handling Equipment")],
+}
+EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "ordered_qty", "received_qty", "invoice_qty",
+                    "po_unit_price", "invoice_unit_price", "approval_days", "days_late", "po_total"]
+
+
+def build_evidence(led, findings, cfg):
+    """The actual orders behind every finding (one row per order per finding)."""
+    parts = []
+    cols = [c for c in EVIDENCE_COLUMNS if c in led.columns]
+    for f in findings.itertuples():
+        if f.finding_type == "Short delivery":
+            d = led[(led["supplier"] == f.entity) & (led["invoice_qty"] > led["received_qty"]) & led["received_qty"].notna()].copy()
+            d["exposure"] = (d["invoice_qty"] - d["received_qty"]) * d["invoice_unit_price"]
+            basis = "identified exposure"
+        elif f.finding_type == "Invoice price above PO price":
+            d = led[(led["supplier"] == f.entity) & (led["price_gap_pct"] > cfg["price_tolerance"])].copy()
+            d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]) * d["invoice_qty"]
+            basis = "identified exposure"
+        elif f.finding_type == "Slow approvals":
+            d = led[led["approval_days"] > cfg["approval_limit_days"]].copy()
+            if "branch" in led.columns and f.entity.endswith(" branch finance approvals"):
+                d = d[d["branch"] == f.entity[: -len(" branch finance approvals")]]
+            d["exposure"] = d["po_total"]
+            basis = "order value held up"
+        else:   # supplier performance decline: the late orders in the most recent months
+            g = led[(led["supplier"] == f.entity) & led["days_late"].notna()]
+            months = sorted(g["po_month"].unique())[-cfg["decline_window"]:]
+            d = g[g["po_month"].isin(months) & (g["days_late"] > cfg["late_days"])].copy()
+            d["exposure"] = 0.0
+            basis = "late orders in the most recent months"
+        d = d[cols + ["exposure"]].copy()
+        d.insert(0, "exposure_basis", basis)
+        d.insert(0, "finding_id", f.finding_id)
+        parts.append(d)
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=["finding_id", "exposure_basis"] + cols + ["exposure"])
+
+
+def scorecard(findings, key):
+    """Compare the leaks that were planted with the leaks that were found."""
+    found = set(zip(findings["finding_type"], findings["entity"])) if len(findings) else set()
+    planted = set(key)
+    rows = [dict(finding_type=t, entity=e, planted=True, found=(t, e) in found) for t, e in key]
+    rows += [dict(finding_type=t, entity=e, planted=False, found=True) for t, e in sorted(found - planted)]
+    detail = pd.DataFrame(rows)
+    summary = dict(planted=len(planted), found=len(planted & found), missed=len(planted - found),
+                   false_alarms=len(found - planted))
+    return summary, detail
+
+
+def build_data_pack(result, company, source_file="", answer_key=None, explanations=None, out_dir=None, zip_it=True):
+    """Save everything the dashboard needs for ONE company: findings, the orders behind each finding, a detection
+    scorecard (when an answer key exists), trends, risky orders and a run log. Returns the folder path."""
+    import shutil
+    from datetime import datetime, timezone
+    if result.get("stopped") or "config" not in result:
+        raise ValueError(f"Cannot build a pack yet: {result.get('stopped', 'the engine did not finish')}. "
+                         "Fix the column matches first (use overrides) and run onboard again.")
+    cfg, led, findings = result["config"], result["ledger"], result["findings"].copy()
+    slug = re.sub(r"[^a-z0-9]+", "_", company.lower()).strip("_")
+    out_dir = out_dir or f"seepsight_pack_{slug}"
+    os.makedirs(out_dir, exist_ok=True)
+    cur = cfg["currency"]
+
+    # 1. findings (confirmed discrepancies), with case-tracking columns the dashboard fills in
+    findings.insert(2, "category", "Confirmed discrepancy")
+    findings = findings.rename(columns={"leakage": "identified_exposure", "orders_held": "order_value_held_up"})
+    findings["currency"] = cur
+    findings["status"], findings["owner"], findings["note"] = "Open", "", ""
+    findings.to_csv(os.path.join(out_dir, "findings.csv"), index=False)
+
+    # 2. evidence: the orders behind each finding (and a check that the counts agree)
+    ev = build_evidence(led, result["findings"], cfg)
+    ev.to_csv(os.path.join(out_dir, "evidence.csv"), index=False)
+    counts_ok = True
+    for f in result["findings"].itertuples():
+        if pd.notna(f.affected_orders) and int((ev["finding_id"] == f.finding_id).sum()) != int(f.affected_orders):
+            counts_ok = False
+
+    # 3. exposure by supplier
+    leak = ev[ev["exposure_basis"] == "identified exposure"]
+    if len(leak):
+        leak = leak.merge(result["findings"][["finding_id", "finding_type"]], on="finding_id")
+        (leak.pivot_table(index="supplier", columns="finding_type", values="exposure", aggfunc="sum", fill_value=0)
+             .assign(total=lambda t: t.sum(axis=1)).sort_values("total", ascending=False).reset_index()
+             .to_csv(os.path.join(out_dir, "exposure_by_supplier.csv"), index=False))
+
+    # 4. trends
+    def agg(g):
+        known = g["received_qty"].notna() if "received_qty" in g else pd.Series(False, index=g.index)
+        return pd.Series(dict(
+            orders=len(g), spend=g["po_total"].sum(),
+            avg_days_late=g["days_late"].mean() if "days_late" in g else np.nan,
+            late_rate=(g["days_late"] > cfg["late_days"]).mean() if "days_late" in g else np.nan,
+            fill_rate=(g.loc[known, "received_qty"].sum() / g.loc[known, "ordered_qty"].sum()) if known.any() else np.nan,
+            avg_approval_days=g["approval_days"].mean() if "approval_days" in g else np.nan))
+    pd.DataFrame([dict(po_month=k, **agg(g).to_dict()) for k, g in led.groupby("po_month")]) \
+        .to_csv(os.path.join(out_dir, "monthly_trend.csv"), index=False)
+    pd.DataFrame([dict(supplier=k[0], po_month=k[1], **agg(g).to_dict()) for k, g in led.groupby(["supplier", "po_month"])]) \
+        .to_csv(os.path.join(out_dir, "supplier_month.csv"), index=False)
+
+    # 5. predicted risk (kept separate from confirmed findings)
+    tr = result.get("trace_all")
+    metrics = (result.get("risk") or {}).get("metrics")
+    if tr is not None and len(tr) and (tr["source"] == "ML_MODEL").any():
+        ml = tr[tr["source"] == "ML_MODEL"].copy()
+        ml["key_drivers"] = ml["key_drivers"].astype(str).map(lambda s: ", ".join(re.findall(r"([A-Za-z_][A-Za-z_0-9=]*)\s*\(", s)))
+        ml[["record_ref", "entity", "severity", "risk_score", "key_drivers", "evidence", "later_outcome",
+            "model_precision", "model_recall"]].rename(columns={"record_ref": "po_id", "later_outcome": "actual_problem"}) \
+            .assign(category="Predicted risk", currency=cur).to_csv(os.path.join(out_dir, "risk_orders.csv"), index=False)
+
+    # 6. detection scorecard (only when we know the planted leaks)
+    score = None
+    key = ANSWER_KEYS.get(answer_key) if isinstance(answer_key, str) else answer_key
+    if key:
+        score, detail = scorecard(result["findings"], key)
+        detail.to_csv(os.path.join(out_dir, "scorecard.csv"), index=False)
+
+    # 7. optional AI explanations
+    if explanations is not None:
+        ex = pd.read_csv(explanations) if isinstance(explanations, str) else explanations
+        ex.to_csv(os.path.join(out_dir, "explanations.csv"), index=False)
+
+    # 8. run log
+    log = dict(
+        company=company, source_file=os.path.basename(source_file), analysed_at_utc=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        engine_version=ENGINE_VERSION, currency=cur, rows_in_file=result["quality"]["rows_in_file"],
+        rows_used=result["quality"]["rows_used"], dropped=result["quality"]["dropped"],
+        warnings=result["quality"]["warnings"], detectors=result["quality"]["detectors"],
+        thresholds={k: cfg[k] for k in ("price_tolerance", "approval_limit_days", "late_days", "min_pattern", "decline_days", "decline_window")},
+        column_matches={k: dict(column=v["column"], confidence=v["confidence"], source=v["source"]) for k, v in result["mapping"].items()},
+        findings=len(findings), evidence_rows=len(ev), evidence_counts_match_findings=counts_ok,
+        total_identified_exposure=float(findings["identified_exposure"].sum()) if len(findings) else 0.0,
+        total_order_value_held_up=float(findings["order_value_held_up"].sum()) if len(findings) else 0.0,
+        risk_model=metrics, scorecard=score,
+        note="Amounts are identified exposure, not recovered money, until the business confirms recovery.")
+    with open(os.path.join(out_dir, "run_log.json"), "w") as fh:
+        json.dump(log, fh, indent=2, default=str)
+
+    print(f"\nDATA PACK for {company} -> {out_dir}/")
+    print(f"  findings: {len(findings)} | evidence rows: {len(ev)} | counts agree with findings: {counts_ok}")
+    print(f"  identified exposure: {cur} {log['total_identified_exposure']:,.0f} | order value held up: {cur} {log['total_order_value_held_up']:,.0f}")
+    if score:
+        print(f"  scorecard: {score['planted']} planted, {score['found']} found, {score['missed']} missed, {score['false_alarms']} false alarms")
+    else:
+        print("  scorecard: no answer key for this company (normal for real data)")
+    print("  files:", ", ".join(sorted(os.listdir(out_dir))))
+    if zip_it:
+        zip_path = shutil.make_archive(out_dir, "zip", out_dir)
+        print(f"  zipped: {zip_path}")
+        try:
+            from google.colab import files
+            files.download(zip_path)
+        except ImportError:
+            pass
+    return out_dir
+
+# Public helpers for the company onboarding layer.
+__all__ = [
+    "CONTRACT", "REQUIRED", "FLAT_FIELDS", "TABLE_FIELDS", "DATASET_REGISTRY",
+    "DEFAULT_CONFIG", "DETECTORS", "ENGINE_VERSION", "read_any",
+    "suggest_mapping", "mapping_candidates", "detect_dataset_type",
+    "onboard", "onboard_tables", "apply_mapping", "quality_report",
+    "detect", "to_trace", "build_data_pack", "build_evidence",
+]
