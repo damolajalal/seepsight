@@ -1,7 +1,10 @@
+
 """Seepsight company authentication using Firebase Authentication."""
 
 import requests
 import streamlit as st
+
+from seepsight import company_store
 
 TIMEOUT = 20
 BASE_URL = "https://identitytoolkit.googleapis.com/v1/accounts"
@@ -130,8 +133,7 @@ def _register():
     if not account:
         return
 
-    # Store the company name as the Firebase account display name.
-    _request(
+    update_result = _request(
         "update",
         {
             "idToken": account["idToken"],
@@ -139,6 +141,13 @@ def _register():
             "returnSecureToken": True,
         },
     )
+
+    if not update_result:
+        st.warning(
+            "Your account was created, but the company name could not be saved. "
+            "Please contact support before proceeding."
+        )
+        return
 
     verification = _send_verification(account["idToken"])
 
@@ -196,10 +205,26 @@ def _login():
                 st.success("A new verification email has been sent.")
         return
 
+    # Resolve the user's company using their verified Firebase UID.
+    try:
+        company = company_store.ensure_company_for_user(
+            uid=user["localId"],
+            email=user["email"],
+            company_name=user.get("displayName", "Company"),
+        )
+    except Exception as exc:
+        st.error(
+            "Your sign-in succeeded, but your company workspace "
+            f"could not be loaded: {exc}"
+        )
+        return
+
     st.session_state["seepsight_auth"] = {
         "uid": user["localId"],
         "email": user["email"],
-        "company_name": user.get("displayName", "Company"),
+        "company_name": company["company_name"],
+        "company_id": company["company_id"],
+        "role": company["role"],
         "id_token": account["idToken"],
         "refresh_token": account["refreshToken"],
     }
@@ -228,7 +253,9 @@ def _password_reset():
         )
 
         if result:
-            st.success("If the account exists, a password reset email has been sent.")
+            st.success(
+                "If the account exists, a password reset email has been sent."
+            )
 
 
 def logout():
