@@ -54,6 +54,26 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "complete",
         )
 
+    def test_reads_records_and_restores_decimal_values(self):
+        metadata = MagicMock(exists=True)
+        metadata.to_dict.return_value = {"records_status": "complete"}
+        self.dataset_ref.get.return_value = metadata
+        row = MagicMock()
+        row.to_dict.return_value = {
+            "po_id": "PO-1",
+            "unit_price": {"__seepsight_decimal__": "0.100000000000000009"},
+            "_record_number": 0,
+        }
+        query = self.records.order_by.return_value
+        query.limit.return_value.stream.return_value = [row]
+
+        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+            values = firestore_db.get_dataset_records("company-a", "dataset-a")
+
+        self.assertEqual(values[0]["po_id"], "PO-1")
+        self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
+        self.assertNotIn("_record_number", values[0])
+
     def test_invalid_records_are_rejected_before_writes(self):
         with self.assertRaisesRegex(TypeError, "Each procurement record"):
             firestore_db.save_dataset_records(
