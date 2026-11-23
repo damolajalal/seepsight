@@ -66,6 +66,7 @@ with st.form(f"case_{fid}"):
         if note != case["note"]:
             case["history"].append(f"{stamp}: notes updated")
         case.update(status=status, owner=owner, note=note)
+        workspace.save_case(fid, case)
         st.rerun()
 if case["history"]:
     with st.expander("History of this case"):
