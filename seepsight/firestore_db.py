@@ -250,6 +250,40 @@ def _normalise(value):
     )
 
 
+_DECIMAL_MARKER = "__seepsight_decimal__"
+
+
+def _normalise_workspace_value(value):
+    """Preserve Decimal values exactly in durable analysis workspaces."""
+    if isinstance(value, Decimal):
+        return {_DECIMAL_MARKER: format(value, "f")}
+    if isinstance(value, dict):
+        return {
+            str(key): _normalise_workspace_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalise_workspace_value(item) for item in value]
+    return _normalise(value)
+
+
+def _denormalise_workspace_value(value):
+    """Restore exact Decimal values encoded in an analysis workspace."""
+    if isinstance(value, dict):
+        if (
+            set(value) == {_DECIMAL_MARKER}
+            and isinstance(value[_DECIMAL_MARKER], str)
+        ):
+            return Decimal(value[_DECIMAL_MARKER])
+        return {
+            key: _denormalise_workspace_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_denormalise_workspace_value(item) for item in value]
+    return value
+
+
 def verify_company_access(company_id):
     """
     Verify the current Firebase identity and active membership.
@@ -783,7 +817,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
         for record in records:
             if not isinstance(record, dict):
                 raise TypeError("Each analysis row must be a dictionary.")
-            cleaned = _normalise(record)
+            cleaned = _normalise_workspace_value(record)
             size = len(__import__("json").dumps(cleaned, default=str).encode("utf-8"))
             if size > 800_000:
                 raise ValueError(
@@ -828,7 +862,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
     }, merge=True)
 
     analysis_ref.set({
-        **_normalise(summary),
+        **_normalise_workspace_value(summary),
         "analysis_id": analysis_id,
         "active_revision": revision_id,
         "tables": table_counts,
@@ -857,7 +891,7 @@ def get_latest_analysis_workspace(company_id):
     snapshot = analysis_ref.get()
     if not snapshot.exists:
         return None
-    summary = snapshot.to_dict() or {}
+    summary = _denormalise_workspace_value(snapshot.to_dict() or {})
     if summary.get("workspace_status") != "complete":
         return None
 
@@ -890,7 +924,10 @@ def get_latest_analysis_workspace(company_id):
             page = list(page_query.stream())
             if not page:
                 break
-            rows.extend(row.to_dict() or {} for row in page)
+            rows.extend(
+                _denormalise_workspace_value(row.to_dict() or {})
+                for row in page
+            )
             last_snapshot = page[-1]
             if len(page) < 500:
                 break
