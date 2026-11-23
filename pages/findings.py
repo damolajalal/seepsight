@@ -8,7 +8,45 @@ w = workspace.current()
 cur, f = w["cur"], w["findings"]
 ui.page_header("Findings", "The issues our checks identified, with the records behind each one.")
 if len(f) == 0:
-    st.success("Our checks did not find any issues in these records.")
+    # A zero-row findings table does not necessarily mean every detector ran.
+    # Surface the detector coverage saved with this analysis so missing inputs
+    # cannot be mistaken for a clean procurement review.
+    run_log = w.get("log", {}) or {}
+    detector_status = run_log.get("detectors", {}) or {}
+    thresholds = run_log.get("thresholds", {}) or {}
+    skipped = {
+        name: status for name, status in detector_status.items()
+        if str(status).lower() != "ready"
+    }
+
+    st.markdown("### Findings status")
+    if skipped:
+        st.warning(
+            "No findings were generated, but not all procurement checks could run. "
+            "This is an incomplete review, not confirmation that the records are clear."
+        )
+        st.markdown("**Checks requiring more data or corrected mappings**")
+        for name, status in skipped.items():
+            st.write(f"- **{name}:** {status}")
+    elif detector_status:
+        min_pattern = int(thresholds.get("min_pattern", 2) or 2)
+        st.info(
+            "The available procurement checks ran, but no finding met the configured "
+            f"reporting rules. Pattern-based checks require at least {min_pattern} "
+            "matching orders for the same supplier or group. Review the check coverage "
+            "and source records before treating this as a clean bill of health."
+        )
+        st.markdown("**Checks run**")
+        for name, status in detector_status.items():
+            st.write(f"- **{name}:** {status}")
+    else:
+        st.warning(
+            "No findings are available and detector coverage was not recorded for this "
+            "analysis. Re-run validation from Connect your data to produce a traceable result."
+        )
+
+    st.page_link("pages/connect.py", label="Review data and run checks again",
+                 icon=":material/database_upload:")
     st.stop()
 
 ids = list(f["finding_id"])
