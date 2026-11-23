@@ -20,7 +20,7 @@ class SecretReferenceTests(unittest.TestCase):
 class ConnectionProfileTests(unittest.TestCase):
     def test_profile_stores_secret_reference_not_password(self):
         company = MagicMock()
-        with patch.object(firestore_db, "_company_ref", return_value=company):
+        with patch.object(firestore_db, "_company_owner_ref", return_value=company):
             with patch.object(firestore_db, "write_company_audit_event"):
                 result = firestore_db.save_company_connection_profile(
                     "company-a", "db-profile-1",
@@ -80,8 +80,25 @@ class ConnectionProfileTests(unittest.TestCase):
         self.assertEqual(execute.call_args.kwargs["max_rows"], 75)
         self.assertEqual(execute.call_args.kwargs["timeout_seconds"], 9)
 
+    def test_non_owner_cannot_save_company_connection_profile(self):
+        with patch.object(
+            firestore_db, "verify_company_access",
+            return_value={"company_id": "company-a", "role": "member"},
+        ):
+            with patch.object(firestore_db, "get_firestore_client") as client:
+                with self.assertRaisesRegex(PermissionError, "Only the company owner"):
+                    firestore_db.save_company_connection_profile(
+                        "company-a", "profile-a",
+                        {
+                            "name": "Warehouse",
+                            "provider": "postgres",
+                            "secret_reference": "projects/p/secrets/db/versions/latest",
+                        },
+                    )
+                client.assert_not_called()
+
     def test_profile_rejects_raw_credentials(self):
-        with patch.object(firestore_db, "_company_ref", return_value=MagicMock()):
+        with patch.object(firestore_db, "_company_owner_ref", return_value=MagicMock()):
             with self.assertRaisesRegex(ValueError, "metadata and a secret reference"):
                 firestore_db.save_company_connection_profile(
                     "company-a", "db-profile-1",
