@@ -111,6 +111,42 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "deleting",
         )
 
+    def test_dataset_delete_marks_failure_when_private_object_delete_fails(self):
+        snapshot = MagicMock(exists=True)
+        snapshot.to_dict.return_value = {
+            "storage": {
+                "object_name": "companies/company-a/uploads/upload-a/orders.csv",
+                "generation": "123",
+            }
+        }
+        self.dataset_ref.get.return_value = snapshot
+        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+            with patch(
+                "seepsight.cloud_storage.delete_company_file",
+                side_effect=RuntimeError("storage unavailable"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "could not be fully deleted"):
+                    firestore_db.delete_company_dataset("company-a", "dataset-a")
+        self.assertEqual(
+            self.dataset_ref.set.call_args_list[-1].args[0]["deletion_status"],
+            "failed",
+        )
+        self.client.recursive_delete.assert_not_called()
+
+    def test_missing_dataset_records_are_not_reported_as_empty_success(self):
+        metadata = MagicMock(exists=False)
+        self.dataset_ref.get.return_value = metadata
+        with self.assertRaises(FileNotFoundError):
+            firestore_db.get_dataset_records("company-a", "missing-dataset")
+        
+    def test_upload_record_count_is_bounded_before_writes(self):
+        records = [{"id": index} for index in range(250_001)]
+        with self.assertRaisesRegex(ValueError, "250,000 records"):
+            firestore_db.save_dataset_records(
+                "company-a", "dataset-a", records
+            )
+        self.dataset_ref.set.assert_not_called()
+
     def test_cross_company_dataset_delete_is_denied(self):
         with patch.object(
             firestore_db, "_company_ref",
