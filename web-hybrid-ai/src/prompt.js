@@ -12,25 +12,28 @@ export function buildFindingPrompt({ supplier = '', findingType = '', verifiedFa
     'Separate observed facts, possible implications, and recommended next checks.',
     'Keep the answer concise and practical.',
     '',
-    `Supplier: ${supplier.trim() || 'Not specified'}`,
-    `Finding type: ${findingType.trim() || 'Not specified'}`,
-    `Verified facts from Seepsight: ${facts}`,
-    `Requested action or question: ${requestedAction.trim() || 'Explain the finding and suggest the next verification step.'}`,
-  ].join('\\n');
+    \`Supplier: \${supplier.trim() || 'Not specified'}\`,
+    \`Finding type: \${findingType.trim() || 'Not specified'}\`,
+    \`Verified facts from Seepsight: \${facts}\`,
+    \`Requested action or question: \${requestedAction.trim() || 'Explain the finding and suggest the next verification step.'}\`,
+  ].join('\n');
 }
 
 export function hasUnsupportedNumbers(answer, prompt) {
+  // Only verified evidence authorises figures; prompt instructions and UI limits do not.
+  const evidenceMatch = String(prompt).match(/Verified facts from Seepsight:\s*([\s\S]*?)(?:\nRequested action or question:|$)/);
+  const evidence = evidenceMatch ? evidenceMatch[1] : String(prompt);
   const numericTokens = (value) => {
-    const matches = String(value).match(/(?:₦|\\$|€|£)?\\s*\\b\\d[\\d,]*(?:\\.\\d+)?\\s*%?/g) || [];
+    const matches = String(value).match(/(?:₦|\$|€|£)?\s*\b\d[\d,]*(?:\.\d+)?\s*%?/g) || [];
     return matches.map((token) => {
       const currency = token.match(/[₦$€£]/)?.[0] || '';
       const percent = token.includes('%');
-      const numeric = token.replace(/[₦$€£,%\\s]/g, '');
+      const numeric = token.replace(/[₦$€£,%\s]/g, '');
       const canonical = Number(numeric).toString();
       return { canonical, currency, percent };
     });
   };
-  const allowed = numericTokens(prompt);
+  const allowed = numericTokens(evidence);
   return numericTokens(answer).some((candidate) => {
     const sameNumber = allowed.filter((item) => item.canonical === candidate.canonical);
     if (!sameNumber.length) return true;
