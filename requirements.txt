@@ -6,4 +6,3 @@ scikit-learn
 requests
 firebase-admin
 google-cloud-firestore
-google-cloud-storage>=2.16.0
