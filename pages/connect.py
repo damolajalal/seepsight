@@ -24,7 +24,10 @@ ui.page_header(
     "confirm its structure, map up to twelve procurement dataset types and review data quality before analysis.",
 )
 
-st.info("Original uploaded files are saved to private company storage when you open the validated workspace. Analysis workspaces and results are still session-based; durable result history is not yet available.")
+if cloud_storage.is_configured():
+    st.info("Original uploaded files will be saved to private company storage when you open the validated workspace. Analysis workspaces and results are still session-based; durable result history is not yet available.")
+else:
+    st.warning("Private file storage is not configured yet. You can still analyse files in this session, but the original uploads will not be durably stored. They will be cleared when this session ends.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
@@ -488,23 +491,34 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                     saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
                         upload_id = uuid.uuid4().hex
-                        storage_metadata = cloud_storage.upload_company_file(
-                            company_id,
-                            upload_id,
-                            source_filename,
-                            st.session_state["connect_source_file_bytes"][source_filename],
-                        )
+                        storage_metadata = None
+                        if cloud_storage.is_configured():
+                            storage_metadata = cloud_storage.upload_company_file(
+                                company_id,
+                                upload_id,
+                                source_filename,
+                                st.session_state["connect_source_file_bytes"][source_filename],
+                            )
+                            storage_status = "original_file_saved"
+                        else:
+                            storage_status = "session_only"
+
                         dataset_kind = kinds[source_filename]
-                        save_company_dataset(company_id, upload_id, {
+                        dataset_metadata = {
                             "dataset_type": dataset_kind,
                             "filename": source_filename,
-                            "status": "original_file_saved",
+                            "status": storage_status,
                             "record_count": int(len(source_frame)),
-                            "storage": storage_metadata,
-                        })
+                        }
+                        if storage_metadata is not None:
+                            dataset_metadata["storage"] = storage_metadata
+                        save_company_dataset(company_id, upload_id, dataset_metadata)
                         save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
                         saved_upload_ids.append(upload_id)
-                    st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
+                    if cloud_storage.is_configured():
+                        st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
+                    else:
+                        st.write("Original files are available only for this active session; durable file storage is not configured.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     st.session_state["mine"] = pack
