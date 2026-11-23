@@ -313,6 +313,25 @@ def _company_ref(company_id):
     return client.collection("companies").document(membership["company_id"])
 
 
+
+def _stream_query_pages(query, page_size=500):
+    """Yield Firestore query snapshots in bounded pages."""
+    if not isinstance(page_size, int) or page_size < 1 or page_size > 1000:
+        raise ValueError("page_size must be between 1 and 1000.")
+    cursor = None
+    while True:
+        page_query = query.limit(page_size)
+        if cursor is not None:
+            page_query = page_query.start_after(cursor)
+        page = list(page_query.stream())
+        if not page:
+            break
+        yield from page
+        cursor = page[-1]
+        if len(page) < page_size:
+            break
+
+
 # ============================================================
 # 4. COMPANY DATASET METADATA
 # ============================================================
@@ -491,10 +510,9 @@ def get_dataset_records(company_id, dataset_id):
         .document(dataset_id)
     )
 
-    snapshots = (
+    query = (
         dataset_ref.collection("records")
         .order_by("_record_number")
-        .stream()
     )
 
     return [
@@ -503,7 +521,7 @@ def get_dataset_records(company_id, dataset_id):
             for key, value in (snapshot.to_dict() or {}).items()
             if not key.startswith("_")
         }
-        for snapshot in snapshots
+        for snapshot in _stream_query_pages(query, page_size=500)
     ]
 
 
@@ -691,7 +709,6 @@ def get_analysis_results(company_id, analysis_id):
     findings = (
         analysis_ref.collection("findings")
         .order_by("_finding_number")
-        .stream()
     )
 
     summary["findings"] = [
@@ -700,7 +717,7 @@ def get_analysis_results(company_id, analysis_id):
             for key, value in (finding.to_dict() or {}).items()
             if not key.startswith("_")
         }
-        for finding in findings
+        for finding in _stream_query_pages(findings, page_size=500)
     ]
 
     return summary
