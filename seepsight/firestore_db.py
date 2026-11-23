@@ -731,3 +731,99 @@ def get_firestore_status():
                 "and database permissions."
             ),
         }
+
+
+# ============================================================
+# 9. DURABLE ANALYSIS WORKSPACES
+# ============================================================
+
+def save_analysis_workspace(company_id, analysis_id, summary, tables):
+    """Persist a complete dashboard workspace as bounded row documents."""
+    company = _company_ref(company_id)
+    analysis_id = _validate_id(analysis_id, "analysis_id")
+    if not isinstance(summary, dict) or not isinstance(tables, dict):
+        raise TypeError("summary and tables must be dictionaries.")
+
+    analysis_ref = company.collection("analyses").document(analysis_id)
+    client = get_firestore_client()
+    table_names = {}
+    for table_name, records in tables.items():
+        if not isinstance(table_name, str) or not table_name.replace("_", "").isalnum():
+            raise ValueError("Invalid analysis table name.")
+        if records is None:
+            records = []
+        if not isinstance(records, (list, tuple)):
+            raise TypeError("Each analysis table must be a list of records.")
+        table_ref = analysis_ref.collection("tables").document(table_name)
+        rows_ref = table_ref.collection("rows")
+
+        # Replace the table contents atomically in bounded batches. The
+        # analysis is marked complete only after all table writes succeed.
+        existing = list(rows_ref.stream())
+        for start in range(0, len(existing), 400):
+            batch = client.batch()
+            for snapshot in existing[start:start + 400]:
+                batch.delete(snapshot.reference)
+            batch.commit()
+
+        for start in range(0, len(records), 300):
+            batch = client.batch()
+            for offset, record in enumerate(records[start:start + 300], start=start):
+                if not isinstance(record, dict):
+                    raise TypeError("Each analysis row must be a dictionary.")
+                cleaned = _normalise(record)
+                size = len(__import__("json").dumps(cleaned, default=str).encode("utf-8"))
+                if size > 800_000:
+                    raise ValueError(
+                        f"An analysis row in '{table_name}' is too large to store safely."
+                    )
+                batch.set(rows_ref.document(f"row_{offset:012d}"), cleaned)
+            batch.commit()
+        table_names[table_name] = len(records)
+
+    analysis_ref.set({
+        **_normalise(summary),
+        "analysis_id": analysis_id,
+        "tables": table_names,
+        "workspace_status": "complete",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+    company.set({
+        "latest_analysis_id": analysis_id,
+        "latest_analysis_updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+    return analysis_id
+
+
+def get_latest_analysis_workspace(company_id):
+    """Load the latest complete analysis and its dashboard tables."""
+    company = _company_ref(company_id)
+    company_snapshot = company.get()
+    if not company_snapshot.exists:
+        return None
+    analysis_id = (company_snapshot.to_dict() or {}).get("latest_analysis_id")
+    if not analysis_id:
+        return None
+    analysis_ref = company.collection("analyses").document(
+        _validate_id(analysis_id, "analysis_id")
+    )
+    snapshot = analysis_ref.get()
+    if not snapshot.exists:
+        return None
+    summary = snapshot.to_dict() or {}
+    if summary.get("workspace_status") != "complete":
+        return None
+
+    tables = {}
+    for table_name in (summary.get("tables") or {}):
+        rows = (
+            analysis_ref.collection("tables")
+            .document(table_name)
+            .collection("rows")
+            .order_by("__name__")
+            .stream()
+        )
+        tables[table_name] = [
+            row.to_dict() or {} for row in rows
+        ]
+    return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
