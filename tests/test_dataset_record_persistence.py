@@ -94,6 +94,32 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
         self.assertNotIn("_record_number", values[0])
 
+    def test_dataset_deletion_recursively_removes_company_records(self):
+        snapshot = MagicMock(exists=True)
+        snapshot.to_dict.return_value = {"storage": None}
+        self.dataset_ref.get.return_value = snapshot
+        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+            with patch.object(firestore_db, "get_firestore_client", return_value=self.client):
+                with patch.object(firestore_db, "write_company_audit_event"):
+                    deleted = firestore_db.delete_company_dataset(
+                        "company-a", "dataset-a"
+                    )
+        self.assertTrue(deleted)
+        self.client.recursive_delete.assert_called_once_with(self.dataset_ref)
+        self.assertEqual(
+            self.dataset_ref.set.call_args.args[0]["deletion_status"],
+            "deleting",
+        )
+
+    def test_cross_company_dataset_delete_is_denied(self):
+        with patch.object(
+            firestore_db, "_company_ref",
+            side_effect=PermissionError("cross-company access denied"),
+        ):
+            with self.assertRaises(PermissionError):
+                firestore_db.delete_company_dataset("company-b", "dataset-a")
+        self.client.recursive_delete.assert_not_called()
+
     def test_firestore_document_ids_are_bounded(self):
         with self.assertRaisesRegex(ValueError, "128 UTF-8 bytes"):
             firestore_db._validate_id("x" * 129, "dataset_id")
