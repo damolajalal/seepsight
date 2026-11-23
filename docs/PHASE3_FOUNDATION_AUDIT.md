@@ -17,7 +17,7 @@
 | Analysis workspace | Revisioned dashboard tables, supporting evidence and run metadata are stored in Firestore; batches are bounded, row-size checked, restored in pages of 500, and the active revision/latest-analysis pointers switch in one transaction | Live Firestore failure-injection and restart tests remain |
 | Revision retention | Successful saves retain the active revision and a recent recovery window; obsolete revisions are recursively deleted and cleanup is audited | Retention policy is currently code-defined (three recent revisions), not configurable from Settings |
 | Cases and actions | Case state and append-only history are written in one Firestore transaction; stale concurrent updates fail instead of overwriting a newer history; history reads verify event counts | Live concurrent-user and transaction retry tests remain |
-| Audit trail | Company-scoped append-only audit events cover dataset metadata, mappings, record save/read, analysis save/restore/pruning, case list/update private file upload/download/delete, and database connection profile/test events | Live write/read permissions and retention policy must be checked in the target project |
+| Audit trail | Company-scoped append-only audit events cover dataset metadata, mappings, record save/read, analysis save/restore/pruning, case list/update, private file upload/download/delete, and database connection profile/test events | Live write/read permissions and retention policy must be checked in the target project |
 | Private file storage | GCS upload/download/delete helpers enforce company paths, allowlisted file types, size limits, create-only upload, and generation preconditions; failures are sanitized | No bucket is provisioned in the current Spark/no-billing setup, so original files remain session-only |
 | Secrets | Secret Manager helper accepts only secret-version resource references and fetches JSON server-side using ADC; secret values are not put in Streamlit state | Runtime service identity needs least-privilege Secret Manager access; rotation is by publishing a new version and updating its reference |
 | Database adapters | Optional PostgreSQL, MySQL, SQL Server and BigQuery adapters use parameter binding, query validation, read-only settings, TLS where supported, timeouts and bounded result previews; saved profiles contain only Secret Manager references | Optional dependencies, ODBC driver, network access, read-only DB principals and live provider tests must be configured |
@@ -41,8 +41,8 @@
 
 The Python security workflow covers authorization, company membership integrity, private storage boundaries, transactional case history, bounded and retry-safe dataset records, exact Decimal serialization including marker-collision safety, analysis revision activation/failure safety, revision cleanup, audit event sanitization, owner-only connector profiles, query validation/dispatch and Streamlit page syntax. The Phase 7 hybrid web workflow also passes on the same branch.
 
-- Python security Run #133 passed on implementation commit `d649c84`: **81 tests passed**.
-- Phase 7 hybrid web Run #163 passed on the same implementation commit.
+- Python security Run #139 passed on implementation commit `b64842a`: **81 tests passed**.
+- Phase 7 hybrid web Run #169 passed on the same implementation commit.
 - These checks are automated CI tests with mocked/isolated provider boundaries; no live Firebase, GCS, Secret Manager or external database connection was performed.
 
 ## External acceptance still required
