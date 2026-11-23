@@ -83,6 +83,13 @@ class CaseStoreTests(unittest.TestCase):
         self.history.document.assert_not_called()
         self.transaction.set.assert_not_called()
 
+    def test_save_rejects_oversized_case_note(self):
+        with self.assertRaisesRegex(ValueError, "safe length limit"):
+            case_store.save_company_case(
+                "company-a", "finding-1",
+                {"note": "x" * 10_001, "history": []},
+            )
+
     def test_save_rejects_invalid_status(self):
         with self.assertRaisesRegex(ValueError, "Invalid case status"):
             case_store.save_company_case(
