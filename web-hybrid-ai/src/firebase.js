@@ -43,11 +43,19 @@ export function getFirebaseStatus() {
   return { ready: true, message: 'Firebase and App Check initialized.' };
 }
 
-export function createHybridModel(cloudFallbackAllowed) {
+function getAIService() {
   const status = getFirebaseStatus();
   if (!status.ready || !app) throw new Error(status.message);
-  const ai = getAI(app, { backend: new GoogleAIBackend() });
-  return getGenerativeModel(ai, {
-    mode: cloudFallbackAllowed ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_ON_DEVICE,
-  });
+  return getAI(app, { backend: new GoogleAIBackend() });
+}
+
+// Cloud fallback is enabled only for the individual request whose user explicitly consented.
+export function createHybridModel(cloudFallbackAllowed) {
+  const mode = cloudFallbackAllowed ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_ON_DEVICE;
+  return getGenerativeModel(getAIService(), { mode });
+}
+
+// Use this only after a local-only attempt failed and the user consented to cloud processing.
+export function createCloudOnlyModel() {
+  return getGenerativeModel(getAIService(), { mode: InferenceMode.ONLY_IN_CLOUD });
 }
