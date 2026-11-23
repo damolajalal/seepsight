@@ -54,6 +54,26 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "complete",
         )
 
+    def test_source_rows_use_separate_status_and_collection(self):
+        saved = firestore_db.save_dataset_records(
+            "company-a",
+            "dataset-a",
+            [{"Original PO Number": "0000123", "Original Amount": "123.4500"}],
+            collection_name="source_records",
+        )
+        self.assertEqual(saved, 1)
+        self.assertEqual(
+            self.dataset_ref.set.call_args_list[-1].args[0]["source_records_status"],
+            "complete",
+        )
+        self.assertTrue(
+            self.dataset_ref.set.call_args_list[-1].args[0]["source_records_saved"]
+        )
+        self.assertEqual(
+            self.records.document.call_args.args[0],
+            "record_000000000000",
+        )
+
     def test_reads_records_and_restores_decimal_values(self):
         metadata = MagicMock(exists=True)
         metadata.to_dict.return_value = {"records_status": "complete"}
