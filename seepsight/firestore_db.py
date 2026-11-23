@@ -958,6 +958,11 @@ def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
             continue
         client.recursive_delete(item.reference)
         deleted += 1
+    if deleted:
+        write_company_audit_event(
+            company_id, "analysis.revisions_pruned", "analysis", analysis_id,
+            {"deleted_revision_count": deleted, "retained_revision_count": len(protected)},
+        )
     return deleted
 
 
