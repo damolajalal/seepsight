@@ -17,6 +17,8 @@ Responsibilities:
 
 import uuid
 import math
+import json
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -371,6 +373,59 @@ def _stream_query_pages(query, page_size=500):
             break
 
 
+
+_AUDIT_SECRET_KEY_PARTS = (
+    "password", "secret", "token", "credential", "private_key",
+    "api_key", "authorization", "connection_string",
+)
+
+
+def _safe_audit_value(value):
+    """Remove credential-like fields before an audit payload is persisted."""
+    if isinstance(value, dict):
+        return {
+            str(key): _safe_audit_value(item)
+            for key, item in value.items()
+            if not any(part in str(key).lower() for part in _AUDIT_SECRET_KEY_PARTS)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_safe_audit_value(item) for item in value[:50]]
+    return value
+
+
+def write_company_audit_event(company_id, event_type, resource_type,
+                              resource_id=None, details=None):
+    """Append a bounded company-scoped audit event without credential values."""
+    if not isinstance(event_type, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,79}", event_type):
+        raise ValueError("event_type is invalid.")
+    if not isinstance(resource_type, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,39}", resource_type):
+        raise ValueError("resource_type is invalid.")
+    if resource_id is not None:
+        resource_id = _validate_id(resource_id, "resource_id")
+    if details is None:
+        details = {}
+    if not isinstance(details, dict):
+        raise TypeError("Audit details must be a dictionary.")
+
+    safe_details = _normalise_workspace_value(_safe_audit_value(details))
+    payload_size = len(json.dumps(safe_details, default=str).encode("utf-8"))
+    if payload_size > 12_000:
+        raise ValueError("Audit details exceed the safe size limit.")
+
+    company = _company_ref(company_id)
+    event_id = uuid.uuid4().hex
+    company.collection("audit_events").document(event_id).create({
+        "event_id": event_id,
+        "event_type": event_type,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "details": safe_details,
+        "actor_uid": (st.session_state.get("seepsight_auth") or {}).get("uid"),
+        "created_at": datetime.now(timezone.utc),
+    })
+    return event_id
+
+
 # ============================================================
 # 4. COMPANY DATASET METADATA
 # ============================================================
@@ -415,7 +470,11 @@ def save_company_dataset(
         document,
         merge=True,
     )
-
+    write_company_audit_event(
+        company_id, "dataset.metadata_saved", "dataset", dataset_id,
+        {"dataset_type": document.get("dataset_type"), "filename": document.get("filename"),
+         "status": document.get("status"), "record_count": document.get("record_count")},
+    )
     return dataset_id
 
 
@@ -506,6 +565,10 @@ def save_dataset_records(company_id, dataset_id, records):
             pass
         raise RuntimeError("Validated procurement records could not be saved completely.") from exc
 
+    write_company_audit_event(
+        company_id, "dataset.records_saved", "dataset", dataset_id,
+        {"record_count": len(prepared), "records_status": "complete"},
+    )
     return len(prepared)
 
 
@@ -563,10 +626,13 @@ def save_company_mapping(
     )
 
     mapping_ref.set({
-        "mapping": _normalise(mapping),
+        "mapping": _normalise_workspace_value(mapping),
         "updated_at": datetime.now(timezone.utc),
     })
-
+    write_company_audit_event(
+        company_id, "dataset.mapping_saved", "dataset", dataset_id,
+        {"mapped_field_count": len(mapping)},
+    )
     return True
 
 
@@ -844,6 +910,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
         "latest_analysis_id": analysis_id,
         "latest_analysis_updated_at": datetime.now(timezone.utc),
     }, merge=True)
+    write_company_audit_event(
+        company_id, "analysis.workspace_saved", "analysis", analysis_id,
+        {"revision_id": revision_id, "table_counts": table_counts},
+    )
     # Retain a small recovery window without ever deleting the active revision.
     try:
         cleanup_analysis_revisions(company_id, analysis_id, keep=3)
