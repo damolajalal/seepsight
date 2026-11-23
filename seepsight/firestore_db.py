@@ -455,7 +455,7 @@ def write_company_audit_event(company_id, event_type, resource_type,
         })
         return event_id
     except Exception:
-        # Audit is best-effort across Firestore/GCS boundaries; never report a
+        # Audit is best-effort within Firestore boundaries; never report a
         # successful data write as failed solely because the audit sink is down.
         logging.getLogger(__name__).warning("Company audit event could not be persisted.")
         return None
