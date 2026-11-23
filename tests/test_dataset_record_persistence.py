@@ -122,27 +122,19 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "deleting",
         )
 
-    def test_dataset_delete_marks_failure_when_private_object_delete_fails(self):
+    def test_dataset_delete_recursively_removes_original_file_chunks(self):
         snapshot = MagicMock(exists=True)
         snapshot.to_dict.return_value = {
-            "storage": {
-                "object_name": "companies/company-a/uploads/upload-a/orders.csv",
-                "generation": "123",
-            }
+            "original_file_status": "complete",
+            "original_file": {"filename": "orders.csv", "chunk_count": 1},
         }
         self.dataset_ref.get.return_value = snapshot
         with patch.object(firestore_db, "_company_ref", return_value=self.company):
-            with patch(
-                "seepsight.cloud_storage.delete_company_file",
-                side_effect=RuntimeError("storage unavailable"),
-            ):
-                with self.assertRaisesRegex(RuntimeError, "could not be fully deleted"):
-                    firestore_db.delete_company_dataset("company-a", "dataset-a")
-        self.assertEqual(
-            self.dataset_ref.set.call_args_list[-1].args[0]["deletion_status"],
-            "failed",
-        )
-        self.client.recursive_delete.assert_not_called()
+            with patch.object(firestore_db, "get_firestore_client", return_value=self.client):
+                with patch.object(firestore_db, "write_company_audit_event"):
+                    deleted = firestore_db.delete_company_dataset("company-a", "dataset-a")
+        self.assertTrue(deleted)
+        self.client.recursive_delete.assert_called_once_with(self.dataset_ref)
 
     def test_missing_dataset_records_are_not_reported_as_empty_success(self):
         metadata = MagicMock(exists=False)
