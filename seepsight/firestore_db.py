@@ -846,6 +846,19 @@ def save_analysis_results(
             })
         batch.commit()
 
+    existing_findings = analysis_ref.collection("findings").order_by("_finding_number")
+    stale_batch = client.batch()
+    stale_count = 0
+    for snapshot in _stream_query_pages(existing_findings, page_size=400):
+        if int((snapshot.to_dict() or {}).get("_finding_number", -1)) >= len(prepared_findings):
+            stale_batch.delete(snapshot.reference)
+            stale_count += 1
+            if stale_count % 400 == 0:
+                stale_batch.commit()
+                stale_batch = client.batch()
+    if stale_count % 400:
+        stale_batch.commit()
+
     analysis_ref.set({
         "results_status": "complete",
         "updated_at": datetime.now(timezone.utc),
@@ -894,7 +907,10 @@ def get_analysis_results(company_id, analysis_id):
         }
         for finding in _stream_query_pages(findings, page_size=500)
     ]
-
+    write_company_audit_event(
+        company_id, "analysis.results_read", "analysis", analysis_id,
+        {"finding_count": len(summary["findings"])},
+    )
     return summary
 
 
