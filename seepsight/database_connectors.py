@@ -173,7 +173,12 @@ def execute_readonly_query(provider, secret_reference, sql, parameters=None,
             for item in parameters
         ):
             raise ValueError("BigQuery parameters require name, type and value.")
-    secret = access_secret_json(resource)
+    try:
+        secret = access_secret_json(resource)
+    except Exception as exc:
+        raise RuntimeError(
+            "The configured connection secret could not be accessed."
+        ) from exc
     adapters = {
         "postgres": _postgres,
         "mysql": _mysql,
@@ -184,10 +189,10 @@ def execute_readonly_query(provider, secret_reference, sql, parameters=None,
         columns, rows, truncated = adapters[provider](
             secret, statement, parameters, max_rows, timeout_seconds
         )
-    except (ValueError, RuntimeError):
-        raise
     except Exception as exc:
-        raise RuntimeError("The database query failed. Check the connection and read-only account permissions.") from exc
+        raise RuntimeError(
+            "The database query failed. Check the connection and read-only account permissions."
+        ) from exc
     return {
         "columns": columns,
         "rows": rows,
