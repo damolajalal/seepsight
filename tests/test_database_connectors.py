@@ -35,6 +35,7 @@ class ReadOnlyQueryTests(unittest.TestCase):
             "WITH x AS (DELETE FROM orders RETURNING *) SELECT * FROM x",
             "SELECT * FROM orders; DROP TABLE orders",
             "SELECT * FROM orders FOR UPDATE",
+            "SELECT * INTO archived_orders FROM orders",
             "SELECT * FROM orders -- comment",
             "UPDATE orders SET qty = 0",
         ]
