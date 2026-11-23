@@ -26,6 +26,13 @@ class WorkspaceDecimalSerializationTests(unittest.TestCase):
         self.assertIsInstance(decoded["nested"][0]["tax"], Decimal)
         self.assertIsInstance(decoded["nested"][1], Decimal)
 
+    def test_generic_firestore_normaliser_preserves_decimal_exactly(self):
+        original = {"unit_price": Decimal("0.1000000000000000009")}
+        stored = firestore_db._normalise(original)
+        restored = firestore_db._denormalise_workspace_value(stored)
+        self.assertEqual(restored["unit_price"], original["unit_price"])
+        self.assertIsInstance(restored["unit_price"], Decimal)
+
     def test_workspace_decimal_encoding_is_firestore_compatible(self):
         encoded = firestore_db._normalise_workspace_value(
             {"amount": Decimal("10.2300")}
