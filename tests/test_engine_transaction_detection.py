@@ -76,6 +76,44 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         findings = engine.detect(ledger)
         self.assertIn("Slow approvals", set(findings["finding_type"]))
 
+    def test_overpriced_invoice_is_not_hidden_by_a_cheaper_invoice(self):
+        orders = pd.DataFrame([{
+            "po_id": "PO-MULTI-001", "supplier": "Supplier A",
+            "po_date": "2026-01-01", "ordered_qty": 20, "po_unit_price": 100,
+        }])
+        invoices = pd.DataFrame([
+            {"invoice_id": "INV-HIGH", "po_id": "PO-MULTI-001", "invoice_qty": 1,
+             "invoice_unit_price": 120, "invoice_date": "2026-01-03"},
+            {"invoice_id": "INV-LOW", "po_id": "PO-MULTI-001", "invoice_qty": 1,
+             "invoice_unit_price": 80, "invoice_date": "2026-01-04"},
+        ])
+        result = engine.onboard_tables(
+            {"orders": orders, "invoices": invoices}, verbose=False, with_ml=False
+        )
+        price = result["findings"][
+            result["findings"]["finding_type"] == "Invoice price above PO price"
+        ]
+        self.assertEqual(len(price), 1)
+        self.assertAlmostEqual(float(price.iloc[0]["leakage"]), 20.0, places=6)
+        self.assertIn("INV-HIGH", price.iloc[0]["evidence"])
+
+    def test_multiple_receipts_use_final_receipt_date_for_delivery_delay(self):
+        orders = pd.DataFrame([{
+            "po_id": "PO-RECEIPTS-001", "supplier": "Supplier B",
+            "po_date": "2026-01-01", "ordered_qty": 10, "po_unit_price": 50,
+            "promised_date": "2026-01-05",
+        }])
+        receipts = pd.DataFrame([
+            {"po_id": "PO-RECEIPTS-001", "received_qty": 4, "received_date": "2026-01-02"},
+            {"po_id": "PO-RECEIPTS-001", "received_qty": 6, "received_date": "2026-01-07"},
+        ])
+        result = engine.onboard_tables(
+            {"orders": orders, "receipts": receipts}, verbose=False, with_ml=False
+        )
+        late = result["findings"][result["findings"]["finding_type"] == "Late delivery"]
+        self.assertEqual(len(late), 1)
+        self.assertIn("2 day", late.iloc[0]["evidence"])
+
     def test_evidence_is_scoped_to_the_single_purchase_order(self):
         findings = engine.detect(self.ledger)
         evidence = engine.build_evidence(self.ledger, findings, engine.DEFAULT_CONFIG)
