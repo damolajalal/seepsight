@@ -941,6 +941,8 @@ def save_analysis_results(
     if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Analysis summary is too large to store safely.")
 
+    if len(findings) > 250_000:
+        raise ValueError("An analysis cannot contain more than 250,000 findings.")
     prepared_findings = []
     for finding in findings:
         if not isinstance(finding, dict):
@@ -959,36 +961,47 @@ def save_analysis_results(
     }, merge=True)
 
     client = get_firestore_client()
-    for start in range(0, len(prepared_findings), 400):
-        batch = client.batch()
-        for index, finding in enumerate(
-            prepared_findings[start:start + 400], start=start
-        ):
-            finding_id = f"finding_{index:012d}"
-            finding_ref = analysis_ref.collection("findings").document(finding_id)
-            batch.set(finding_ref, {
-                **finding,
-                "_finding_number": index,
-            })
-        batch.commit()
+    try:
+        for start in range(0, len(prepared_findings), 400):
+            batch = client.batch()
+            for index, finding in enumerate(
+                prepared_findings[start:start + 400], start=start
+            ):
+                finding_id = f"finding_{index:012d}"
+                finding_ref = analysis_ref.collection("findings").document(finding_id)
+                batch.set(finding_ref, {
+                    **finding,
+                    "_finding_number": index,
+                })
+            batch.commit()
 
-    existing_findings = analysis_ref.collection("findings").order_by("_finding_number")
-    stale_batch = client.batch()
-    stale_count = 0
-    for snapshot in _stream_query_pages(existing_findings, page_size=400):
-        if int((snapshot.to_dict() or {}).get("_finding_number", -1)) >= len(prepared_findings):
-            stale_batch.delete(snapshot.reference)
-            stale_count += 1
-            if stale_count % 400 == 0:
-                stale_batch.commit()
-                stale_batch = client.batch()
-    if stale_count % 400:
-        stale_batch.commit()
+        existing_findings = analysis_ref.collection("findings").order_by("_finding_number")
+        stale_batch = client.batch()
+        stale_count = 0
+        for snapshot in _stream_query_pages(existing_findings, page_size=400):
+            if int((snapshot.to_dict() or {}).get("_finding_number", -1)) >= len(prepared_findings):
+                stale_batch.delete(snapshot.reference)
+                stale_count += 1
+                if stale_count % 400 == 0:
+                    stale_batch.commit()
+                    stale_batch = client.batch()
+        if stale_count % 400:
+            stale_batch.commit()
 
-    analysis_ref.set({
-        "results_status": "complete",
-        "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+        analysis_ref.set({
+            "results_status": "complete",
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+    except Exception as exc:
+        try:
+            analysis_ref.set({
+                "results_status": "failed",
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+        except Exception:
+            pass
+        raise RuntimeError("Analysis findings could not be saved completely.") from exc
+
     write_company_audit_event(
         company_id, "analysis.results_saved", "analysis", analysis_id,
         {"finding_count": len(prepared_findings)},
@@ -1017,7 +1030,7 @@ def get_analysis_results(company_id, analysis_id):
         return None
 
     summary = _denormalise_workspace_value(snapshot.to_dict() or {})
-    if summary.get("results_status") == "saving":
+    if summary.get("results_status") in {"saving", "failed"}:
         return None
 
     findings = (
@@ -1088,14 +1101,25 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
         raise TypeError("summary and tables must be dictionaries.")
 
     # Validate and normalise the complete payload before changing Firestore.
+    cleaned_summary = _normalise_workspace_value(summary)
+    if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
+        raise ValueError("Analysis workspace summary is too large to store safely.")
     prepared = {}
+    total_rows = 0
     for table_name, records in tables.items():
-        if not isinstance(table_name, str) or not table_name.replace("_", "").isalnum():
+        if (
+            not isinstance(table_name, str)
+            or not table_name.replace("_", "").isalnum()
+            or len(table_name.encode("utf-8")) > 128
+        ):
             raise ValueError("Invalid analysis table name.")
         if records is None:
             records = []
         if not isinstance(records, (list, tuple)):
             raise TypeError("Each analysis table must be a list of records.")
+        total_rows += len(records)
+        if total_rows > 250_000:
+            raise ValueError("An analysis workspace cannot exceed 250,000 total rows.")
         cleaned_rows = []
         for record in records:
             if not isinstance(record, dict):
@@ -1150,7 +1174,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
     @firestore.transactional
     def _activate_revision(transaction):
         transaction.set(analysis_ref, {
-            **_normalise_workspace_value(summary),
+            **cleaned_summary,
             "analysis_id": analysis_id,
             "active_revision": revision_id,
             "tables": table_counts,
