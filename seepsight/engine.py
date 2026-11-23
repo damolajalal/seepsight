@@ -640,6 +640,8 @@ def detect(led, config=None):
         except (TypeError, ValueError):
             return 0.0
 
+    as_of = pd.Timestamp(cfg.get("as_of_date") or pd.Timestamp.now()).normalize()
+
     def add_transaction(finding_type, idx, evidence, leakage=0.0, orders_held=0.0):
         row = led.loc[idx]
         supplier = row.get("supplier")
@@ -661,7 +663,11 @@ def detect(led, config=None):
             invoice_qty = row.get("invoice_qty")
             if pd.isna(received) or pd.isna(ordered):
                 continue
-            short_vs_order = max(float(ordered) - float(received), 0.0)
+            promised = row.get("promised_date")
+            delivery_due = pd.notna(promised) and pd.Timestamp(promised).normalize() < as_of
+            # An unfulfilled order is not labelled a short delivery until its
+            # promised date has passed. Invoice overbilling is actionable immediately.
+            short_vs_order = max(float(ordered) - float(received), 0.0) if delivery_due else 0.0
             overbilled = max(float(invoice_qty) - float(received), 0.0) if pd.notna(invoice_qty) else 0.0
             short_units = max(short_vs_order, overbilled)
             if short_units <= 0:
@@ -725,16 +731,24 @@ def detect(led, config=None):
                 orders_held=safe_amount(row.get("po_total", 0.0)),
             )
 
-    # Any delivery after its promised date is reported, including a one-day delay.
-    if available(["supplier", "promised_date", "received_date"]):
+    # Report late completed deliveries and orders still outstanding after the due date.
+    if available(["supplier", "promised_date"]):
         for idx, row in led.iterrows():
-            days = row.get("days_late")
-            if pd.isna(days) or float(days) <= 0:
-                continue
-            add_transaction(
-                "Late delivery", idx,
-                f"Goods arrived {float(days):g} day(s) after the promised delivery date.",
-            )
+            received_date = row.get("received_date")
+            if pd.notna(received_date):
+                days = row.get("days_late")
+                if pd.isna(days) or float(days) <= 0:
+                    continue
+                evidence = f"Goods arrived {float(days):g} day(s) after the promised delivery date."
+            else:
+                promised = row.get("promised_date")
+                if pd.isna(promised):
+                    continue
+                days = (as_of - pd.Timestamp(promised).normalize()).days
+                if days <= 0:
+                    continue
+                evidence = f"Goods were still outstanding {days} day(s) after the promised date as of {as_of.date()}."
+            add_transaction("Late delivery", idx, evidence)
 
     # Supplier deterioration remains an additional trend-level signal, never a gate on late-delivery findings.
     if available(["supplier", "po_date", "promised_date", "received_date"]):
@@ -1321,7 +1335,7 @@ ANSWER_KEYS = {
 }
 EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "promised_date", "received_date",
                     "ordered_qty", "received_qty", "invoice_qty", "po_unit_price", "invoice_unit_price",
-                    "approval_days", "days_late", "po_total"]
+                    "approval_days", "days_late", "po_total", "invoice_overpriced_count", "overpriced_invoice_ids"]
 
 
 def build_evidence(led, findings, cfg):
