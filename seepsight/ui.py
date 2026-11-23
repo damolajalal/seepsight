@@ -60,323 +60,306 @@ STATUS_KIND = {
 
 CSS = """
 :root {
+    color-scheme: light;
     --sp-navy: #142B3B;
     --sp-navy-light: #203E50;
     --sp-sage: #D5E8E1;
     --sp-sage-dark: #47796B;
-    --sp-ivory: #F7F5F0;
+    --sp-ivory: #F5F6F3;
     --sp-white: #FFFFFF;
     --sp-amber: #D18A58;
     --sp-text: #263944;
     --sp-muted: #71808A;
-    --sp-border: #E6E5DF;
+    --sp-border: #E4E9E6;
+    --sp-shadow: 0 8px 28px rgba(20, 43, 59, .055);
 }
 
-/* -------------------------------------------------------
-   APPLICATION FOUNDATION
-------------------------------------------------------- */
-
-html,
-body,
-[data-testid="stApp"] {
+/* Foundation */
+html, body, [data-testid="stApp"] {
     background: var(--sp-ivory);
     color: var(--sp-text);
-    font-family: "Inter", "Segoe UI", sans-serif;
+    font-family: Inter, "Segoe UI", sans-serif;
 }
-
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(ellipse at 88% 0%, rgba(213, 232, 225, .28), transparent 34%),
+        var(--sp-ivory);
+}
 .block-container {
-    max-width: 1380px;
-    padding-top: 2.2rem;
-    padding-bottom: 4rem;
+    max-width: 1460px;
+    padding: 2.1rem clamp(1.2rem, 3vw, 3rem) 4rem;
 }
-
-/* Remove excessive default visual clutter */
-
 [data-testid="stDecoration"] {
     background: var(--sp-sage-dark);
+    height: 3px;
+}
+h1, h2, h3, h4, h5 {
+    color: var(--sp-navy);
+    letter-spacing: -.035em;
+}
+p, li {
+    line-height: 1.65;
 }
 
-/* -------------------------------------------------------
-   SIDEBAR
-------------------------------------------------------- */
-
+/* Navigation */
 [data-testid="stSidebar"] {
-    background: var(--sp-navy);
+    background: linear-gradient(180deg, #142B3B 0%, #102432 100%);
     border-right: 1px solid #294354;
 }
-
 [data-testid="stSidebar"] > div:first-child {
-    background: var(--sp-navy);
+    background: transparent;
 }
-
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] a {
     color: #E4ECEE;
 }
-
-[data-testid="stSidebar"] a {
-    border-radius: 7px;
-    transition: background 0.2s ease;
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #B7C8CF;
 }
-
+[data-testid="stSidebar"] a {
+    border-radius: 10px;
+    margin: 2px 0;
+    transition: background .18s ease, transform .18s ease;
+}
 [data-testid="stSidebar"] a:hover {
-    background: #203E50;
+    background: rgba(255,255,255,.085);
+    color: #FFFFFF;
+    transform: translateX(2px);
+}
+[data-testid="stSidebar"] a[aria-current="page"] {
+    background: rgba(169, 209, 195, .16);
+    border-left: 3px solid #A9D1C3;
+    border-radius: 8px;
     color: #FFFFFF;
 }
-
-[data-testid="stSidebar"] a[aria-current="page"] {
-    background: #294858;
-    border-left: 3px solid #A9D1C3;
-    border-radius: 7px;
-}
-
 [data-testid="stSidebar"] [data-baseweb="select"] * {
     color: var(--sp-navy) !important;
 }
-
-/* Brand */
-
 .sp-brand {
     color: #FFFFFF !important;
-    font-size: 27px;
-    font-weight: 750;
-    letter-spacing: -1.1px;
-    line-height: 1.15;
+    font-size: 28px;
+    font-weight: 780;
+    letter-spacing: -1.3px;
+    line-height: 1.12;
 }
-
 .sp-brand i {
     color: #A9D1C3;
     font-style: normal;
 }
-
 .sp-tag {
     color: #B7C8CF !important;
     font-size: 11px;
     line-height: 1.7;
-    letter-spacing: 0.25px;
+    letter-spacing: .25px;
     margin-top: 9px;
 }
 
-/* -------------------------------------------------------
-   PAGE HEADERS
-------------------------------------------------------- */
-
+/* Page hierarchy */
 .sp-h1 {
     color: var(--sp-navy);
-    font-size: 32px;
-    font-weight: 750;
-    letter-spacing: -1.1px;
-    line-height: 1.2;
-    margin: 0 0 9px;
+    font-size: clamp(29px, 3vw, 36px);
+    font-weight: 780;
+    letter-spacing: -1.35px;
+    line-height: 1.16;
+    margin: 0 0 10px;
 }
-
 .sp-sub {
     color: var(--sp-muted);
-    font-size: 15px;
-    line-height: 1.7;
-    margin: 0 0 27px;
-    max-width: 850px;
+    font-size: 14px;
+    line-height: 1.75;
+    margin: 0 0 29px;
+    max-width: 900px;
 }
-
 .sp-eyebrow {
     color: var(--sp-sage-dark);
-    font-size: 11px;
-    font-weight: 750;
-    letter-spacing: 1.5px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.55px;
     text-transform: uppercase;
-    margin-bottom: 9px;
+    margin-bottom: 10px;
 }
 
-/* -------------------------------------------------------
-   CONTENT CARDS
-------------------------------------------------------- */
-
+/* Cards and containers */
 .sp-card {
     background: var(--sp-white);
     border: 1px solid var(--sp-border);
-    border-radius: 12px;
-    padding: 21px 23px;
-    margin-bottom: 15px;
-    box-shadow: 0 3px 12px rgba(20, 43, 59, 0.025);
+    border-radius: 15px;
+    padding: 23px 25px;
+    margin-bottom: 17px;
+    box-shadow: var(--sp-shadow);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
-
+.sp-card:hover {
+    border-color: #CFDDD6;
+    box-shadow: 0 12px 32px rgba(20, 43, 59, .075);
+    transform: translateY(-1px);
+}
 .sp-card h4 {
     color: var(--sp-navy);
     font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.2px;
+    font-weight: 740;
+    letter-spacing: -.25px;
     margin: 0 0 9px;
 }
-
 .sp-card p {
     color: var(--sp-muted);
-    line-height: 1.65;
+    line-height: 1.7;
+}
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: var(--sp-border);
+    border-radius: 15px;
+    background: rgba(255,255,255,.82);
+    box-shadow: 0 4px 18px rgba(20, 43, 59, .035);
 }
 
-/* -------------------------------------------------------
-   METRICS
-------------------------------------------------------- */
-
+/* KPI metrics */
 div[data-testid="stMetric"] {
-    background: var(--sp-white);
+    background: linear-gradient(160deg, #FFFFFF 0%, #FBFCFA 100%);
     border: 1px solid var(--sp-border);
-    border-radius: 12px;
-    padding: 18px 19px;
-    box-shadow: 0 3px 12px rgba(20, 43, 59, 0.025);
+    border-radius: 15px;
+    padding: 19px 20px;
+    min-height: 112px;
+    box-shadow: var(--sp-shadow);
 }
-
 div[data-testid="stMetricLabel"] {
     color: var(--sp-muted);
-    font-size: 12px;
-    font-weight: 550;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .02em;
 }
-
 div[data-testid="stMetricValue"] {
     color: var(--sp-navy);
-    font-size: 27px;
-    font-weight: 750;
-    letter-spacing: -0.7px;
+    font-size: clamp(22px, 2vw, 29px);
+    font-weight: 790;
+    letter-spacing: -.85px;
 }
-
 div[data-testid="stMetricDelta"] {
-    font-size: 12px;
-}
-
-/* -------------------------------------------------------
-   BUTTONS
-------------------------------------------------------- */
-
-.stButton > button,
-.stDownloadButton > button {
-    border-radius: 8px;
+    font-size: 11px;
     font-weight: 650;
-    min-height: 40px;
-    transition: all 0.2s ease;
 }
 
-.stButton > button[kind="primary"] {
+/* Buttons */
+.stButton > button,
+.stDownloadButton > button,
+[data-testid="stFormSubmitButton"] > button {
+    min-height: 42px;
+    border-radius: 9px;
+    font-weight: 680;
+    letter-spacing: -.01em;
+    transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.stButton > button[kind="primary"],
+[data-testid="stFormSubmitButton"] > button[kind="primary"] {
     background: var(--sp-navy);
     border: 1px solid var(--sp-navy);
     color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(20, 43, 59, .12);
 }
-
-.stButton > button[kind="primary"]:hover {
+.stButton > button[kind="primary"]:hover,
+[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover {
     background: var(--sp-navy-light);
     border-color: var(--sp-navy-light);
     color: #FFFFFF;
+    transform: translateY(-1px);
+    box-shadow: 0 7px 16px rgba(20, 43, 59, .16);
 }
-
 .stButton > button[kind="secondary"]:hover,
 .stDownloadButton > button:hover {
     border-color: var(--sp-sage-dark);
     color: var(--sp-navy);
+    transform: translateY(-1px);
 }
 
-/* -------------------------------------------------------
-   FORMS AND INPUTS
-------------------------------------------------------- */
-
+/* Inputs */
 .stTextInput input,
 .stTextArea textarea,
-.stNumberInput input {
+.stNumberInput input,
+[data-baseweb="select"] > div {
     background: #FFFFFF;
-    border: 1px solid var(--sp-border);
-    border-radius: 8px;
+    border: 1px solid #DCE4DF;
+    border-radius: 9px;
     color: var(--sp-text);
 }
-
 .stTextInput input:focus,
 .stTextArea textarea:focus,
 .stNumberInput input:focus {
     border-color: var(--sp-sage-dark);
-    box-shadow: 0 0 0 1px var(--sp-sage-dark);
+    box-shadow: 0 0 0 3px rgba(71, 121, 107, .12);
 }
-
 [data-baseweb="select"] > div {
-    border-radius: 8px;
-    border-color: var(--sp-border);
+    min-height: 42px;
+}
+label, [data-testid="stWidgetLabel"] p {
+    color: #40535D;
+    font-weight: 620;
 }
 
-/* -------------------------------------------------------
-   TABS
-------------------------------------------------------- */
-
+/* Tabs */
 .stTabs [data-baseweb="tab"] {
     color: var(--sp-muted);
-    font-weight: 600;
+    font-weight: 650;
 }
-
 .stTabs [aria-selected="true"] {
     color: var(--sp-navy);
 }
-
 .stTabs [data-baseweb="tab-highlight"] {
     background: var(--sp-sage-dark);
 }
 
-/* -------------------------------------------------------
-   TABLES AND DATA
-------------------------------------------------------- */
-
+/* Data tables */
 [data-testid="stDataFrame"],
 [data-testid="stTable"] {
     border: 1px solid var(--sp-border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
 }
-
-/* -------------------------------------------------------
-   ALERTS AND EXPANDERS
-------------------------------------------------------- */
-
-[data-testid="stAlert"] {
-    border-radius: 9px;
+[data-testid="stDataFrame"] {
+    background: #FFFFFF;
 }
 
+/* Feedback, expanders and dividers */
+[data-testid="stAlert"] {
+    border-radius: 11px;
+    border-width: 1px;
+}
 [data-testid="stExpander"] {
     background: #FFFFFF;
     border: 1px solid var(--sp-border);
-    border-radius: 9px;
+    border-radius: 11px;
 }
-
-/* -------------------------------------------------------
-   DIVIDERS
-------------------------------------------------------- */
-
 hr {
     border-color: var(--sp-border);
 }
 
-/* -------------------------------------------------------
-   RESPONSIVE DESIGN
-------------------------------------------------------- */
-
+/* Responsive layout */
+@media (max-width: 900px) {
+    .block-container {
+        padding: 1.5rem 1.15rem 3rem;
+    }
+}
 @media (max-width: 768px) {
     .block-container {
-        padding: 1.3rem 1rem 2rem;
+        padding: 1.2rem .9rem 2.5rem;
     }
-
     .sp-h1 {
-        font-size: 26px;
+        font-size: 27px;
     }
-
     .sp-sub {
-        font-size: 14px;
-        margin-bottom: 19px;
+        font-size: 13px;
+        margin-bottom: 21px;
     }
-
     .sp-card {
-        padding: 16px;
+        padding: 17px;
+        border-radius: 12px;
     }
-
     div[data-testid="stMetric"] {
-        padding: 13px;
+        padding: 14px;
+        min-height: 96px;
     }
-
     div[data-testid="stMetricValue"] {
-        font-size: 22px;
+        font-size: 21px;
     }
 }
 """
