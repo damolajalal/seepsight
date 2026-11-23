@@ -121,20 +121,12 @@ def get_firestore_client():
 # ============================================================
 
 def test_firestore_connection():
-    """
-    Test Firestore write, read and delete operations.
-
-    Returns True only when all operations succeed.
-    """
-
+    """Verify Firestore access and report cleanup failures without masking errors."""
     client = get_firestore_client()
-
     test_id = f"connection_{uuid.uuid4().hex}"
-
-    test_ref = (
-        client.collection("_system")
-        .document(test_id)
-    )
+    test_ref = client.collection("_system").document(test_id)
+    operation_error = None
+    cleanup_error = None
 
     try:
         test_ref.set({
@@ -142,27 +134,25 @@ def test_firestore_connection():
             "purpose": "temporary_connection_test",
             "created_at": datetime.now(timezone.utc),
         })
-
         snapshot = test_ref.get()
-
         if not snapshot.exists:
-            raise RuntimeError(
-                "Firestore test document could not be read."
-            )
-
-        data = snapshot.to_dict()
-
+            raise RuntimeError("Firestore test document could not be read.")
+        data = snapshot.to_dict() or {}
         if data.get("status") != "connected":
-            raise RuntimeError(
-                "Firestore returned unexpected test data."
-            )
-
-        return True
-
+            raise RuntimeError("Firestore returned unexpected test data.")
+    except Exception as exc:
+        operation_error = exc
     finally:
-        # Ensure temporary test data is removed.
-        test_ref.delete()
+        try:
+            test_ref.delete()
+        except Exception as exc:
+            cleanup_error = exc
 
+    if operation_error is not None:
+        raise RuntimeError("Firestore connection verification failed.") from operation_error
+    if cleanup_error is not None:
+        raise RuntimeError("Firestore connection test cleanup failed.") from cleanup_error
+    return True
 
 # ============================================================
 # 3. INPUT VALIDATION AND NORMALISATION
