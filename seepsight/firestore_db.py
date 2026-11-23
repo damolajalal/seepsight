@@ -404,18 +404,24 @@ def write_company_audit_event(company_id, event_type, resource_type,
     if payload_size > 12_000:
         raise ValueError("Audit details exceed the safe size limit.")
 
-    company = _company_ref(company_id)
     event_id = uuid.uuid4().hex
-    company.collection("audit_events").document(event_id).create({
-        "event_id": event_id,
-        "event_type": event_type,
-        "resource_type": resource_type,
-        "resource_id": resource_id,
-        "details": safe_details,
-        "actor_uid": (st.session_state.get("seepsight_auth") or {}).get("uid"),
-        "created_at": datetime.now(timezone.utc),
-    })
-    return event_id
+    try:
+        company = _company_ref(company_id)
+        company.collection("audit_events").document(event_id).create({
+            "event_id": event_id,
+            "event_type": event_type,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "details": safe_details,
+            "actor_uid": (st.session_state.get("seepsight_auth") or {}).get("uid"),
+            "created_at": datetime.now(timezone.utc),
+        })
+        return event_id
+    except Exception:
+        # Audit is best-effort across Firestore/GCS boundaries; never report a
+        # successful data write as failed solely because the audit sink is down.
+        logging.getLogger(__name__).warning("Company audit event could not be persisted.")
+        return None
 
 
 # ============================================================
