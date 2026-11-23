@@ -78,7 +78,7 @@ CONTRACT = {
     "invoice_unit_price": dict(kind="number", required=False, desc="Unit price billed on the invoice",
                                names=["invoiceprice", "invoiceunitprice", "billedprice", "billedunitprice",
                                       "invoicedunitprice", "invoicerate", "invoicedprice", "unitpriceinvoiced",
-                                      "billedrate", "invoiceunitcost"]),
+                                      "billedrate", "ratebilled", "invoiceunitcost"]),
     "invoice_date": dict(kind="date", required=False, desc="Invoice date",
                          names=["invoicedate", "invdate", "invdt", "billingdate", "billdate", "dateinvoiced",
                                 "invoicedon", "dateofinvoice"]),
