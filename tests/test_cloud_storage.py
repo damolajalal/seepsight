@@ -30,6 +30,20 @@ class CloudStorageValidationTests(unittest.TestCase):
                     cloud_storage.download_company_file("company_1", "companies/company_2/uploads/id/orders.csv")
                 client.assert_not_called()
 
+    def test_upload_requires_company_authorization_before_cloud_access(self):
+        with patch.object(
+            firestore_db,
+            "verify_company_access",
+            side_effect=PermissionError("denied"),
+        ):
+            with patch.object(cloud_storage, "_client") as client:
+                with patch.dict("os.environ", {"SEEPSIGHT_UPLOADS_BUCKET": "private-bucket"}):
+                    with self.assertRaises(PermissionError):
+                        cloud_storage.upload_company_file(
+                            "company_1", "upload-1", "orders.csv", b"a,b\\n1,2\\n"
+                        )
+                client.assert_not_called()
+
     def test_upload_is_create_only(self):
         blob = MagicMock(generation=7, size=12, content_type="text/csv")
         bucket = MagicMock(name="private-bucket")
