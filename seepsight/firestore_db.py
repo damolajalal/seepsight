@@ -193,7 +193,11 @@ def _normalise(value):
             for key, item in value.items()
         }
         if set(cleaned) in ({_DECIMAL_MARKER}, {_ESCAPED_MAP_MARKER}):
-            return {_ESCAPED_MAP_MARKER: cleaned}
+            return {
+                _ESCAPED_MAP_MARKER: {
+                    "entries": [[key, item] for key, item in cleaned.items()]
+                }
+            }
         return cleaned
 
     if isinstance(value, (list, tuple)):
@@ -279,7 +283,12 @@ def _denormalise_workspace_value(value):
     """Restore exact Decimal values encoded in durable Firestore payloads."""
     if isinstance(value, dict):
         if set(value) == {_ESCAPED_MAP_MARKER} and isinstance(value[_ESCAPED_MAP_MARKER], dict):
-            return _denormalise_workspace_value(value[_ESCAPED_MAP_MARKER])
+            payload = value[_ESCAPED_MAP_MARKER]
+            if set(payload) == {"entries"} and isinstance(payload["entries"], list):
+                return {
+                    key: _denormalise_workspace_value(item)
+                    for key, item in payload["entries"]
+                }
         if (
             set(value) == {_DECIMAL_MARKER}
             and isinstance(value[_DECIMAL_MARKER], str)
