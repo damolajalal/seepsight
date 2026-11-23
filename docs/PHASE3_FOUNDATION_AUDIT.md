@@ -32,15 +32,17 @@
 - Dataset and analysis reads use bounded pagination. Record writes are validated before writes begin, use idempotent row IDs within a dataset ID, and mark partial failures as incomplete.
 - Analysis revisions are written separately; only a complete revision can be activated. The analysis and company latest pointers are switched transactionally.
 - Case activity events and case state are committed in a single Firestore transaction. A stale history length is rejected.
-- Audit payloads are size-limited and strip credential-like keys before persistence.
+- Audit payloads are size-limited and strip credential-like keys before persistence. Audit writes are best-effort across separate Firestore/GCS operations and emit a static server warning if the audit sink is unavailable; they are not a distributed transaction.
 - Database query helpers accept only a single SELECT/CTE statement, reject mutation/locking patterns, bind parameters, limit returned rows and apply timeouts. Database users must still be provisioned with read-only grants.
 - No credential values or service-account JSON are committed to the repository.
 
 ## Automated verification
 
-The Python security workflow now covers authorization, company membership integrity, private storage boundaries, case transactions, generic dataset-record persistence, exact Decimal serialization, revision cleanup, audit event sanitization, and read-only connector validation/dispatch. The Phase 7 hybrid web workflow continues to run on the same branch.
+The Python security workflow covers authorization, company membership integrity, private storage boundaries, transactional case history, generic dataset-record persistence and retrieval, exact Decimal serialization, revision cleanup, audit event sanitization, and read-only connector validation/dispatch. The Phase 7 hybrid web workflow also passes on the same branch.
 
-Workflow results must be read from the latest commit's run, not copied from an earlier commit. The current head's Python and hybrid workflow results are still pending at the time this audit text is written.
+- Python security Run #78 passed on commit `6d29f55`: 53 tests passed.
+- Phase 7 hybrid web Run #108 passed on the same commit.
+- These checks are automated CI tests with mocked/isolated provider boundaries; no live Firebase, GCS, Secret Manager or external database connection was performed.
 
 ## External acceptance still required
 
