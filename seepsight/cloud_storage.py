@@ -141,10 +141,11 @@ def delete_company_file(company_id, object_name, if_generation_match=None):
     object_name = _validate_company_object(company_id, object_name)
     try:
         blob = _client().bucket(_bucket_name()).blob(object_name)
-        kwargs = {}
-        if if_generation_match is not None:
-            kwargs["if_generation_match"] = int(if_generation_match)
-        blob.delete(**kwargs)
+        if blob.exists():
+            kwargs = {}
+            if if_generation_match is not None:
+                kwargs["if_generation_match"] = int(if_generation_match)
+            blob.delete(**kwargs)
         from seepsight.firestore_db import write_company_audit_event
         write_company_audit_event(
             company_id, "storage.deleted", "upload", object_name.split("/")[3],
