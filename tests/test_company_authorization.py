@@ -41,7 +41,7 @@ class CompanyAuthorizationTests(unittest.TestCase):
         self.token_patch = patch.object(
             firebase_auth,
             "verify_id_token",
-            return_value={"uid": "user-a"},
+            return_value={"uid": "user-a", "email_verified": True},
         )
         self.token_patch.start()
         self.addCleanup(self.token_patch.stop)
@@ -63,9 +63,28 @@ class CompanyAuthorizationTests(unittest.TestCase):
         with patch.object(
             firebase_auth,
             "verify_id_token",
-            return_value={"uid": "different-user"},
+            return_value={"uid": "different-user", "email_verified": True},
         ):
             with self.assertRaisesRegex(PermissionError, "identity"):
+                firestore_db.verify_company_access("company-a")
+
+
+    def test_company_access_rejects_unverified_email(self):
+        with patch.object(
+            firebase_auth,
+            "verify_id_token",
+            return_value={"uid": "user-a", "email_verified": False},
+        ):
+            with self.assertRaisesRegex(PermissionError, "verify your email"):
+                firestore_db.verify_company_access("company-a")
+
+    def test_company_access_rejects_revoked_or_invalid_token(self):
+        with patch.object(
+            firebase_auth,
+            "verify_id_token",
+            side_effect=ValueError("revoked token"),
+        ):
+            with self.assertRaisesRegex(PermissionError, "could not be verified"):
                 firestore_db.verify_company_access("company-a")
 
     def test_company_access_rejects_another_company(self):
