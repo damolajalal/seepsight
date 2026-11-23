@@ -163,6 +163,11 @@ def has_company_data():
     company_id, _ = _authenticated_company()
     mine = st.session_state.get("mine")
 
+    if company_id and not isinstance(mine, dict):
+        mine = restore_latest(company_id)
+        if mine is not None:
+            st.session_state["mine"] = mine
+
     return bool(
         company_id
         and isinstance(mine, dict)
