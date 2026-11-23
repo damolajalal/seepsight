@@ -246,10 +246,10 @@ def _login():
                 email=user["email"],
                 company_name=user.get("displayName", "Company"),
             )
-        except Exception as exc:
+        except Exception:
             st.error(
                 "Your sign-in succeeded, but your company workspace "
-                f"could not be loaded: {exc}"
+                "could not be loaded. Please try again or contact support."
             )
             return
 
