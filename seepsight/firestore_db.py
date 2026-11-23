@@ -188,10 +188,13 @@ def _normalise(value):
         return None
 
     if isinstance(value, dict):
-        return {
+        cleaned = {
             str(key): _normalise(item)
             for key, item in value.items()
         }
+        if set(cleaned) in ({_DECIMAL_MARKER}, {_ESCAPED_MAP_MARKER}):
+            return {_ESCAPED_MAP_MARKER: cleaned}
+        return cleaned
 
     if isinstance(value, (list, tuple)):
         return [
