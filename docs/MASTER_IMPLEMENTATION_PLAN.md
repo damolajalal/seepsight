@@ -64,7 +64,7 @@ Acceptance:
 **Intended effect:** Customer data survives beyond a Streamlit session and is stored securely with company-level isolation.
 
 Work:
-- Private Google Cloud Storage service for raw uploads and generated artifacts, using company-scoped object paths and least-privilege access.
+- Firestore-only original upload storage using bounded company-scoped chunk documents, metadata and SHA-256 integrity verification.
 - Firestore metadata for companies, datasets, upload jobs, mappings, schema versions, sync state, and artifact references.
 - Secret Manager integration for database credentials; store secret references, not secret values, in application metadata.
 - Database adapters for PostgreSQL, MySQL, SQL Server, and BigQuery with safe connection handling, TLS where supported, query timeouts, read-only access by default, and secret rotation.
@@ -79,7 +79,7 @@ Acceptance:
 - Adapter tests cover success, invalid credentials, timeout, unavailable database, permission denial, and cleanup.
 - Storage failure does not create a false success state.
 
-**Status:** Phase 3 code foundation implemented on `feature/company-auth`: company-scoped Firebase/Firestore authorization; durable dataset metadata, raw source rows and normalized records; exact Decimal serialization; revisioned analysis workspaces with transactional activation and retention; transactional case history; company audit events; bounded/idempotent ingestion and retry-safe deletion; private GCS helpers; Secret Manager references; and read-only PostgreSQL, MySQL, SQL Server and BigQuery adapters. The Settings page now provides owner-only connection profile creation, testing and enable/disable controls, enforced again in server-side service methods. Python security Run #139 passed 81 tests and hybrid web Run #169 passed on implementation commit `b64842a`. Production acceptance remains pending live Firebase/Firestore, private GCS bucket, Secret Manager IAM, database network/TLS/read-only credentials and live restart/failure-injection verification. Original upload bytes remain session-only until a private bucket is provisioned. See `docs/PHASE3_FOUNDATION_AUDIT.md` and `docs/PHASE3_CONNECTORS.md`.
+**Status:** Phase 3 code foundation implemented on `feature/company-auth`: company-scoped Firebase/Firestore authorization; durable dataset metadata, raw source rows and normalized records; exact Decimal serialization; revisioned analysis workspaces with transactional activation and retention; transactional case history; company audit events; bounded/idempotent ingestion and retry-safe deletion; Firestore chunked original-file storage; Secret Manager references; and read-only PostgreSQL, MySQL, SQL Server and BigQuery adapters. The Settings page now provides owner-only connection profile creation, testing and enable/disable controls, enforced again in server-side service methods. Python security Run #139 passed 81 tests and hybrid web Run #169 passed on implementation commit `b64842a`. Production acceptance remains pending live Firebase/Firestore, Secret Manager IAM, database network/TLS/read-only credentials and live restart/failure-injection verification. Original upload bytes are stored as Firestore chunks; live byte-field persistence and recovery still require deployment verification. See `docs/PHASE3_FOUNDATION_AUDIT.md` and `docs/PHASE3_CONNECTORS.md`.
 
 ## Phase 4 — Universal ingestion and Connect Your Data
 
