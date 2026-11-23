@@ -487,12 +487,18 @@ if result and st.session_state.get("connect_check_signature") == check_signature
         st.caption("Your results will be attached to the signed-in company identity shown at the top of this page.")
         if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
             try:
-                with st.status("Saving original files and preparing your company workspace...", expanded=True) as status:
+                private_storage_ready = cloud_storage.is_configured()
+                status_message = (
+                    "Saving original files and preparing your company workspace..."
+                    if private_storage_ready
+                    else "Preparing your session-based company workspace..."
+                )
+                with st.status(status_message, expanded=True) as status:
                     saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
                         upload_id = uuid.uuid4().hex
                         storage_metadata = None
-                        if cloud_storage.is_configured():
+                        if private_storage_ready:
                             storage_metadata = cloud_storage.upload_company_file(
                                 company_id,
                                 upload_id,
@@ -515,7 +521,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
                         saved_upload_ids.append(upload_id)
-                    if cloud_storage.is_configured():
+                    if private_storage_ready:
                         st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
                     else:
                         st.write("Original files are available only for this active session; durable file storage is not configured.")
