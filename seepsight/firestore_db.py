@@ -527,6 +527,10 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     if not isinstance(records, (list, tuple)):
         raise TypeError("records must be a list of dictionaries.")
 
+    # Bound total Firestore work per upload; batch sizes alone do not bound
+    # memory use when a caller supplies an unbounded in-memory list.
+    if len(records) > 250_000:
+        raise ValueError("A dataset upload cannot exceed 250,000 records.")
     # Validate and serialise the complete payload before the first write.
     prepared = []
     for index, record in enumerate(records):
@@ -608,6 +612,8 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
     dataset_ref = company.collection("datasets").document(dataset_id)
     metadata = dataset_ref.get()
     status_key = f"{collection_name}_status"
+    if not metadata.exists:
+        raise FileNotFoundError("The requested company dataset does not exist.")
     if metadata.exists:
         metadata_data = metadata.to_dict() or {}
         state = metadata_data.get(status_key)
@@ -647,19 +653,19 @@ def delete_company_dataset(company_id, dataset_id):
 
     storage = metadata.get("storage") or {}
     object_name = storage.get("object_name")
-    if object_name and not metadata.get("storage_deleted", False):
-        from seepsight import cloud_storage
-        cloud_storage.delete_company_file(
-            company_id,
-            object_name,
-            if_generation_match=storage.get("generation"),
-        )
-        dataset_ref.set({
-            "storage_deleted": True,
-            "updated_at": datetime.now(timezone.utc),
-        }, merge=True)
-
     try:
+        if object_name and not metadata.get("storage_deleted", False):
+            from seepsight import cloud_storage
+            cloud_storage.delete_company_file(
+                company_id,
+                object_name,
+                if_generation_match=storage.get("generation"),
+            )
+            dataset_ref.set({
+                "storage_deleted": True,
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+
         get_firestore_client().recursive_delete(dataset_ref)
     except Exception as exc:
         try:
