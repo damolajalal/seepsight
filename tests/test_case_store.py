@@ -29,6 +29,11 @@ class CaseStoreTests(unittest.TestCase):
         )
         self.transactional_patch.start()
         self.addCleanup(self.transactional_patch.stop)
+        self.audit_patch = patch.object(
+            case_store.firestore_db, "write_company_audit_event", return_value="audit-id"
+        )
+        self.audit_patch.start()
+        self.addCleanup(self.audit_patch.stop)
         self.event_refs = {}
 
         def event_document(event_id):
