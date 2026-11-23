@@ -3,3 +3,8 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 *.zip
+node_modules/
+web-hybrid-ai/node_modules/
+web-hybrid-ai/dist/
+web-hybrid-ai/.env.local
+web-hybrid-ai/.env.*.local

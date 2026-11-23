@@ -1,3 +1,4 @@
+import os
 import re
 
 import pandas as pd
@@ -9,6 +10,12 @@ w = workspace.current()
 cur, f, ev = w["cur"], w["findings"], w["evidence"]
 ui.page_header("Ask Seepsight", "Ask questions about your company's purchasing activities. Seepsight uses your records and findings to give evidence-based answers.")
 st.caption("Answers come only from the records and findings in this workspace. If the information is not there, Seepsight will say so.")
+
+# Optional link to the separate Phase 7 Firebase AI Logic companion.
+# Leaving the environment variable unset preserves the existing Ask page.
+hybrid_ai_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "").strip()
+if hybrid_ai_url.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+    st.link_button("Open Seepsight Hybrid AI Studio", hybrid_ai_url)
 
 
 def answer(q):
