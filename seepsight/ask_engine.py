@@ -131,7 +131,7 @@ def answer_question(workspace, question):
         )
 
     # Priorities.
-    if _contains(text, [r"high priority", r"urgent", r"most serious", r"critical", r"what should.*first", r"where should.*start"]):
+    if _contains(text, [r"high priority", r"urgent", r"most serious", r"critical", r"what should.*first", r"where should.*start"]) and not _contains(text, [r"recommend", r"what should", r"next step", r"action plan", r"fix this"]):
         high = findings[findings.get("severity", pd.Series(index=findings.index, dtype=str)).astype(str).str.casefold().eq("high")]
         if high.empty:
             return finish("There are no findings labelled High priority in this analysis.")
