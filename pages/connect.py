@@ -238,7 +238,7 @@ if uploaded:
                     loaded[item.name] = frame
                     source_file_bytes[item.name] = item.getvalue()
             except Exception as exc:
-                errors.append(f"{item.name}: could not be read ({exc}).")
+                errors.append(f"{item.name}: could not be read. Check the file format and try again.")
         st.session_state["connect_raw"] = loaded
         st.session_state["connect_source_file_bytes"] = source_file_bytes
         st.session_state["connect_upload_fingerprint"] = current_fingerprint
@@ -387,7 +387,7 @@ if st.button("Validate and analyse records", type="primary", use_container_width
         st.session_state["connect_check_signature"] = check_signature
         st.session_state.pop("_done", None)
     except Exception as exc:
-        st.error(f"We could not validate these records: {exc}")
+        st.error("We could not validate these records. Check the file structure and mappings, then try again.")
         st.stop()
 
 result = st.session_state.get("connect_check")
@@ -552,7 +552,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 st.session_state["_done"] = True
                 st.rerun()
             except Exception as exc:
-                st.error(f"We could not prepare your workspace: {exc}")
+                st.error("We could not complete the company workspace setup. Please retry; if the problem continues, contact support.")
 
 if st.session_state.get("_done"):
     st.success("Your review is ready. Open Overview in the navigation menu to view your procurement intelligence.")
