@@ -172,6 +172,8 @@ def _validate_id(value, field_name):
         raise ValueError(
             f"{field_name} cannot contain '/'."
         )
+    if len(value.encode("utf-8")) > 128:
+        raise ValueError(f"{field_name} cannot exceed 128 UTF-8 bytes.")
 
     return value
 
@@ -456,6 +458,8 @@ def save_company_dataset(
         raise TypeError("metadata must be a dictionary.")
 
     document = _normalise(metadata)
+    if len(json.dumps(document, default=str).encode("utf-8")) > 800_000:
+        raise ValueError("Dataset metadata is too large to store safely.")
 
     document.update({
         "dataset_id": dataset_id,
@@ -630,8 +634,11 @@ def save_company_mapping(
         .document("mapping")
     )
 
+    cleaned_mapping = _normalise_workspace_value(mapping)
+    if len(json.dumps(cleaned_mapping, default=str).encode("utf-8")) > 800_000:
+        raise ValueError("Dataset mapping is too large to store safely.")
     mapping_ref.set({
-        "mapping": _normalise_workspace_value(mapping),
+        "mapping": cleaned_mapping,
         "updated_at": datetime.now(timezone.utc),
     })
     write_company_audit_event(
@@ -752,6 +759,8 @@ def save_analysis_results(
             )
 
             cleaned_finding = _normalise(finding)
+            if len(json.dumps(cleaned_finding, default=str).encode("utf-8")) > 800_000:
+                raise ValueError("An analysis finding is too large to store safely.")
 
             cleaned_finding["_finding_number"] = finding_number
 
