@@ -166,6 +166,8 @@ def get_company_for_user(uid):
         raise PermissionError("No company workspace is linked to this account.")
 
     user_data = user_snapshot.to_dict() or {}
+    if user_data.get("uid") != uid:
+        raise PermissionError("The account profile could not be verified.")
     company_id = user_data.get("company_id")
 
     if not company_id:
