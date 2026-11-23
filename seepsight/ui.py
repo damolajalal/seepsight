@@ -383,17 +383,25 @@ hr {
     }
 
     div[data-testid="stMetric"] {
-        padding: 13px;
+        min-width: 0;
+        padding: 12px 10px;
     }
 
-    div[data-testid="stMetricValue"] {
-        font-size: clamp(14px, 3.4vw, 19px);
-        white-space: nowrap;
+    div[data-testid="stMetricLabel"] {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.3;
     }
 
+    div[data-testid="stMetricValue"],
     div[data-testid="stMetricValue"] > div {
-        white-space: nowrap;
-        font-size: inherit;
+        min-width: 0;
+        max-width: 100%;
+        font-size: clamp(12px, 3.8vw, 17px);
+        line-height: 1.25;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: normal;
     }
 }
 """
