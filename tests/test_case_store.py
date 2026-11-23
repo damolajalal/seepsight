@@ -15,6 +15,20 @@ class CaseStoreTests(unittest.TestCase):
         self.case_ref.get.return_value.to_dict.return_value = {"history_count": 1}
         self.history = MagicMock()
         self.case_ref.collection.return_value = self.history
+        self.transaction = MagicMock()
+        self.client = MagicMock()
+        self.client.transaction.return_value = self.transaction
+        self.client_patch = patch.object(
+            case_store.firestore_db, "get_firestore_client", return_value=self.client
+        )
+        self.client_patch.start()
+        self.addCleanup(self.client_patch.stop)
+        self.transactional_patch = patch.object(
+            case_store.firestore, "transactional",
+            side_effect=lambda function: (lambda transaction: function(transaction)),
+        )
+        self.transactional_patch.start()
+        self.addCleanup(self.transactional_patch.stop)
         self.event_refs = {}
 
         def event_document(event_id):
@@ -42,10 +56,13 @@ class CaseStoreTests(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertEqual(self.history.document.call_count, 2)
-        self.event_refs["event_000000000001"].set.assert_called_once()
-        self.event_refs["event_000000000002"].set.assert_called_once()
-        self.case_ref.set.assert_called_once()
-        saved_state = self.case_ref.set.call_args.args[0]
+        self.assertEqual(self.transaction.set.call_count, 3)
+        event_calls = [
+            call for call in self.transaction.set.call_args_list
+            if getattr(call.args[0], "id", "").startswith("event_")
+        ]
+        self.assertEqual(len(event_calls), 2)
+        saved_state = self.transaction.set.call_args_list[-1].args[1]
         self.assertEqual(saved_state["history_count"], 3)
         self.assertEqual(saved_state["status"], "Investigating")
 
@@ -56,7 +73,7 @@ class CaseStoreTests(unittest.TestCase):
                 "company-a", "finding-1", {"history": ["Case opened"]}
             )
         self.history.document.assert_not_called()
-        self.case_ref.set.assert_not_called()
+        self.transaction.set.assert_not_called()
 
     def test_save_rejects_invalid_status(self):
         with self.assertRaisesRegex(ValueError, "Invalid case status"):
@@ -76,6 +93,7 @@ class CaseStoreTests(unittest.TestCase):
             "company-a", "finding-1", {"history": ["Case opened"]}
         )
         case_store.firestore_db._company_ref.assert_called_once_with("company-a")
+        self.assertEqual(self.transaction.set.call_count, 2)
 
 
 if __name__ == "__main__":
