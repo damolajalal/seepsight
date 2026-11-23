@@ -87,4 +87,8 @@ def save_company_case(company_id, case_id, case):
         }, merge=True)
 
     _save(transaction)
+    firestore_db.write_company_audit_event(
+        company_id, "case.updated", "case", case_id,
+        {"status": status, "history_count": len(history)},
+    )
     return True
