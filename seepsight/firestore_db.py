@@ -839,7 +839,41 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
         "latest_analysis_id": analysis_id,
         "latest_analysis_updated_at": datetime.now(timezone.utc),
     }, merge=True)
+    # Retain a small recovery window without ever deleting the active revision.
+    try:
+        cleanup_analysis_revisions(company_id, analysis_id, keep=3)
+    except Exception:
+        # Cleanup must never turn a successfully committed analysis into a failed run.
+        pass
     return analysis_id
+
+
+def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
+    """Delete superseded analysis revisions while protecting the active revision."""
+    if not isinstance(keep, int) or keep < 1 or keep > 20:
+        raise ValueError("keep must be between 1 and 20.")
+    company = _company_ref(company_id)
+    analysis_id = _validate_id(analysis_id, "analysis_id")
+    analysis_ref = company.collection("analyses").document(analysis_id)
+    snapshot = analysis_ref.get()
+    if not snapshot.exists:
+        return 0
+    active_revision = (snapshot.to_dict() or {}).get("active_revision")
+    query = analysis_ref.collection("revisions").order_by(
+        "created_at", direction="DESCENDING"
+    )
+    revisions = list(_stream_query_pages(query, page_size=200))
+    protected = {active_revision} if active_revision else set()
+    protected.update(item.id for item in revisions[:keep])
+    client = get_firestore_client()
+    deleted = 0
+    for item in revisions:
+        if item.id in protected:
+            continue
+        client.recursive_delete(item.reference)
+        deleted += 1
+    return deleted
+
 
 def get_latest_analysis_workspace(company_id):
     """Load the latest complete analysis using bounded, paginated row reads."""
