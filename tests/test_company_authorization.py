@@ -14,12 +14,14 @@ class CompanyAuthorizationTests(unittest.TestCase):
         self.account = {
             "uid": "user-a",
             "id_token": "firebase-test-token",
+            "email": "user-a@example.com",
         }
         self.membership = {
             "uid": "user-a",
             "company_id": "company-a",
             "company_name": "Company A",
             "role": "owner",
+            "email": "user-a@example.com",
         }
 
         self.session_patch = patch.object(
@@ -41,7 +43,7 @@ class CompanyAuthorizationTests(unittest.TestCase):
         self.token_patch = patch.object(
             firebase_auth,
             "verify_id_token",
-            return_value={"uid": "user-a", "email_verified": True},
+            return_value={"uid": "user-a", "email": "user-a@example.com", "email_verified": True},
         )
         self.token_patch.start()
         self.addCleanup(self.token_patch.stop)
@@ -63,7 +65,7 @@ class CompanyAuthorizationTests(unittest.TestCase):
         with patch.object(
             firebase_auth,
             "verify_id_token",
-            return_value={"uid": "different-user", "email_verified": True},
+            return_value={"uid": "different-user", "email": "user-a@example.com", "email_verified": True},
         ):
             with self.assertRaisesRegex(PermissionError, "identity"):
                 firestore_db.verify_company_access("company-a")
@@ -73,7 +75,7 @@ class CompanyAuthorizationTests(unittest.TestCase):
         with patch.object(
             firebase_auth,
             "verify_id_token",
-            return_value={"uid": "user-a", "email_verified": False},
+            return_value={"uid": "user-a", "email": "user-a@example.com", "email_verified": False},
         ):
             with self.assertRaisesRegex(PermissionError, "verify your email"):
                 firestore_db.verify_company_access("company-a")
@@ -97,6 +99,18 @@ class CompanyAuthorizationTests(unittest.TestCase):
         self.assertEqual(result["uid"], "user-a")
         self.assertEqual(result["company_id"], "company-a")
         self.assertEqual(result["role"], "owner")
+
+    def test_company_access_rejects_changed_session_email(self):
+        account = dict(self.account, email="other@example.com")
+        with patch.object(firestore_db.st, "session_state", {"seepsight_auth": account}):
+            with self.assertRaisesRegex(PermissionError, "identity has changed"):
+                firestore_db.verify_company_access("company-a")
+
+    def test_company_access_rejects_membership_email_mismatch(self):
+        membership = dict(self.membership, email="other@example.com")
+        with patch.object(company_store, "get_company_for_user", return_value=membership):
+            with self.assertRaisesRegex(PermissionError, "membership email"):
+                firestore_db.verify_company_access("company-a")
 
 
 if __name__ == "__main__":
