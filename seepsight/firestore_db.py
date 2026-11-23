@@ -239,7 +239,7 @@ def _normalise(value):
 
         missing = pd.isna(value)
 
-        if isinstance(missing, bool) and missing:
+        if missing is True or type(missing).__name__ == "bool_" and bool(missing):
             return None
 
     except (ImportError, TypeError, ValueError):
@@ -746,6 +746,8 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
 
     analysis_ref = company.collection("analyses").document(analysis_id)
     client = get_firestore_client()
+    # Prevent readers from treating a partially refreshed workspace as complete.
+    analysis_ref.set({"workspace_status": "saving"}, merge=True)
     table_names = {}
     for table_name, records in tables.items():
         if not isinstance(table_name, str) or not table_name.replace("_", "").isalnum():
