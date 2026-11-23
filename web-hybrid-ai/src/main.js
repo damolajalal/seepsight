@@ -111,3 +111,35 @@ form.addEventListener('submit', async (event) => {
     submit.textContent = 'Explain finding →';
   }
 });
+
+/*
+ * Receive a minimal, verified finding summary from the authenticated Seepsight
+ * workspace. Accept messages only from the immediate embedding parent and only
+ * the documented payload shape; never accept arbitrary HTML or model settings.
+ */
+window.addEventListener('message', (event) => {
+  if (event.source !== window.parent) return;
+  const data = event.data;
+  if (!data || data.type !== 'seepsight:explain-finding' || data.version !== 1) return;
+  const fields = {
+    supplier: document.querySelector('#supplier'),
+    type: document.querySelector('#type'),
+    facts: document.querySelector('#facts'),
+    action: document.querySelector('#action'),
+  };
+  const values = {
+    supplier: data.supplier,
+    type: data.findingType,
+    facts: data.verifiedFacts,
+    action: data.requestedAction,
+  };
+  const limits = { supplier: 160, type: 160, facts: 5000, action: 300 };
+  for (const key of Object.keys(fields)) {
+    if (typeof values[key] !== 'string' || values[key].length > limits[key]) return;
+  }
+  fields.supplier.value = values.supplier;
+  fields.type.value = values.type;
+  fields.facts.value = values.facts;
+  fields.action.value = values.action;
+  show('A verified finding summary was received from your Seepsight workspace. Review it, choose your inference privacy setting, then select Explain finding.', 'FINDING LOADED');
+});
