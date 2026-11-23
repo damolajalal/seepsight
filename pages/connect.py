@@ -9,11 +9,13 @@ procurement findings in this version.
 import hashlib
 import os
 import tempfile
+import uuid
 
 import pandas as pd
 import streamlit as st
 
-from seepsight import engine, plain, ui, workspace
+from seepsight import cloud_storage, engine, plain, ui, workspace
+from seepsight.firestore_db import save_company_dataset, save_company_mapping
 
 
 ui.page_header(
@@ -224,6 +226,7 @@ if uploaded:
     current_fingerprint = _fingerprint(uploaded)
     if st.session_state.get("connect_upload_fingerprint") != current_fingerprint:
         loaded = {}
+        source_file_bytes = {}
         errors = []
         for item in uploaded:
             try:
@@ -232,9 +235,11 @@ if uploaded:
                     errors.append(f"{item.name}: no usable rows or columns were found.")
                 else:
                     loaded[item.name] = frame
+                    source_file_bytes[item.name] = item.getvalue()
             except Exception as exc:
                 errors.append(f"{item.name}: could not be read ({exc}).")
         st.session_state["connect_raw"] = loaded
+        st.session_state["connect_source_file_bytes"] = source_file_bytes
         st.session_state["connect_upload_fingerprint"] = current_fingerprint
         st.session_state.pop("connect_check", None)
         st.session_state.pop("_done", None)
@@ -485,8 +490,27 @@ if result and st.session_state.get("connect_check_signature") == check_signature
         st.caption("Your results will be attached to the signed-in company identity shown at the top of this page.")
         if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
             try:
-                with st.status("Preparing your company procurement workspace...", expanded=True) as status:
-                    st.write("Using the validated procurement records")
+                with st.status("Saving original files and preparing your company workspace...", expanded=True) as status:
+                    saved_upload_ids = []
+                    for source_filename, source_frame in raw.items():
+                        upload_id = uuid.uuid4().hex
+                        storage_metadata = cloud_storage.upload_company_file(
+                            company_id,
+                            upload_id,
+                            source_filename,
+                            st.session_state["connect_source_file_bytes"][source_filename],
+                        )
+                        dataset_kind = kinds[source_filename]
+                        save_company_dataset(company_id, upload_id, {
+                            "dataset_type": dataset_kind,
+                            "filename": source_filename,
+                            "status": "original_file_saved",
+                            "record_count": int(len(source_frame)),
+                            "storage": storage_metadata,
+                        })
+                        save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
+                        saved_upload_ids.append(upload_id)
+                    st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     st.session_state["mine"] = pack
