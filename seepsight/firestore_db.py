@@ -18,7 +18,7 @@ Responsibilities:
 import uuid
 import math
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import streamlit as st
 
@@ -215,6 +215,8 @@ def _normalise(value):
         )
 
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            return None
         return {_DECIMAL_MARKER: format(value, "f")}
 
     if isinstance(value, float):
@@ -274,7 +276,10 @@ def _denormalise_workspace_value(value):
             set(value) == {_DECIMAL_MARKER}
             and isinstance(value[_DECIMAL_MARKER], str)
         ):
-            return Decimal(value[_DECIMAL_MARKER])
+            try:
+                return Decimal(value[_DECIMAL_MARKER])
+            except InvalidOperation:
+                return dict(value)
         return {
             key: _denormalise_workspace_value(item)
             for key, item in value.items()
