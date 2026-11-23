@@ -172,12 +172,14 @@ class ReadOnlyQueryTests(unittest.TestCase):
             database_connectors, "access_secret_json",
             side_effect=RuntimeError("private secret payload"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "private secret payload"):
-                database_connectors.execute_readonly_query(
-                    "postgres",
-                    "projects/p/secrets/db/versions/latest",
-                    "SELECT 1",
-                )
+            with self.assertRaisesRegex(RuntimeError, "configured connection secret could not be accessed"):
+                with self.assertRaises(Exception) as captured:
+                    database_connectors.execute_readonly_query(
+                        "postgres",
+                        "projects/p/secrets/db/versions/latest",
+                        "SELECT 1",
+                    )
+            self.assertNotIn("private secret payload", str(captured.exception))
 
     def test_provider_timeout_is_sanitized(self):
         with patch.object(database_connectors, "access_secret_json", return_value={}):
