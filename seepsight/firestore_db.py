@@ -250,15 +250,14 @@ def _normalise(value):
     )
 
 
-def _company_ref(company_id):
+def verify_company_access(company_id):
     """
-    Return a company reference only after verifying the current user.
+    Verify the current Firebase identity and active membership.
 
-    The company ID in Streamlit session state is treated as an untrusted
-    selector, not proof of access. Firebase Admin verifies the ID token,
-    then the membership store resolves the user's authoritative company.
+    A company ID from session state is only a requested resource. Access
+    is granted only when Firebase verifies the ID token and Firestore
+    membership records resolve that same company for the verified UID.
     """
-
     company_id = _validate_id(company_id, "company_id")
 
     account = st.session_state.get("seepsight_auth")
@@ -275,10 +274,7 @@ def _company_ref(company_id):
         from firebase_admin import auth as firebase_auth
 
         app = firebase_admin.get_app()
-        decoded_token = firebase_auth.verify_id_token(
-            id_token,
-            app=app,
-        )
+        decoded_token = firebase_auth.verify_id_token(id_token, app=app)
     except Exception as exc:
         raise PermissionError(
             "Your sign-in session could not be verified. Please sign in again."
@@ -295,8 +291,14 @@ def _company_ref(company_id):
     if membership.get("company_id") != company_id:
         raise PermissionError("You do not have access to this company workspace.")
 
+    return membership
+
+
+def _company_ref(company_id):
+    """Return a tenant-scoped company reference after membership verification."""
+    membership = verify_company_access(company_id)
     client = get_firestore_client()
-    return client.collection("companies").document(company_id)
+    return client.collection("companies").document(membership["company_id"])
 
 
 # ============================================================
