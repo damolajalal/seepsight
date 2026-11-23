@@ -35,6 +35,8 @@ else:
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
+MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_BATCH_BYTES = 100 * 1024 * 1024
 
 # All registered procurement dataset schemas can now be uploaded, mapped,
 # normalised and quality-checked by engine.onboard_tables(). The established
@@ -224,6 +226,23 @@ uploaded = st.file_uploader(
 )
 
 if uploaded:
+    oversized = [
+        item.name for item in uploaded
+        if int(getattr(item, "size", len(item.getvalue()))) > MAX_UPLOAD_FILE_BYTES
+    ]
+    total_upload_bytes = sum(
+        int(getattr(item, "size", len(item.getvalue()))) for item in uploaded
+    )
+    if oversized or total_upload_bytes > MAX_UPLOAD_BATCH_BYTES:
+        if oversized:
+            st.error(
+                "Each uploaded file must be 50 MB or smaller: "
+                + ", ".join(oversized)
+            )
+        if total_upload_bytes > MAX_UPLOAD_BATCH_BYTES:
+            st.error("The combined upload size must be 100 MB or smaller.")
+        st.stop()
+
     current_fingerprint = _fingerprint(uploaded)
     if st.session_state.get("connect_upload_fingerprint") != current_fingerprint:
         loaded = {}
@@ -500,14 +519,18 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 with st.status(status_message, expanded=True) as status:
                     saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
-                        upload_id = uuid.uuid4().hex
+                        source_bytes = st.session_state["connect_source_file_bytes"][source_filename]
+                        source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+                        upload_id = hashlib.sha256(
+                            (source_filename + ":" + source_sha256).encode("utf-8")
+                        ).hexdigest()[:32]
                         storage_metadata = None
                         if private_storage_ready:
                             storage_metadata = cloud_storage.upload_company_file(
                                 company_id,
                                 upload_id,
                                 source_filename,
-                                st.session_state["connect_source_file_bytes"][source_filename],
+                                source_bytes,
                             )
                             storage_status = "original_file_saved"
                         else:
@@ -519,6 +542,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             "filename": source_filename,
                             "status": storage_status,
                             "record_count": int(len(source_frame)),
+                            "source_sha256": source_sha256,
                         }
                         if storage_metadata is not None:
                             dataset_metadata["storage"] = storage_metadata
