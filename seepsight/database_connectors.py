@@ -10,7 +10,7 @@ from seepsight.secrets_manager import access_secret_json, validate_secret_refere
 
 _ALLOWED_PROVIDERS = {"postgres", "mysql", "sqlserver", "bigquery"}
 _BLOCKED_SQL = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|CALL|EXEC|EXECUTE|GRANT|REVOKE|COPY|LOAD|UNLOAD)\b",
+    r"\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|CALL|EXEC|EXECUTE|GRANT|REVOKE|COPY|LOAD|UNLOAD|INTO)\b",
     re.IGNORECASE,
 )
 
