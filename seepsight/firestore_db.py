@@ -274,7 +274,11 @@ def verify_company_access(company_id):
         from firebase_admin import auth as firebase_auth
 
         app = firebase_admin.get_app()
-        decoded_token = firebase_auth.verify_id_token(id_token, app=app)
+        decoded_token = firebase_auth.verify_id_token(
+            id_token,
+            app=app,
+            check_revoked=True,
+        )
     except Exception as exc:
         raise PermissionError(
             "Your sign-in session could not be verified. Please sign in again."
@@ -283,6 +287,8 @@ def verify_company_access(company_id):
     verified_uid = decoded_token.get("uid")
     if not verified_uid or verified_uid != session_uid:
         raise PermissionError("The signed-in identity could not be verified.")
+    if not decoded_token.get("email_verified", False):
+        raise PermissionError("Please verify your email address before accessing company data.")
 
     # Import locally to avoid the company_store/firestore_db import cycle.
     from seepsight import company_store
