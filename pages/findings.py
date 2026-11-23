@@ -2,7 +2,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from seepsight import plain, ui, workspace
+from seepsight import hybrid_ai, plain, ui, workspace
 
 w = workspace.current()
 cur, f = w["cur"], w["findings"]
@@ -74,6 +74,14 @@ cols = [c for c in plain.EVIDENCE_COLUMNS[r["finding_type"]] if c in ev.columns]
 view = ev.sort_values("exposure", ascending=False) if "exposure" in ev.columns else ev
 st.dataframe(view[cols].head(25).rename(columns=plain.EVIDENCE_LABELS), hide_index=True, width="stretch")
 st.caption(f"Showing the {min(25, len(ev))} largest of {len(ev)} records.")
+
+with st.expander("Explain this finding with Hybrid AI", expanded=False):
+    st.caption(
+        "Hybrid AI receives only this finding's verified summary from your authenticated "
+        "company workspace. Review the summary and choose whether cloud fallback is allowed."
+    )
+    hybrid_ai.render_finding_explainer(r, ev, cur)
+
 
 st.markdown("#### What may have caused this")
 st.write(plain.CAUSE[r["finding_type"]])
