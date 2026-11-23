@@ -272,7 +272,11 @@ def _normalise_workspace_value(value):
         # Escape user dictionaries that would otherwise be mistaken for our
         # internal Decimal marker during restoration.
         if set(cleaned) in ({_DECIMAL_MARKER}, {_ESCAPED_MAP_MARKER}):
-            return {_ESCAPED_MAP_MARKER: cleaned}
+            return {
+                _ESCAPED_MAP_MARKER: {
+                    "entries": [[key, item] for key, item in cleaned.items()]
+                }
+            }
         return cleaned
     if isinstance(value, (list, tuple)):
         return [_normalise_workspace_value(item) for item in value]
