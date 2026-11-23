@@ -32,9 +32,9 @@ def validate_readonly_sql(sql):
 
 
 def _validate_limits(max_rows, timeout_seconds):
-    if not isinstance(max_rows, int) or not 1 <= max_rows <= 1000:
+    if isinstance(max_rows, bool) or not isinstance(max_rows, int) or not 1 <= max_rows <= 1000:
         raise ValueError("max_rows must be between 1 and 1000.")
-    if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
         raise ValueError("timeout_seconds must be between 1 and 60.")
 
 
@@ -165,6 +165,14 @@ def execute_readonly_query(provider, secret_reference, sql, parameters=None,
     resource = validate_secret_reference(secret_reference)
     statement = validate_readonly_sql(sql)
     _validate_limits(max_rows, timeout_seconds)
+    if provider != "bigquery" and parameters is not None and not isinstance(parameters, (list, tuple)):
+        raise ValueError("Database query parameters must be supplied as a list or tuple.")
+    if provider == "bigquery" and parameters is not None:
+        if not isinstance(parameters, (list, tuple)) or any(
+            not isinstance(item, dict) or not {"name", "type", "value"} <= set(item)
+            for item in parameters
+        ):
+            raise ValueError("BigQuery parameters require name, type and value.")
     secret = access_secret_json(resource)
     adapters = {
         "postgres": _postgres,
@@ -201,18 +209,23 @@ def execute_company_connection_query(company_id, connection_id, sql,
     )
     if not profile or profile.get("status") != "active":
         raise PermissionError("The requested company database connection is unavailable.")
+    profile_max_rows = profile.get("max_rows", 500)
+    profile_timeout = profile.get("timeout_seconds", 15)
+    effective_max_rows = (
+        min(profile_max_rows, max_rows) if max_rows is not None else profile_max_rows
+    )
+    effective_timeout = (
+        min(profile_timeout, timeout_seconds)
+        if timeout_seconds is not None else profile_timeout
+    )
     try:
         result = execute_readonly_query(
             profile["provider"],
             profile["secret_reference"],
             sql,
             parameters=parameters,
-            max_rows=max_rows if max_rows is not None else profile.get("max_rows", 500),
-            timeout_seconds=(
-                timeout_seconds
-                if timeout_seconds is not None
-                else profile.get("timeout_seconds", 15)
-            ),
+            max_rows=effective_max_rows,
+            timeout_seconds=effective_timeout,
         )
     except Exception:
         firestore_db.write_company_audit_event(
