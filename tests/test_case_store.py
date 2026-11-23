@@ -50,6 +50,7 @@ class CaseStoreTests(unittest.TestCase):
         self.assertEqual(saved_state["status"], "Investigating")
 
     def test_save_rejects_shortened_history(self):
+        self.case_ref.get.return_value.to_dict.return_value = {"history_count": 2}
         with self.assertRaisesRegex(ValueError, "cannot be shortened"):
             case_store.save_company_case(
                 "company-a", "finding-1", {"history": ["Case opened"]}
@@ -72,7 +73,7 @@ class CaseStoreTests(unittest.TestCase):
 
     def test_company_reference_is_requested_before_case_access(self):
         case_store.save_company_case(
-            "company-a", "finding-1", {"history": []}
+            "company-a", "finding-1", {"history": ["Case opened"]}
         )
         case_store.firestore_db._company_ref.assert_called_once_with("company-a")
 
