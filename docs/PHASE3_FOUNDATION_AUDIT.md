@@ -1,78 +1,68 @@
 # Phase 3 Foundation Audit
 
-**Branch inspected:** `feature/company-auth`  
-**Audit basis:** repository source at the branch during this audit. This is a source review, not a live penetration test or deployment verification.
+**Branch:** `feature/company-auth`  
+**Audit basis:** source review of the current branch. This is not a live penetration test, successful test run, or deployment verification.
 
-## Existing components confirmed
+## Implemented in this branch
 
-| Component | Existing behaviour | Remaining concern |
+| Area | Current implementation | Remaining limitation |
 |---|---|---|
-| `seepsight/auth.py` | Firebase email/password registration and login through Identity Toolkit; checks email verification; stores UID, company ID, role, ID token and refresh token in Streamlit session state | `require_auth()` trusts the session dictionary and does not visibly verify token expiry/revocation or refresh the identity before allowing access |
-| `seepsight/company_store.py` | Firestore transactional creation/retrieval of company, user and active membership records; resolves a user's company from UID | Membership lookup exists, but callers must consistently use it as the authorization source |
-| `seepsight/firestore_db.py` | Firebase Admin initialization; Firestore dataset metadata, record, mapping and analysis persistence helpers; normalization and batch writes | Most data helpers accept a caller-supplied `company_id` directly. They do not independently prove that the current UID is an active member of that company |
-| `seepsight/workspace.py` | Rejects a workspace in Streamlit session state when its company ID differs from the current session's company ID | Active workspace and case data remain session-state based; no durable workspace hydration path is shown |
-| `pages/connect.py` | Multi-file onboarding, dataset recognition, mapping and quality checks | Explicitly warns that uploaded records and results are session-based and not permanently stored |
-| `requirements.txt` | Firebase Admin and Firestore dependencies are present | Google Cloud Storage and Secret Manager client dependencies are not currently listed |
+| Firebase authentication | Email/password authentication; email verification; ID-token verification with revocation checks; refresh-token renewal; company membership is re-resolved from Firestore | Requires runtime verification against the configured Firebase project |
+| Firestore tenant boundary | Company data helper resolves the current session token, checks UID and verified email, rejects revoked tokens, then resolves active company membership before returning a company reference | Public helper still accepts a company ID as a selector; service methods should progressively move to an explicit verified tenant context |
+| Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
+| Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are still saved in Firestore | Original file bytes and analysis results are temporary; configured bucket existence/permissions still need a live test |
+| User-facing privacy | Company Profile and Settings now distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
+| Automated checks | Added authorization unit tests, adapted cloud-storage tests to mock the authorization boundary, and added a GitHub Actions test workflow | Workflow execution and test results have not yet been confirmed |
 
-## Critical Phase 3 gaps
+## Security design confirmed in source
 
-### P0 — Establish a trusted tenant authorization boundary
-- Verify the Firebase ID token server-side using Firebase Admin on every protected request/rerun, including expiry and revocation handling where supported.
-- Do not treat `st.session_state["seepsight_auth"]`, its `company_id`, or its `role` as independently trusted authorization evidence.
-- Resolve the active UID's company and membership from Firestore after token verification.
-- Require a verified tenant context in storage, database, case, report, and AI service methods.
-- Do not accept an arbitrary company ID from a page or client as sufficient authorization.
-- Fail closed on missing, invalid, expired, revoked, disabled, or inactive membership.
+- `auth.require_auth()` re-verifies the Firebase identity on each authenticated app rerun, checks revocation, refreshes an expired ID token where possible, and re-resolves the company and role.
+- `firestore_db.verify_company_access()` verifies the ID token with revocation checking, checks UID consistency and verified email, and resolves the user's active company membership from Firestore.
+- Dataset metadata, records, mappings, and analysis helpers obtain their company reference through the authorization boundary.
+- Cloud Storage upload, download, and delete operations call the same authorization boundary.
+- Firestore client rules remain deny-all; trusted backend Firebase Admin access bypasses client rules.
+- Workspace and case data are additionally scoped by company ID inside the Streamlit session.
 
-### P0 — Remove sensitive exception disclosure
-- Login currently displays the exception text when company workspace loading fails. Replace raw exception display with a safe user-facing message and structured server-side diagnostic logging that excludes tokens, credentials, and customer records.
-- Review all storage and connection errors for credential or query leakage.
+## Remaining Phase 3 work
 
-### P1 — Durable private file storage
-- Implement a private GCS adapter with company-scoped object paths, safe generated object names, content/type/size validation, and least-privilege IAM.
-- Store object references and metadata in Firestore, not file bytes in session state.
-- Add upload state transitions, retention, deletion, and cleanup for incomplete uploads.
-- Add signed download access only after tenant authorization, with short expiry and safe content disposition.
+### P0 — Finish tenant-context refactor and security verification
+- Prefer passing a verified tenant context to data services rather than repeatedly accepting a free-form company ID.
+- Add tests for missing user records, missing membership, inactive membership, suspended company, and revoked tokens.
+- Test cross-company access against mocked Firestore references for read, write, list and delete operations.
+- Review authentication error handling so raw exception text and sensitive diagnostics are never shown to users.
+- Confirm role-based authorization before adding member/admin operations.
 
-### P1 — Harden Firestore persistence
-- Make tenant context mandatory for every company data operation.
-- Verify company membership at the service boundary rather than relying on callers to remember it.
-- Keep all reads/writes beneath the authorized company document.
+### P1 — Private file storage
+- Provision and verify a private object-storage bucket when billing/hosting constraints permit, or select an appropriate external object-storage provider after reviewing security, terms, location and free-tier limits.
+- Verify least-privilege service identity, private object access, upload size/type limits, retention and deletion.
+- Store object references and upload lifecycle metadata in Firestore.
+- Do not claim durable original-file storage until an actual upload and retrieval test succeeds.
+
+### P1 — Durable workspace and analysis persistence
+- Connect the existing Firestore record and analysis helpers to the onboarding and analysis workflow.
+- Persist validated records, mappings, analysis summaries, findings and evidence with bounded/paginated reads and idempotent writes.
+- Rehydrate only the authenticated company's workspace after a new session or app restart.
+- Persist cases and action history with an audit trail.
+- Keep session-only behavior clearly labelled until persistence is implemented and tested.
+
+### P1 — Data integrity and operational hardening
+- Preserve exact financial precision; avoid silently converting currency `Decimal` values to binary floats.
 - Add pagination and bounded reads for record retrieval.
-- Make ingestion writes idempotent and track partial/batch failure state so incomplete uploads are never marked complete.
-- Revisit numeric normalization: avoid converting financial `Decimal` values to binary floats when exact currency precision is required; store minor units or canonical decimal strings with explicit currency/scale.
-- Scope connection diagnostics to a dedicated system health record and ensure cleanup failures are surfaced safely.
+- Handle partial batch failures, retries, duplicate ingestion and cleanup safely.
+- Ensure connection diagnostics surface cleanup failures without exposing credentials.
+- Remove duplicate dependencies and validate deployment configuration.
 
-### P1 — Secrets and external database connections
-- Add Secret Manager-backed secret references and lifecycle controls.
-- Implement PostgreSQL, MySQL, SQL Server and BigQuery adapters with TLS, timeouts, read-only access by default, parameterized queries, bounded previews, and sanitized errors.
-- Never put database passwords or service-account private keys in source control or client-visible session state.
+### P2 — External integrations
+- Add secret-management lifecycle controls.
+- Implement database adapters with TLS, timeouts, read-only access by default, parameterized queries, bounded previews and sanitized errors.
+- Keep database passwords and service-account keys out of source control and client-visible state.
 
-### P2 — Workspace persistence and audit trail
-- Persist dataset, mapping, validation, analysis, findings, evidence, cases and refresh-job metadata under the authorized company.
-- Rehydrate the workspace on a new session/app restart.
-- Add auditable events for upload, mapping change, sync, analysis, report export, case assignment/status change, and deletion.
-- Add retention and deletion workflows.
+## Verification status
 
-## Required tests before Phase 3 can be marked complete
+- Source edits are committed to `feature/company-auth`.
+- GitHub Actions workflow file is present, but its run status has not been confirmed.
+- Unit tests have not been executed in a local runtime in this session.
+- No Firebase rules were loosened.
+- No production deployment or successful live Cloud Storage test is claimed.
 
-- Invalid/expired/revoked token and missing membership are denied.
-- Active user from company A cannot read/write/list/delete company B data, even if a forged company B ID is passed to a service.
-- Inactive membership and suspended company are denied.
-- Firestore read/write failures, partial batch failures, retries, and duplicate ingestion behave safely.
-- GCS object paths and download authorization are tenant-scoped.
-- Secret values never appear in UI, logs, tracebacks, test output, or repository content.
-- Database adapter failures return sanitized messages and close connections.
-- Workspace reload after a new session restores only the authenticated company's data.
-
-## Recommended implementation order
-
-1. Introduce a verified identity/tenant context and harden `auth.require_auth()`.
-2. Refactor Firestore operations to require that context, not a free-form company ID.
-3. Add unit tests with mocked Firebase Admin and Firestore clients.
-4. Implement private GCS persistence and upload metadata lifecycle.
-5. Add Secret Manager and read-only database adapters.
-6. Integrate durable persistence into Connect Your Data and workspace loading.
-7. Run cross-tenant and failure-mode tests before moving to broader Phase 4 work.
-
-**Status:** Audit complete at source-review level. No Phase 3 production changes are claimed by this document.
+**Phase 3 status: in progress — tenant checks implemented in source; automated/live verification and durable persistence remain outstanding.**
