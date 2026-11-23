@@ -201,15 +201,28 @@ def execute_company_connection_query(company_id, connection_id, sql,
     )
     if not profile or profile.get("status") != "active":
         raise PermissionError("The requested company database connection is unavailable.")
-    return execute_readonly_query(
-        profile["provider"],
-        profile["secret_reference"],
-        sql,
-        parameters=parameters,
-        max_rows=max_rows if max_rows is not None else profile.get("max_rows", 500),
-        timeout_seconds=(
-            timeout_seconds
-            if timeout_seconds is not None
-            else profile.get("timeout_seconds", 15)
-        ),
+    try:
+        result = execute_readonly_query(
+            profile["provider"],
+            profile["secret_reference"],
+            sql,
+            parameters=parameters,
+            max_rows=max_rows if max_rows is not None else profile.get("max_rows", 500),
+            timeout_seconds=(
+                timeout_seconds
+                if timeout_seconds is not None
+                else profile.get("timeout_seconds", 15)
+            ),
+        )
+    except Exception:
+        firestore_db.write_company_audit_event(
+            company_id, "connection.query_failed", "connection", connection_id,
+            {"provider": profile.get("provider")},
+        )
+        raise
+    firestore_db.write_company_audit_event(
+        company_id, "connection.query_executed", "connection", connection_id,
+        {"provider": result.get("provider"), "row_count": result.get("row_count"),
+         "truncated": result.get("truncated")},
     )
+    return result
