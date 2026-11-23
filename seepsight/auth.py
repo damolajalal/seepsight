@@ -719,21 +719,125 @@ def _authentication_screen():
         _public_welcome()
 
 
+def _refresh_session_token(refresh_token):
+    """Exchange a Firebase refresh token for a fresh ID token."""
+    try:
+        api_key = st.secrets["firebase"]["api_key"]
+    except Exception:
+        return None
+
+    try:
+        response = requests.post(
+            f"https://securetoken.googleapis.com/v1/token?key={api_key}",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            timeout=TIMEOUT,
+        )
+        if not response.ok:
+            return None
+
+        data = response.json()
+        if not data.get("id_token") or not data.get("refresh_token"):
+            return None
+        return data
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def _verified_account(account):
+    """Verify the Firebase identity and re-resolve active company membership."""
+    if not isinstance(account, dict):
+        return None
+
+    id_token = account.get("id_token")
+    refresh_token = account.get("refresh_token")
+    if not id_token or not refresh_token:
+        return None
+
+    # Ensure the Admin SDK is initialized before token verification.
+    try:
+        from firebase_admin import auth as firebase_auth
+        from seepsight.firestore_db import get_firestore_client
+
+        get_firestore_client()
+    except Exception:
+        return None
+
+    try:
+        claims = firebase_auth.verify_id_token(
+            id_token,
+            check_revoked=True,
+        )
+    except Exception:
+        refreshed = _refresh_session_token(refresh_token)
+        if not refreshed:
+            return None
+
+        id_token = refreshed["id_token"]
+        refresh_token = refreshed["refresh_token"]
+        try:
+            claims = firebase_auth.verify_id_token(
+                id_token,
+                check_revoked=True,
+            )
+        except Exception:
+            return None
+
+    uid = claims.get("uid")
+    email = (claims.get("email") or "").strip().lower()
+    if not uid or not email or not claims.get("email_verified", False):
+        return None
+
+    # Resolve company and role from Firestore on each authenticated rerun.
+    # Never trust a company ID or role copied from Streamlit session state.
+    try:
+        company = company_store.get_company_for_user(uid)
+    except Exception:
+        return None
+
+    if company.get("uid") != uid:
+        return None
+
+    verified = {
+        **account,
+        "uid": uid,
+        "email": email,
+        "company_id": company["company_id"],
+        "company_name": company["company_name"],
+        "role": company["role"],
+        "id_token": id_token,
+        "refresh_token": refresh_token,
+    }
+    return verified
+
+
 def logout():
     st.session_state.pop("seepsight_auth", None)
+    st.session_state.pop("mine", None)
+    st.session_state.pop("chat", None)
+    st.session_state.pop("cases", None)
+    st.session_state.pop("seepsight_pending_verification_token", None)
     st.rerun()
 
 
 def require_auth():
-    """Display the public website or authenticate company users."""
+    """Verify identity and active company membership before rendering pages."""
 
     account = st.session_state.get("seepsight_auth")
 
     if account:
+        verified = _verified_account(account)
+        if not verified:
+            logout()
+            return False
+
+        st.session_state["seepsight_auth"] = verified
         st.sidebar.markdown("---")
         st.sidebar.caption("SIGNED IN AS")
-        st.sidebar.write(account["company_name"])
-        st.sidebar.caption(account["email"])
+        st.sidebar.write(verified["company_name"])
+        st.sidebar.caption(verified["email"])
 
         if st.sidebar.button("Sign out", use_container_width=True):
             logout()
