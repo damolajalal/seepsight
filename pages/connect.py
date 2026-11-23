@@ -24,13 +24,7 @@ ui.page_header(
     "confirm its structure, map up to twelve procurement dataset types and review data quality before analysis.",
 )
 
-# Uploads and results currently live in the Streamlit session. Keep this notice
-# until durable, tenant-isolated storage has been implemented and verified.
-st.warning(
-    "Data storage is currently session-based. Uploaded records and analysis "
-    "results are not yet permanently stored. Do not upload confidential or "
-    "production customer data in this version."
-)
+st.info("Original uploaded files are saved to private company storage when you open the validated workspace. Analysis workspaces and results are still session-based; durable result history is not yet available.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
