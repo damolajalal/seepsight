@@ -49,7 +49,7 @@
 
 ### P1 — Data integrity and operational hardening
 - Preserve exact financial precision; `_normalise()` currently converts `Decimal` values to binary floats and needs a lossless storage/rehydration strategy before financial source records are durably stored.
-- Add pagination and bounded reads for record retrieval.
+- Add bounded pagination to the remaining metadata/list endpoints and verify large record/finding reads under load.
 - Handle partial batch failures, retries, duplicate ingestion and cleanup safely.
 - Ensure connection diagnostics surface cleanup failures without exposing credentials.
 - Remove duplicate dependencies and validate deployment configuration.
