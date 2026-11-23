@@ -73,7 +73,7 @@ class CaseStoreTests(unittest.TestCase):
         self.case_ref.get.return_value.to_dict.return_value = {"history_count": 2}
         with self.assertRaisesRegex(ValueError, "cannot be shortened"):
             case_store.save_company_case(
-                "company-a", "finding-1", {"history": ["Case opened"]}
+                "company-a", "finding-1", {"history": ["Case opened", "Follow-up"]}
             )
         self.history.document.assert_not_called()
         self.transaction.set.assert_not_called()
