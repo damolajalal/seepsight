@@ -260,6 +260,8 @@ _DECIMAL_MARKER = "__seepsight_decimal__"
 def _normalise_workspace_value(value):
     """Preserve Decimal values exactly in durable analysis workspaces."""
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            return None
         return {_DECIMAL_MARKER: format(value, "f")}
     if isinstance(value, dict):
         return {
