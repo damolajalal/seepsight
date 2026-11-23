@@ -1,5 +1,5 @@
 import './style.css';
-import { createHybridModel, getFirebaseStatus } from './firebase.js';
+import { createHybridModel, createCloudOnlyModel, getFirebaseStatus } from './firebase.js';
 import { buildFindingPrompt, hasUnsupportedNumbers } from './prompt.js';
 
 const app = document.querySelector('#app');
@@ -12,7 +12,7 @@ app.innerHTML = `
       <div class="fields"><label>Supplier <input id="supplier" maxlength="160" placeholder="Supplier name (optional)"></label><label>Finding type <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
       <label>Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="Paste a short verified finding summary—not a full spreadsheet. Include exact figures and evidence references."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
       <label>What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
-      <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model if local inference is unavailable.</p><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
+      <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model only when you consent.</p><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
       <div class="actions"><button id="submit" type="submit" disabled>Explain finding →</button><span>Cloud fallback is off unless you consent above.</span></div>
     </form>
   </section>
@@ -27,6 +27,7 @@ const result = document.querySelector('#result');
 const answer = document.querySelector('#answer');
 const source = document.querySelector('#source');
 const note = document.querySelector('#note');
+const consent = document.querySelector('#consent');
 config.textContent = status.ready ? 'Firebase ready' : 'Setup required';
 config.classList.toggle('ready', status.ready);
 config.title = status.message;
@@ -38,6 +39,14 @@ function show(message, route = 'NOTICE', detail = '') {
   source.textContent = route;
   note.textContent = detail;
 }
+
+function normaliseInferenceSource(value) {
+  const sourceValue = String(value || '').toLowerCase();
+  if (sourceValue === 'on_device') return 'ON_DEVICE';
+  if (sourceValue === 'in_cloud') return 'IN_CLOUD';
+  return 'SOURCE NOT REPORTED';
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!status.ready) return;
@@ -53,39 +62,51 @@ form.addEventListener('submit', async (event) => {
     show(error.message, 'INPUT REQUIRED');
     return;
   }
-  const allowCloud = document.querySelector('#consent').checked;
+
+  // Snapshot explicit consent at click time; do not infer consent from model availability.
+  const allowCloud = consent.checked === true;
   submit.disabled = true;
+  consent.disabled = true;
   submit.textContent = 'Preparing secure inference…';
   show('Preparing the selected inference path. The first local model run may take time.', 'STARTING');
+
   try {
-    const model = createHybridModel(allowCloud);
+    const localModel = createHybridModel(allowCloud);
+    let response;
     try {
-      await model.initializeDeviceModel((progress) => {
+      await localModel.initializeDeviceModel((progress) => {
         note.textContent = `Preparing on-device model: ${Math.round(progress * 100)}% downloaded.`;
       });
-    } catch (error) {
-      if (!allowCloud) throw error;
-      note.textContent = 'Local model unavailable. Trying cloud because you approved fallback.';
+      response = await localModel.generateContent(prompt);
+    } catch (localError) {
+      // Without explicit consent, stop here. No cloud-capable model is created or called.
+      if (!allowCloud) throw localError;
+      note.textContent = 'Local model unavailable. Cloud fallback is being attempted because you explicitly consented.';
+      response = await createCloudOnlyModel().generateContent(prompt);
     }
-    const response = await model.generateContent(prompt);
-    const text = response.response.text();
-    const route = response.response.inferenceSource || 'SOURCE NOT REPORTED';
-    if (!text?.trim()) throw new Error('The model returned an empty response.');
-    if (hasUnsupportedNumbers(text, prompt)) {
+
+    const generatedText = response.response.text();
+    const route = normaliseInferenceSource(response.response.inferenceSource);
+    if (!generatedText?.trim()) throw new Error('The model returned an empty response.');
+    if (route === 'IN_CLOUD' && !allowCloud) {
+      throw new Error('Privacy protection stopped a cloud response because this request did not have cloud consent.');
+    }
+    if (hasUnsupportedNumbers(generatedText, prompt)) {
       show('Response withheld: it introduced a numeric value not present in the supplied facts. The original finding is unchanged.', route, 'Numeric consistency guardrail triggered.');
     } else {
-      show(text, route, route === 'ON_DEVICE'
+      show(generatedText, route, route === 'ON_DEVICE'
         ? 'Processed on this device in Chrome.'
         : route === 'IN_CLOUD'
-          ? 'Processed in the cloud through Firebase AI Logic with your consent.'
+          ? 'Processed in the cloud through Firebase AI Logic after your consent.'
           : 'The SDK did not report the inference route.');
     }
   } catch (error) {
     show(allowCloud
       ? 'Hybrid request failed. Check Firebase AI Logic, App Check, network access and model availability.'
-      : 'On-device inference is unavailable. Update desktop Chrome, enable the Prompt API and ensure the local model is available. Enable cloud fallback only if you consent to sending this prompt to Google.',
+      : 'On-device inference is unavailable. This request was not sent to the cloud because cloud consent was not given.',
       'REQUEST FAILED', error?.message || 'No further error details.');
   } finally {
+    consent.disabled = false;
     submit.disabled = false;
     submit.textContent = 'Explain finding →';
   }
