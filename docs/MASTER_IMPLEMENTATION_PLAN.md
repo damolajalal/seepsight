@@ -79,7 +79,7 @@ Acceptance:
 - Adapter tests cover success, invalid credentials, timeout, unavailable database, permission denial, and cleanup.
 - Storage failure does not create a false success state.
 
-**Status:** Not complete. Current workspace builder uses temporary directories and Streamlit session state; Connect page warns that storage is session-based. Dedicated production storage and database connector modules were not found at the previously checked paths.
+**Status:** Phase 3 code foundation implemented on `feature/company-auth`: company-scoped Firestore metadata/mappings and normalized validated records; exact Decimal serialization; revisioned analysis workspace with transactional active-pointer switch and retention cleanup; transactional case history; company audit events; GCS private-object helpers; Secret Manager resource access; and optional read-only PostgreSQL, MySQL, SQL Server and BigQuery adapters. Python and hybrid CI provide isolated tests. Production acceptance is still pending live Firebase/Firestore, private GCS bucket, Secret Manager IAM, database network/TLS/read-only credentials, and restart/failure-injection verification. Original upload bytes remain session-only until a private bucket is provisioned. See `docs/PHASE3_FOUNDATION_AUDIT.md` and `docs/PHASE3_CONNECTORS.md`.
 
 ## Phase 4 — Universal ingestion and Connect Your Data
 
