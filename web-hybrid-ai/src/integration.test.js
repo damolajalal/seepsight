@@ -35,7 +35,7 @@ test('embedded Seepsight context accepts only a bounded parent message', async (
   assert.match(main, /event\.source !== window\.parent/);
   assert.match(main, /seepsight:explain-finding/);
   assert.match(main, /data\.version !== 1/);
-  assert.match(main, /verifiedFacts: data\.verifiedFacts/);
+  assert.match(main, /facts: data\.verifiedFacts/);
   assert.match(main, /values\[key\]\.length > limits\[key\]/);
 });
 
