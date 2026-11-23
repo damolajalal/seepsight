@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 import streamlit as st
 
 
-def render_finding_explainer(finding, evidence, currency):
-    """Embed Hybrid AI and pass only a bounded, human-readable finding summary."""
+def render_verified_context(supplier, finding_type, verified_facts, requested_action):
+    """Embed Hybrid AI and pass only bounded, verified, human-readable context."""
     hybrid_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "").strip()
     parsed = urlparse(hybrid_url)
     if parsed.scheme != "https" or not parsed.netloc:
@@ -20,22 +20,18 @@ def render_finding_explainer(finding, evidence, currency):
         )
         return
 
-    from seepsight import plain
-
-    facts = str(plain.what_we_found(finding, evidence, currency)).strip()
+    facts = str(verified_facts or "").strip()[:5000]
     if not facts:
-        st.warning("There is no verified finding summary to send to Hybrid AI.")
+        st.warning("There is no verified company context to send to Hybrid AI.")
         return
-    facts = facts[:5000]
-    supplier = str(finding.get("supplier", finding.get("entity", "")) or "")[:160]
-    finding_type = str(finding.get("finding_type", "") or "")[:160]
+
     payload = {
         "type": "seepsight:explain-finding",
         "version": 1,
-        "supplier": supplier,
-        "findingType": finding_type,
+        "supplier": str(supplier or "")[:160],
+        "findingType": str(finding_type or "")[:160],
         "verifiedFacts": facts,
-        "requestedAction": "Explain this finding and identify the next evidence checks for the reviewer.",
+        "requestedAction": str(requested_action or "")[:300],
     }
     iframe_src = html_lib.escape(hybrid_url, quote=True)
     target_origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -44,11 +40,12 @@ def render_finding_explainer(finding, evidence, currency):
     ).decode("ascii")
 
     # Base64 keeps untrusted supplier/evidence text out of the HTML/JS source.
+    # postMessage is restricted to the configured HTTPS companion origin.
     html = f"""
     <div style="font-family: sans-serif; color: inherit;">
       <iframe id="seepsight-hybrid-frame"
         src="{iframe_src}"
-        title="Seepsight Hybrid AI finding explainer"
+        title="Seepsight Hybrid AI"
         style="width:100%; height:820px; border:0; border-radius:12px;"
         referrerpolicy="strict-origin-when-cross-origin"
         loading="lazy"></iframe>
@@ -66,3 +63,27 @@ def render_finding_explainer(finding, evidence, currency):
     </div>
     """
     st.components.v1.html(html, height=840, scrolling=True)
+
+
+def render_finding_explainer(finding, evidence, currency):
+    """Pass a deterministic Seepsight finding and its summary to Hybrid AI."""
+    from seepsight import plain
+
+    facts = plain.what_we_found(finding, evidence, currency)
+    supplier = finding.get("supplier", finding.get("entity", ""))
+    render_verified_context(
+        supplier,
+        finding.get("finding_type", ""),
+        facts,
+        "Explain this finding and identify the next evidence checks for the reviewer.",
+    )
+
+
+def render_answer_explainer(question, answer, company_name=""):
+    """Pass a deterministic Ask Seepsight answer for AI-assisted explanation."""
+    render_verified_context(
+        company_name,
+        "Grounded Ask Seepsight answer",
+        answer,
+        question or "Explain the verified answer and suggest the next review step.",
+    )
