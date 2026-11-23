@@ -535,6 +535,136 @@ def get_company_datasets(company_id):
     return datasets
 
 
+
+# ============================================================
+# 5A. ORIGINAL UPLOAD BYTE STORAGE (FIRESTORE ONLY)
+# ============================================================
+
+_ORIGINAL_FILE_CHUNK_BYTES = 512 * 1024
+_ORIGINAL_FILE_ALLOWED_EXTENSIONS = {".csv", ".tsv", ".xlsx", ".xls", ".json"}
+_ORIGINAL_FILE_DEFAULT_MAX_BYTES = 50 * 1024 * 1024
+
+
+def save_original_file(company_id, dataset_id, filename, data, content_type=None):
+    """Persist original upload bytes as bounded, tenant-scoped Firestore chunks."""
+    import hashlib
+    import mimetypes
+    import os
+    from pathlib import PurePath
+
+    company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("A filename is required.")
+    safe_name = PurePath(filename.replace("\\", "/")).name.strip()
+    if safe_name in {"", ".", ".."} or len(safe_name) > 180:
+        raise ValueError("The filename is invalid.")
+    if PurePath(safe_name).suffix.lower() not in _ORIGINAL_FILE_ALLOWED_EXTENSIONS:
+        raise ValueError("This file type is not supported.")
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError("Original file data must be bytes.")
+    payload = bytes(data)
+    try:
+        max_bytes = int(os.environ.get("SEEPSIGHT_MAX_UPLOAD_BYTES", _ORIGINAL_FILE_DEFAULT_MAX_BYTES))
+    except (TypeError, ValueError):
+        max_bytes = _ORIGINAL_FILE_DEFAULT_MAX_BYTES
+    if max_bytes < 1 or len(payload) > max_bytes:
+        raise ValueError(f"File exceeds the configured upload limit ({max_bytes} bytes).")
+    if not payload:
+        raise ValueError("The uploaded file is empty.")
+
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    chunks_ref = dataset_ref.collection("original_file_chunks")
+    digest = hashlib.sha256(payload).hexdigest()
+    mime = content_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    count = (len(payload) + _ORIGINAL_FILE_CHUNK_BYTES - 1) // _ORIGINAL_FILE_CHUNK_BYTES
+    dataset_ref.set({
+        "original_file_status": "saving",
+        "original_file_saved": False,
+        "original_file": {
+            "filename": safe_name, "content_type": mime,
+            "size_bytes": len(payload), "sha256": digest,
+            "chunk_count": count, "chunk_bytes": _ORIGINAL_FILE_CHUNK_BYTES,
+        },
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+
+    client = get_firestore_client()
+    try:
+        client.recursive_delete(chunks_ref)
+        for start in range(0, count, 300):
+            batch = client.batch()
+            for index in range(start, min(start + 300, count)):
+                part = payload[index * _ORIGINAL_FILE_CHUNK_BYTES:(index + 1) * _ORIGINAL_FILE_CHUNK_BYTES]
+                batch.set(chunks_ref.document(f"chunk_{index:06d}"), {
+                    "chunk_index": index, "data": part, "size_bytes": len(part),
+                })
+            batch.commit()
+        dataset_ref.set({
+            "original_file_status": "complete",
+            "original_file_saved": True,
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+    except Exception as exc:
+        try:
+            client.recursive_delete(chunks_ref)
+        except Exception:
+            logging.getLogger(__name__).warning("Partial original-file chunk cleanup failed.")
+        try:
+            dataset_ref.set({
+                "original_file_status": "failed",
+                "original_file_saved": False,
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+        except Exception:
+            pass
+        raise RuntimeError("The original file could not be saved completely to Firestore.") from exc
+
+    write_company_audit_event(
+        company_id, "dataset.original_file_saved", "dataset", dataset_id,
+        {"filename": safe_name, "size_bytes": len(payload), "chunk_count": count, "sha256": digest},
+    )
+    return {"filename": safe_name, "size_bytes": len(payload), "sha256": digest, "chunk_count": count}
+
+
+def get_original_file(company_id, dataset_id):
+    """Reassemble and integrity-check a company's original upload."""
+    import hashlib
+    company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    snapshot = dataset_ref.get()
+    if not snapshot.exists:
+        raise FileNotFoundError("The requested company dataset does not exist.")
+    metadata = snapshot.to_dict() or {}
+    if metadata.get("original_file_status") != "complete":
+        raise RuntimeError("The original file is not in a complete saved state.")
+    info = metadata.get("original_file") or {}
+    expected = int(info.get("chunk_count", 0))
+    if expected < 1:
+        raise RuntimeError("The original file metadata is incomplete.")
+    query = dataset_ref.collection("original_file_chunks").order_by("chunk_index")
+    chunks = list(_stream_query_pages(query, page_size=300))
+    if len(chunks) != expected:
+        raise RuntimeError("The original file is missing one or more stored chunks.")
+    parts = []
+    for index, chunk in enumerate(chunks):
+        item = chunk.to_dict() or {}
+        if int(item.get("chunk_index", -1)) != index or not isinstance(item.get("data"), bytes):
+            raise RuntimeError("The original file chunk sequence is invalid.")
+        parts.append(item["data"])
+    payload = b"".join(parts)
+    if len(payload) != int(info.get("size_bytes", -1)):
+        raise RuntimeError("The original file size does not match its stored metadata.")
+    if hashlib.sha256(payload).hexdigest() != info.get("sha256"):
+        raise RuntimeError("The original file integrity check failed.")
+    write_company_audit_event(
+        company_id, "dataset.original_file_downloaded", "dataset", dataset_id,
+        {"size_bytes": len(payload), "sha256": info.get("sha256")},
+    )
+    return {"filename": info.get("filename"), "content_type": info.get("content_type"), "data": payload}
+
+
 # ============================================================
 # 5. PROCUREMENT RECORD STORAGE
 # ============================================================
@@ -660,7 +790,7 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
     return records
 
 def delete_company_dataset(company_id, dataset_id):
-    """Delete a company's dataset, source rows, mappings and private original file."""
+    """Delete a company dataset and its Firestore subcollections, including original-file chunks."""
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
     dataset_ref = company.collection("datasets").document(dataset_id)
@@ -674,21 +804,8 @@ def delete_company_dataset(company_id, dataset_id):
         "updated_at": datetime.now(timezone.utc),
     }, merge=True)
 
-    storage = metadata.get("storage") or {}
-    object_name = storage.get("object_name")
+    original_file_saved = metadata.get("original_file_status") == "complete"
     try:
-        if object_name and not metadata.get("storage_deleted", False):
-            from seepsight import cloud_storage
-            cloud_storage.delete_company_file(
-                company_id,
-                object_name,
-                if_generation_match=storage.get("generation"),
-            )
-            dataset_ref.set({
-                "storage_deleted": True,
-                "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
-
         get_firestore_client().recursive_delete(dataset_ref)
     except Exception as exc:
         try:
@@ -702,7 +819,7 @@ def delete_company_dataset(company_id, dataset_id):
 
     write_company_audit_event(
         company_id, "dataset.deleted", "dataset", dataset_id,
-        {"original_file_deleted": bool(object_name)},
+        {"original_file_deleted": bool(original_file_saved)},
     )
     return True
 
