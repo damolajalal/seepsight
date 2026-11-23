@@ -9,7 +9,7 @@
 | Area | Implementation | Remaining environment or product dependency |
 |---|---|---|
 | Firebase identity | Email/password auth, email verification, ID-token revocation checks, token refresh, re-resolution of active membership | Must be exercised against the configured Firebase project |
-| Tenant authorization | Verified UID/email, user-profile UID, member UID/email, active membership and active company are checked before company-scoped Firestore access | No dedicated role-based admin/member actions exist yet; service methods still accept a company ID selector but independently authorize it |
+| Tenant authorization | Verified UID/email, user-profile UID, member UID/email, active membership and active company are checked before company-scoped Firestore access; connector administration additionally requires the verified owner role server-side | Member invitations, role assignment and delegated admin workflows are not exposed yet |
 | Firestore client boundary | Client rules remain deny-all; trusted Firebase Admin service performs company-scoped reads/writes | Live rules and service-account IAM review required |
 | Company dataset metadata | Company-scoped metadata, mapping and validated procurement records are persisted from Connect; dataset metadata lists and record reads are paginated | Original uploaded file bytes require a provisioned private object bucket |
 | Record durability | Normalized/mapped validated records for all supplied dataset types are written in batches of 400, each row is bounded to 800 KB, stable row IDs support retries for the same dataset ID, identical file re-submissions resolve to a deterministic upload ID, and saving/complete/failed states prevent incomplete reads; per-file and batch upload sizes and total record count are bounded | Changed file contents create a new dataset version; original file bytes still require private object storage |
@@ -30,19 +30,19 @@
 - `company_store.get_company_for_user()` verifies user UID, company status, member UID, active membership, member email and user-profile email.
 - Every company data helper obtains its reference through `_company_ref()` or the stricter owner-only `_company_owner_ref()`; GCS helpers independently verify the company before touching an object.
 - The client-side Firestore rules have not been loosened. Firebase Admin access is server-side.
-- Dataset and analysis reads use bounded pagination. Record writes are validated before writes begin, use idempotent row IDs within a dataset ID, and mark partial failures as incomplete.
+- Dataset and analysis reads use bounded pagination. Dataset uploads are capped at 250,000 rows and 50 MB per file / 100 MB per upload batch; identical file re-submissions use a deterministic dataset ID. Record writes are validated before writes begin, use idempotent row IDs within a dataset ID, and mark partial failures as incomplete.
 - Analysis revisions are written separately; only a complete revision can be activated. The analysis and company latest pointers are switched transactionally.
 - Case activity events and case state are committed in a single Firestore transaction. A stale history length is rejected.
 - Audit payloads are size-limited and strip credential-like keys before persistence. Audit writes are best-effort across separate Firestore/GCS operations and emit a static server warning if the audit sink is unavailable; they are not a distributed transaction.
-- Database query helpers accept only a single SELECT/CTE statement, reject mutation/locking patterns, bind parameters, limit returned rows and apply timeouts. Database users must still be provisioned with read-only grants.
+- Database query helpers accept only a single SELECT/CTE statement, reject mutation/locking patterns, bind parameters, limit returned rows and apply timeouts. A saved profile's row/time budgets cannot be raised by the caller. Database users must still be provisioned with read-only grants.
 - No credential values or service-account JSON are committed to the repository.
 
 ## Automated verification
 
-The Python security workflow covers authorization, company membership integrity, private storage boundaries, transactional case history, generic dataset-record persistence and retrieval, exact Decimal serialization, revision cleanup, audit event sanitization, and read-only connector validation/dispatch. The Phase 7 hybrid web workflow also passes on the same branch.
+The Python security workflow covers authorization, company membership integrity, private storage boundaries, transactional case history, bounded and retry-safe dataset records, exact Decimal serialization including marker-collision safety, analysis revision activation/failure safety, revision cleanup, audit event sanitization, owner-only connector profiles, query validation/dispatch and Streamlit page syntax. The Phase 7 hybrid web workflow also passes on the same branch.
 
-- Python security Run #78 passed on commit `6d29f55`: 53 tests passed.
-- Phase 7 hybrid web Run #108 passed on the same commit.
+- Python security Run #133 passed on implementation commit `d649c84`: **81 tests passed**.
+- Phase 7 hybrid web Run #163 passed on the same implementation commit.
 - These checks are automated CI tests with mocked/isolated provider boundaries; no live Firebase, GCS, Secret Manager or external database connection was performed.
 
 ## External acceptance still required
