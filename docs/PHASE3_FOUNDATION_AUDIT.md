@@ -17,7 +17,7 @@
 | Analysis workspace | Revisioned dashboard tables, supporting evidence and run metadata are stored in Firestore; batches are bounded, row-size checked, restored in pages of 500, and the active revision/latest-analysis pointers switch in one transaction | Live Firestore failure-injection and restart tests remain |
 | Revision retention | Successful saves retain the active revision and a recent recovery window; obsolete revisions are recursively deleted and cleanup is audited | Retention policy is currently code-defined (three recent revisions), not configurable from Settings |
 | Cases and actions | Case state and append-only history are written in one Firestore transaction; stale concurrent updates fail instead of overwriting a newer history; history reads verify event counts | Live concurrent-user and transaction retry tests remain |
-| Audit trail | Company-scoped append-only audit events cover dataset metadata, mappings, record save/read, analysis save/restore/pruning, case list/update and private file upload/download/delete | Live write/read permissions and retention policy must be checked in the target project |
+| Audit trail | Company-scoped append-only audit events cover dataset metadata, mappings, record save/read, analysis save/restore/pruning, case list/update private file upload/download/delete, and database connection profile/test events | Live write/read permissions and retention policy must be checked in the target project |
 | Private file storage | GCS upload/download/delete helpers enforce company paths, allowlisted file types, size limits, create-only upload, and generation preconditions; failures are sanitized | No bucket is provisioned in the current Spark/no-billing setup, so original files remain session-only |
 | Secrets | Secret Manager helper accepts only secret-version resource references and fetches JSON server-side using ADC; secret values are not put in Streamlit state | Runtime service identity needs least-privilege Secret Manager access; rotation is by publishing a new version and updating its reference |
 | Database adapters | Optional PostgreSQL, MySQL, SQL Server and BigQuery adapters use parameter binding, query validation, read-only settings, TLS where supported, timeouts and bounded result previews; saved profiles contain only Secret Manager references | Optional dependencies, ODBC driver, network access, read-only DB principals and live provider tests must be configured |
@@ -27,7 +27,7 @@
 
 - `firestore_db.verify_company_access()` verifies the Firebase ID token with revocation checking, binds token UID and verified email to the Streamlit session, and checks the authoritative user and membership records.
 - `company_store.get_company_for_user()` verifies user UID, company status, member UID, active membership, member email and user-profile email.
-- Every company data helper obtains its reference through `_company_ref()`; GCS helpers independently verify the company before touching an object.
+- Every company data helper obtains its reference through `_company_ref()` or the stricter owner-only `_company_owner_ref()`; GCS helpers independently verify the company before touching an object.
 - The client-side Firestore rules have not been loosened. Firebase Admin access is server-side.
 - Dataset and analysis reads use bounded pagination. Record writes are validated before writes begin, use idempotent row IDs within a dataset ID, and mark partial failures as incomplete.
 - Analysis revisions are written separately; only a complete revision can be activated. The analysis and company latest pointers are switched transactionally.
@@ -50,7 +50,7 @@ The Python security workflow covers authorization, company membership integrity,
 2. Configure Firestore and Firebase Admin service-account IAM; run live sign-in, verification, revocation, tenant-isolation, persistence, restart, transaction and failure-injection tests.
 3. Configure Secret Manager IAM and validate each database adapter against an actual provider with TLS certificates, timeouts, read-only grants and cleanup.
 4. Decide and document audit-event retention and deletion policy.
-5. Decide whether to introduce role-based admin/member actions; current application bootstrap creates one owner and no member-management actions are exposed.
+5. Decide whether to introduce member-management and delegated admin actions; current application bootstrap creates one owner and does not expose member invitations or role assignment. Database connection administration is owner-only.
 6. If historical dataset version cleanup is required, define a retention policy for superseded uploads. The current Connect flow persists both raw source-table rows (including unmapped columns) and normalized rows; deterministic IDs make exact same-file retries idempotent. Original file bytes remain the authoritative original artifact when private object storage is enabled.
 
 **Phase 3 status: implementation substantially complete; production acceptance is blocked on external Firebase/Firestore, GCS, Secret Manager and database-provider configuration and live verification.** Do not mark Phase 3 production-complete until those checks pass.
