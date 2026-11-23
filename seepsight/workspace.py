@@ -12,7 +12,7 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from seepsight import engine, firestore_db
+from seepsight import case_store, engine, firestore_db
 
 
 # =========================================================
@@ -288,4 +288,21 @@ def cases():
 
     all_cases = st.session_state.setdefault("cases", {})
 
-    return all_cases.setdefault(company_id, {})
+    if company_id not in all_cases:
+        all_cases[company_id] = case_store.get_company_cases(company_id)
+
+    return all_cases[company_id]
+
+
+def save_case(finding_id, case):
+    """Persist a case update for the authenticated company."""
+    company_id, _ = _authenticated_company()
+    if not company_id:
+        raise PermissionError(
+            "A company login is required to update cases."
+        )
+    case_store.save_company_case(company_id, finding_id, case)
+    st.session_state.setdefault("cases", {}).setdefault(
+        company_id, {}
+    )[finding_id] = case
+    return True
