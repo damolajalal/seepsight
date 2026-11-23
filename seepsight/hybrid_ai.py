@@ -12,6 +12,11 @@ import streamlit as st
 def render_verified_context(supplier, finding_type, verified_facts, requested_action):
     """Embed Hybrid AI and pass only bounded, verified, human-readable context."""
     hybrid_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "").strip()
+    if not hybrid_url:
+        try:
+            hybrid_url = str(st.secrets.get("SEEPSIGHT_HYBRID_AI_URL", "")).strip()
+        except Exception:
+            hybrid_url = ""
     parsed = urlparse(hybrid_url)
     if parsed.scheme != "https" or not parsed.netloc:
         st.info(
