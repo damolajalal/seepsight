@@ -84,6 +84,12 @@ def upload_company_file(company_id, upload_id, filename, data, content_type=None
         blob.reload()
     except Exception as exc:
         raise RuntimeError("The file could not be saved to private cloud storage.") from exc
+    from seepsight.firestore_db import write_company_audit_event
+    write_company_audit_event(
+        company_id, "storage.uploaded", "upload", upload_id,
+        {"filename": safe_name, "size_bytes": int(blob.size or len(payload)),
+         "content_type": blob.content_type or mime, "generation": str(blob.generation) if blob.generation is not None else None},
+    )
     return {
         "storage_provider": "gcs",
         "bucket": bucket.name,
@@ -117,7 +123,13 @@ def download_company_file(company_id, object_name):
     verify_company_access(company_id)
     object_name = _validate_company_object(company_id, object_name)
     try:
-        return _client().bucket(_bucket_name()).blob(object_name).download_as_bytes()
+        payload = _client().bucket(_bucket_name()).blob(object_name).download_as_bytes()
+        from seepsight.firestore_db import write_company_audit_event
+        write_company_audit_event(
+            company_id, "storage.downloaded", "upload", object_name.split("/")[3],
+            {"object_name": object_name, "size_bytes": len(payload)},
+        )
+        return payload
     except Exception as exc:
         raise RuntimeError("The stored file could not be retrieved.") from exc
 
@@ -133,6 +145,11 @@ def delete_company_file(company_id, object_name, if_generation_match=None):
         if if_generation_match is not None:
             kwargs["if_generation_match"] = int(if_generation_match)
         blob.delete(**kwargs)
+        from seepsight.firestore_db import write_company_audit_event
+        write_company_audit_event(
+            company_id, "storage.deleted", "upload", object_name.split("/")[3],
+            {"object_name": object_name, "generation_preconditioned": if_generation_match is not None},
+        )
         return True
     except Exception as exc:
         raise RuntimeError("The stored file could not be deleted.") from exc
