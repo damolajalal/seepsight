@@ -27,6 +27,7 @@ import io
 import json
 import os
 import re
+from decimal import Decimal
 from difflib import SequenceMatcher
 from itertools import permutations
 
@@ -245,7 +246,7 @@ def read_any(path, sheet=None):
             df = xl.parse(sheet, dtype=object)
     elif ext == ".json":
         with open(path, "rb") as fh:
-            data = json.loads(fh.read().decode("utf-8-sig"))
+            data = json.loads(fh.read().decode("utf-8-sig"), parse_float=Decimal)
         if isinstance(data, dict):
             data = next((v for v in data.values() if isinstance(v, list)), [data])
         df = pd.json_normalize(data).astype(object)
@@ -259,7 +260,7 @@ def read_any(path, sheet=None):
                 break
             except UnicodeDecodeError:
                 continue
-        df = pd.read_csv(io.StringIO(text), sep=None, engine="python", dtype=object)
+        df = pd.read_csv(io.StringIO(text), sep=None, engine="python", dtype=str)
     df = _fix_header(df)
     df.columns = [str(c).strip() for c in df.columns]
     return df.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
@@ -908,6 +909,7 @@ def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=
     result = _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
     # Keep the mapped, validated source rows available for durable ingestion.
     result["normalized_tables"] = {"orders": typed.copy()}
+    result["source_tables"] = {"orders": raw.copy()}
     return result
 
 
@@ -1142,6 +1144,9 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
     result["normalized_tables"] = {
         name: table.drop(columns=["_key"], errors="ignore").copy()
         for name, table in typed_tables.items()
+    }
+    result["source_tables"] = {
+        name: table.copy() for name, table in raw_tables.items()
     }
     result["dataset_quality"] = dataset_quality
     result["relationships"] = relationships
