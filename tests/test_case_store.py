@@ -98,7 +98,7 @@ class CaseStoreTests(unittest.TestCase):
 
     def test_company_reference_is_requested_before_case_access(self):
         case_store.save_company_case(
-            "company-a", "finding-1", {"history": ["Case opened"]}
+            "company-a", "finding-1", {"history": ["Case opened", "Follow-up"]}
         )
         case_store.firestore_db._company_ref.assert_called_once_with("company-a")
         self.assertEqual(self.transaction.set.call_count, 2)
