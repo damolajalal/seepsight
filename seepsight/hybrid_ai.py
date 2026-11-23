@@ -1,6 +1,7 @@
 """Safe hand-off from the authenticated Streamlit workspace to Hybrid AI."""
 
 import base64
+import html as html_lib
 import json
 import os
 from urllib.parse import urlparse
@@ -36,6 +37,8 @@ def render_finding_explainer(finding, evidence, currency):
         "verifiedFacts": facts,
         "requestedAction": "Explain this finding and identify the next evidence checks for the reviewer.",
     }
+    iframe_src = html_lib.escape(hybrid_url, quote=True)
+    target_origin = f"{parsed.scheme}://{parsed.netloc}"
     encoded = base64.b64encode(
         json.dumps(payload, ensure_ascii=False).encode("utf-8")
     ).decode("ascii")
@@ -44,7 +47,7 @@ def render_finding_explainer(finding, evidence, currency):
     html = f"""
     <div style="font-family: sans-serif; color: inherit;">
       <iframe id="seepsight-hybrid-frame"
-        src="{hybrid_url}"
+        src="{iframe_src}"
         title="Seepsight Hybrid AI finding explainer"
         style="width:100%; height:820px; border:0; border-radius:12px;"
         referrerpolicy="strict-origin-when-cross-origin"
@@ -56,7 +59,7 @@ def render_finding_explainer(finding, evidence, currency):
           const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
           const payload = JSON.parse(new TextDecoder().decode(bytes));
           frame.addEventListener('load', () => {{
-            frame.contentWindow.postMessage(payload, '*');
+            frame.contentWindow.postMessage(payload, '{target_origin}');
           }}, {{ once: true }});
         }})();
       </script>
