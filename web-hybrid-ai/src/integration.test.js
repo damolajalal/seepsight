@@ -38,3 +38,10 @@ test('embedded Seepsight context accepts only a bounded parent message', async (
   assert.match(main, /verifiedFacts: data\.verifiedFacts/);
   assert.match(main, /values\[key\]\.length > limits\[key\]/);
 });
+
+
+test('Firebase Hosting allows only the Seepsight workspace to embed the companion', async () => {
+  const config = await readFile(new URL('../../firebase.json', import.meta.url), 'utf8');
+  assert.match(config, /frame-ancestors 'self' https:\/\/seepsight\.streamlit\.app https:\/\/traceiq\.streamlit\.app/);
+  assert.doesNotMatch(config, /X-Frame-Options/);
+});
