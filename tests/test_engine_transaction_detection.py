@@ -56,6 +56,26 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(late), 1)
         self.assertIn("1 day", late.iloc[0]["evidence"])
 
+    def test_supplier_trend_without_quantity_fields_does_not_crash(self):
+        dates = pd.date_range("2025-01-01", periods=6, freq="MS")
+        ledger = pd.DataFrame({
+            "po_id": [f"PO-{i}" for i in range(6)],
+            "supplier": ["Supplier A"] * 6,
+            "po_date": dates,
+            "promised_date": dates,
+            "received_date": dates + pd.to_timedelta([0, 0, 0, 5, 5, 5], unit="D"),
+            "days_late": [0, 0, 0, 5, 5, 5],
+            "po_month": dates.to_period("M").astype(str),
+        })
+        findings = engine.detect(ledger)
+        self.assertIn("Supplier performance decline", set(findings["finding_type"]))
+
+    def test_missing_order_value_does_not_break_slow_approval_detection(self):
+        ledger = self.ledger.copy()
+        ledger.loc[0, "po_total"] = pd.NA
+        findings = engine.detect(ledger)
+        self.assertIn("Slow approvals", set(findings["finding_type"]))
+
     def test_evidence_is_scoped_to_the_single_purchase_order(self):
         findings = engine.detect(self.ledger)
         evidence = engine.build_evidence(self.ledger, findings, engine.DEFAULT_CONFIG)
