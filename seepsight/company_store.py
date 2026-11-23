@@ -74,6 +74,8 @@ def ensure_company_for_user(uid, email, company_name):
 
             if member_data.get("uid") != uid:
                 raise PermissionError("Company membership could not be verified.")
+            if str(member_data.get("email") or "").strip().lower() != email:
+                raise PermissionError("Your company membership email does not match your verified account.")
 
             if member_data.get("status") != "active":
                 raise PermissionError("Your company membership is not active.")
@@ -186,6 +188,11 @@ def get_company_for_user(uid):
 
     if member_data.get("uid") != uid:
         raise PermissionError("Company membership could not be verified.")
+    member_email = str(member_data.get("email") or "").strip().lower()
+    if not member_email:
+        raise PermissionError("Your company membership has no verified email.")
+    if str(user_data.get("email") or "").strip().lower() != member_email:
+        raise PermissionError("Your account and company membership emails do not match.")
 
     if member_data.get("status") != "active":
         raise PermissionError("Your company membership is not active.")
@@ -197,6 +204,6 @@ def get_company_for_user(uid):
         "company_id": company_id,
         "company_name": company_data.get("name", "Company"),
         "uid": uid,
-        "email": user_data.get("email"),
+        "email": member_email,
         "role": member_data.get("role", "member"),
     }
