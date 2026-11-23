@@ -530,15 +530,17 @@ def save_dataset_records(company_id, dataset_id, records):
 
         # Remove stale tail documents if this upload ID is retried with fewer rows.
         records_query = dataset_ref.collection("records").order_by("_record_number")
-        stale = []
+        stale_batch = client.batch()
+        stale_count = 0
         for snapshot in _stream_query_pages(records_query, page_size=400):
             if int((snapshot.to_dict() or {}).get("_record_number", -1)) >= len(prepared):
-                stale.append(snapshot.reference)
-        for start in range(0, len(stale), 400):
-            batch = client.batch()
-            for reference in stale[start:start + 400]:
-                batch.delete(reference)
-            batch.commit()
+                stale_batch.delete(snapshot.reference)
+                stale_count += 1
+                if stale_count % 400 == 0:
+                    stale_batch.commit()
+                    stale_batch = client.batch()
+        if stale_count % 400:
+            stale_batch.commit()
 
         dataset_ref.set({
             "record_count": len(prepared),
@@ -890,18 +892,25 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables):
         "completed_at": datetime.now(timezone.utc),
     }, merge=True)
 
-    analysis_ref.set({
-        **_normalise_workspace_value(summary),
-        "analysis_id": analysis_id,
-        "active_revision": revision_id,
-        "tables": table_counts,
-        "workspace_status": "complete",
-        "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
-    company.set({
-        "latest_analysis_id": analysis_id,
-        "latest_analysis_updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    from firebase_admin import firestore
+    switch_transaction = client.transaction()
+
+    @firestore.transactional
+    def _activate_revision(transaction):
+        transaction.set(analysis_ref, {
+            **_normalise_workspace_value(summary),
+            "analysis_id": analysis_id,
+            "active_revision": revision_id,
+            "tables": table_counts,
+            "workspace_status": "complete",
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+        transaction.set(company, {
+            "latest_analysis_id": analysis_id,
+            "latest_analysis_updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+
+    _activate_revision(switch_transaction)
     write_company_audit_event(
         company_id, "analysis.workspace_saved", "analysis", analysis_id,
         {"revision_id": revision_id, "table_counts": table_counts},
