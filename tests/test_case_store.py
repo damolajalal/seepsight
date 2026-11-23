@@ -96,6 +96,17 @@ class CaseStoreTests(unittest.TestCase):
                 "company-a", "finding-1", {"history": ["Opened", 3]}
             )
 
+    def test_cross_company_case_write_is_denied_before_database_transaction(self):
+        with patch.object(
+            case_store.firestore_db, "_company_ref",
+            side_effect=PermissionError("cross-company access denied"),
+        ):
+            with self.assertRaises(PermissionError):
+                case_store.save_company_case(
+                    "company-b", "finding-1", {"history": ["Opened"]}
+                )
+        self.client.transaction.assert_not_called()
+
     def test_company_reference_is_requested_before_case_access(self):
         case_store.save_company_case(
             "company-a", "finding-1", {"history": ["Case opened", "Follow-up"]}
