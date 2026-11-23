@@ -232,7 +232,7 @@ DETECTORS = {   # fields each detector needs
     "Short delivery": ["supplier", "ordered_qty", "received_qty"],
     "Invoice price above PO price": ["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"],
     "Slow approvals": ["approval_requested_at", "approval_completed_at"],
-    "Late delivery": ["supplier", "promised_date", "received_date"],
+    "Late delivery": ["supplier", "promised_date"],
     "Supplier performance decline": ["supplier", "po_date", "promised_date", "received_date"],
 }
 
