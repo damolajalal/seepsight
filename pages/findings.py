@@ -89,8 +89,11 @@ st.caption("These are possibilities until someone investigates.")
 st.markdown("#### What we recommend")
 st.write(plain.ACTION[r["finding_type"]])
 
-ex = w["explanations"]
-if ex is not None:
+ex = w.get("explanations")
+# Older or optional explanation exports may exist without the legacy lookup
+# columns. They must never prevent the verified findings and evidence from loading.
+required_explanation_columns = {"record_ref", "entity", "explanation"}
+if ex is not None and required_explanation_columns.issubset(set(ex.columns)):
     row = ex[(ex["record_ref"] == fid) & (ex["entity"] == r["entity"])]
     if len(row):
         with st.expander("Detailed AI summary (earlier wording, being simplified)"):
