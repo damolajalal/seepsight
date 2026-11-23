@@ -57,6 +57,43 @@ class AnalysisWorkspacePersistenceTests(unittest.TestCase):
         self.assertEqual(analysis_payload["workspace_status"], "complete")
         self.assertEqual(analysis_payload["tables"], {"findings": 1})
 
+    def test_oversized_workspace_summary_is_rejected_before_firestore_writes(self):
+        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+            with self.assertRaisesRegex(ValueError, "summary is too large"):
+                firestore_db.save_analysis_workspace(
+                    "company-a", "analysis-a",
+                    {"description": "x" * 810_000}, {},
+                )
+        self.company.collection.assert_not_called()
+
+    def test_workspace_total_row_count_is_bounded(self):
+        class OversizedList(list):
+            def __len__(self):
+                return 250_001
+
+        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+            with self.assertRaisesRegex(ValueError, "250,000 total rows"):
+                firestore_db.save_analysis_workspace(
+                    "company-a", "analysis-a", {},
+                    {"findings": OversizedList()},
+                )
+        self.company.collection.assert_not_called()
+
+    def test_legacy_analysis_results_mark_failed_after_batch_error(self):
+        company = MagicMock()
+        analysis_ref = MagicMock()
+        company.collection.return_value.document.return_value = analysis_ref
+        client = MagicMock()
+        client.batch.return_value.commit.side_effect = RuntimeError("write failed")
+        with patch.object(firestore_db, "_company_ref", return_value=company):
+            with patch.object(firestore_db, "get_firestore_client", return_value=client):
+                with self.assertRaisesRegex(RuntimeError, "could not be saved completely"):
+                    firestore_db.save_analysis_results(
+                        "company-a", "analysis-a", {}, [{"finding_id": "F-1"}]
+                    )
+        statuses = [call.args[0].get("results_status") for call in analysis_ref.set.call_args_list]
+        self.assertEqual(statuses, ["saving", "failed"])
+
     def test_failed_row_batch_never_switches_active_revision(self):
         self.batch.commit.side_effect = RuntimeError("Firestore unavailable")
         with self.assertRaises(RuntimeError):
