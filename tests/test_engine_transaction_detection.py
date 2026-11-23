@@ -114,6 +114,25 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(late), 1)
         self.assertIn("2 day", late.iloc[0]["evidence"])
 
+    def test_outstanding_order_past_due_is_detected_as_late(self):
+        ledger = self.ledger.copy()
+        ledger.loc[0, "received_date"] = pd.NaT
+        ledger.loc[0, "received_qty"] = 0
+        ledger.loc[0, "days_late"] = pd.NA
+        findings = engine.detect(ledger, {"as_of_date": "2026-01-10"})
+        late = findings[findings["finding_type"] == "Late delivery"]
+        self.assertEqual(len(late), 1)
+        self.assertIn("5 day", late.iloc[0]["evidence"])
+
+    def test_partial_delivery_before_due_date_is_not_short_delivery(self):
+        ledger = self.ledger.copy()
+        ledger.loc[0, "promised_date"] = pd.Timestamp("2026-12-01")
+        ledger.loc[0, "received_date"] = pd.Timestamp("2026-11-20")
+        ledger.loc[0, "received_qty"] = 1
+        ledger.loc[0, "invoice_qty"] = 1
+        findings = engine.detect(ledger, {"as_of_date": "2026-11-23"})
+        self.assertNotIn("Short delivery", set(findings["finding_type"]))
+
     def test_evidence_is_scoped_to_the_single_purchase_order(self):
         findings = engine.detect(self.ledger)
         evidence = engine.build_evidence(self.ledger, findings, engine.DEFAULT_CONFIG)
