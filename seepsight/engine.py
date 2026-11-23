@@ -905,7 +905,10 @@ def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=
         n1 = len(typed)
         typed = typed.drop_duplicates(subset="po_id", keep="first")
         dropped["duplicate_orders_removed"] = n1 - len(typed)
-    return _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
+    result = _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
+    # Keep the mapped, validated source rows available for durable ingestion.
+    result["normalized_tables"] = {"orders": typed.copy()}
+    return result
 
 
 def _id_key(series):
@@ -1136,6 +1139,10 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
     needs = [f for f in TABLE_FIELDS["orders"] if f in ("po_id", "supplier", "po_date", "ordered_qty", "po_unit_price") and f not in shown]
     result = _analyze(o, shown, unmapped_all, needs, len(raw_tables["orders"]), dropped, cfg, verbose, with_ml, warnings)
     result["supplemental_tables"] = supplemental
+    result["normalized_tables"] = {
+        name: table.drop(columns=["_key"], errors="ignore").copy()
+        for name, table in typed_tables.items()
+    }
     result["dataset_quality"] = dataset_quality
     result["relationships"] = relationships
     result["dataset_types_received"] = list(typed_tables)
