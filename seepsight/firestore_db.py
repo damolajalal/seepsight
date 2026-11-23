@@ -373,6 +373,16 @@ def _company_ref(company_id):
     return client.collection("companies").document(membership["company_id"])
 
 
+def _company_owner_ref(company_id):
+    """Return a company reference only for a currently verified owner."""
+    membership = verify_company_access(company_id)
+    if membership.get("role") != "owner":
+        raise PermissionError("Only the company owner can manage database connections.")
+    return get_firestore_client().collection("companies").document(
+        membership["company_id"]
+    )
+
+
 
 def _stream_query_pages(query, page_size=500):
     """Yield Firestore query snapshots in bounded pages."""
@@ -780,7 +790,7 @@ def save_company_connection_profile(company_id, connection_id, profile):
     """Store connection metadata and a Secret Manager reference, never credentials."""
     from seepsight.secrets_manager import validate_secret_reference
 
-    company = _company_ref(company_id)
+    company = _company_owner_ref(company_id)
     connection_id = _validate_id(connection_id, "connection_id")
     if not isinstance(profile, dict):
         raise TypeError("profile must be a dictionary.")
@@ -838,7 +848,7 @@ def set_company_connection_profile_status(company_id, connection_id, status):
     """Enable or disable one company-owned connection profile."""
     if status not in {"active", "inactive"}:
         raise ValueError("Connection status must be active or inactive.")
-    company = _company_ref(company_id)
+    company = _company_owner_ref(company_id)
     connection_id = _validate_id(connection_id, "connection_id")
     ref = company.collection("connections").document(connection_id)
     snapshot = ref.get()
@@ -857,7 +867,7 @@ def set_company_connection_profile_status(company_id, connection_id, status):
 
 def get_company_connection_profile(company_id, connection_id):
     """Load one authorized connection profile and its secret reference only."""
-    company = _company_ref(company_id)
+    company = _company_owner_ref(company_id)
     connection_id = _validate_id(connection_id, "connection_id")
     snapshot = company.collection("connections").document(connection_id).get()
     if not snapshot.exists:
@@ -872,7 +882,7 @@ def get_company_connection_profile(company_id, connection_id):
 
 def get_company_connection_profiles(company_id):
     """List connection profiles without fetching or exposing secret payloads."""
-    company = _company_ref(company_id)
+    company = _company_owner_ref(company_id)
     query = company.collection("connections").order_by("__name__")
     profiles = [
         _denormalise_workspace_value(snapshot.to_dict() or {})
