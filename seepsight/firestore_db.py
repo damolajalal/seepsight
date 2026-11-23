@@ -591,14 +591,17 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
     """Retrieve source or normalized company records in bounded pages."""
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
+    if collection_name not in {"records", "source_records"}:
+        raise ValueError("collection_name must be 'records' or 'source_records'.")
     dataset_ref = company.collection("datasets").document(dataset_id)
     metadata = dataset_ref.get()
+    status_key = f"{collection_name}_status"
     if metadata.exists:
-        state = (metadata.to_dict() or {}).get("records_status")
+        state = (metadata.to_dict() or {}).get(status_key)
         if state in {"saving", "failed"}:
             raise RuntimeError("This dataset's records are not in a complete saved state.")
 
-    query = dataset_ref.collection("records").order_by("_record_number")
+    query = dataset_ref.collection(collection_name).order_by("_record_number")
     records = []
     for snapshot in _stream_query_pages(query, page_size=500):
         item = _denormalise_workspace_value(snapshot.to_dict() or {})
@@ -606,6 +609,10 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
             key: value for key, value in item.items()
             if not key.startswith("_")
         })
+    write_company_audit_event(
+        company_id, f"dataset.{collection_name}_read", "dataset", dataset_id,
+        {"record_count": len(records), "collection": collection_name},
+    )
     return records
 
 # ============================================================
