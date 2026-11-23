@@ -6,6 +6,14 @@ from seepsight import cloud_storage, firestore_db
 
 
 class CloudStorageValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.audit_patch = patch(
+            "seepsight.firestore_db.write_company_audit_event",
+            return_value="audit-id",
+        )
+        self.audit_patch.start()
+        self.addCleanup(self.audit_patch.stop)
+
     def test_company_scoped_path(self):
         path, name = cloud_storage._object_name("company_1", "upload-1", "orders.csv")
         self.assertEqual(path, "companies/company_1/uploads/upload-1/orders.csv")
