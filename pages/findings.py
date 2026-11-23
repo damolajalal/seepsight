@@ -29,12 +29,11 @@ if len(f) == 0:
         for name, status in skipped.items():
             st.write(f"- **{name}:** {status}")
     elif detector_status:
-        min_pattern = int(thresholds.get("min_pattern", 2) or 2)
         st.info(
-            "The available procurement checks ran, but no finding met the configured "
-            f"reporting rules. Pattern-based checks require at least {min_pattern} "
-            "matching orders for the same supplier or group. Review the check coverage "
-            "and source records before treating this as a clean bill of health."
+            "The available checks completed and did not identify a qualifying discrepancy "
+            "in the fields they could examine. Transaction-level checks do not require "
+            "repeated occurrences or a minimum financial amount. Review the coverage below "
+            "to see exactly which checks ran."
         )
         st.markdown("**Checks run**")
         for name, status in detector_status.items():
