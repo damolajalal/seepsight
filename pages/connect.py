@@ -29,7 +29,7 @@ ui.page_header(
 )
 
 if cloud_storage.is_configured():
-    st.info("Original uploads are saved to private company storage only when that service is configured. Validated, mapped procurement records, analysis summaries, findings and dashboard tables are saved to your company's Firestore workspace.")
+    st.info("Original file bytes are stored in private company storage when configured. Original source rows, normalized procurement records, mappings, analysis summaries, findings and dashboard tables are also saved in your company's Firestore workspace.")
 else:
     st.warning("Private file storage is not configured yet, so original file bytes remain session-only. Original source rows, normalized records, mappings and analysis results are saved separately to your company's Firestore workspace.")
 
