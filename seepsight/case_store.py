@@ -60,7 +60,6 @@ def save_company_case(company_id, case_id, case):
     if len(history) < previous_count:
         raise ValueError("Case history cannot be shortened.")
 
-    client = firestore_db.get_firestore_client()
     for index in range(previous_count, len(history)):
         event_ref = case_ref.collection("history").document(
             f"event_{index:012d}"
