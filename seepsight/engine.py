@@ -681,8 +681,23 @@ def detect(led, config=None):
                 leakage=leakage,
             )
 
-    # Any positive price difference is surfaced; no percentage/materiality floor.
-    if available(["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"]):
+    # Invoice-line overpricing is calculated before aggregation where multiple invoices exist.
+    # This prevents a cheaper invoice from averaging away a separate overpriced invoice.
+    if "invoice_overpriced_count" in led.columns and available(["supplier", "po_unit_price", "invoice_overpriced_count"]):
+        for idx, row in led.iterrows():
+            count = safe_amount(row.get("invoice_overpriced_count"))
+            if count <= 0:
+                continue
+            leakage = safe_amount(row.get("invoice_overprice_exposure"))
+            ids = row.get("overpriced_invoice_ids")
+            id_text = f" (invoice(s): {ids})" if pd.notna(ids) and str(ids).strip() else ""
+            add_transaction(
+                "Invoice price above PO price", idx,
+                f"{int(count)} invoice line(s) were priced above the purchase-order rate{id_text}; "
+                f"identified excess amount {leakage:,.2f}.",
+                leakage=leakage,
+            )
+    elif available(["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"]):
         for idx, row in led.iterrows():
             po_price, invoice_price, qty = row.get("po_unit_price"), row.get("invoice_unit_price"), row.get("invoice_qty")
             if pd.isna(po_price) or pd.isna(invoice_price) or pd.isna(qty) or float(invoice_price) <= float(po_price):
@@ -1155,7 +1170,7 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
         if "_key" in r and ({"received_date", "received_qty"} & set(r.columns)):
             agg = {}
             if "received_date" in r.columns:
-                agg["received_date"] = ("received_date", "min")
+                agg["received_date"] = ("received_date", "max")
             if "received_qty" in r.columns:
                 agg["received_qty"] = ("received_qty", "sum")
             if agg:
@@ -1173,11 +1188,37 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
             agg["_val"] = ("_val", "sum")
         elif "_key" in v and "invoice_unit_price" in v:
             agg["invoice_unit_price"] = ("invoice_unit_price", "mean")
+
+        # Preserve line-level exceptions before weighted-average aggregation.
+        if "_key" in v and "invoice_unit_price" in v and "po_unit_price" in o.columns:
+            price_lookup = o[["_key", "po_unit_price"]].drop_duplicates("_key")
+            v = v.merge(price_lookup, on="_key", how="left")
+            v["_price_over_po"] = (
+                v["invoice_unit_price"].notna() & v["po_unit_price"].notna()
+                & (v["invoice_unit_price"] > v["po_unit_price"])
+            )
+            if "invoice_qty" in v:
+                v["_line_overprice_exposure"] = (
+                    (v["invoice_unit_price"] - v["po_unit_price"]).clip(lower=0)
+                    * v["invoice_qty"].fillna(0)
+                )
+            else:
+                v["_line_overprice_exposure"] = 0.0
+            agg["_overprice_exposure"] = ("_line_overprice_exposure", "sum")
+            agg["_overpriced_count"] = ("_price_over_po", "sum")
+            if "invoice_id" in v:
+                v["_overpriced_id"] = v["invoice_id"].where(v["_price_over_po"], "")
+                agg["_overpriced_ids"] = ("_overpriced_id", lambda values: ", ".join(dict.fromkeys(str(x) for x in values if str(x).strip())))
         if agg:
             g = v.groupby("_key").agg(**agg).reset_index()
             if "_val" in g:
                 g["invoice_unit_price"] = g["_val"] / g["invoice_qty"].where(g["invoice_qty"] > 0)
                 g = g.drop(columns="_val")
+            g = g.rename(columns={
+                "_overprice_exposure": "invoice_overprice_exposure",
+                "_overpriced_count": "invoice_overpriced_count",
+                "_overpriced_ids": "overpriced_invoice_ids",
+            })
             o = o.merge(g, on="_key", how="left")
         else:
             warnings.append("The invoices dataset was recognised but contained no mapped invoice measures to aggregate.")
