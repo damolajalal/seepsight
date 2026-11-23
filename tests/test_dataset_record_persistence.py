@@ -54,6 +54,17 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "complete",
         )
 
+    def test_failed_batch_marks_dataset_records_incomplete(self):
+        self.batch.commit.side_effect = RuntimeError("write failed")
+        with self.assertRaisesRegex(RuntimeError, "could not be saved completely"):
+            firestore_db.save_dataset_records(
+                "company-a", "dataset-a", [{"po_id": "PO-1"}]
+            )
+        states = [call.args[0] for call in self.dataset_ref.set.call_args_list]
+        self.assertEqual(states[0]["records_status"], "saving")
+        self.assertEqual(states[-1]["records_status"], "failed")
+        self.assertFalse(states[-1]["records_saved"])
+
     def test_source_rows_use_separate_status_and_collection(self):
         saved = firestore_db.save_dataset_records(
             "company-a",
