@@ -12,7 +12,7 @@
 | Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
 | Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are saved in Firestore | Original file bytes and raw validated source records are not durable without private object storage; bucket existence/permissions still need a live test |
 | User-facing privacy | Company Profile and Settings distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
-| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; latest completed analysis ID is stored on the company record and restored for the authenticated company in a fresh session | Raw source records/files and cases/action history are not yet persisted; table reads are currently unpaginated; partial-write and runtime behavior need tests |
+| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces | Raw source records/files and cases/action history are not yet persisted; old revisions need a retention/cleanup policy; partial-write behavior still needs automated and live tests |
 | Automated checks | Added authorization unit tests, adapted cloud-storage tests to mock the authorization boundary, and added a GitHub Actions test workflow | Workflow execution and test results have not yet been confirmed |
 
 ## Security design confirmed in source
@@ -23,13 +23,13 @@
 - Cloud Storage upload, download, and delete operations call the same authorization boundary.
 - Firestore client rules remain deny-all; trusted backend Firebase Admin access bypasses client rules.
 - Workspace and case data are additionally scoped by company ID inside the Streamlit session.
-- Analysis persistence writes each dashboard table to separate row documents, applies an 800 KB per-row guard, batches writes/deletes, and marks the analysis complete only after table writes finish. Restoration uses the latest analysis pointer on the authenticated company document.
+- Analysis persistence validates and normalises the payload before writes, applies an 800 KB per-row guard, writes rows in batches of 300 under a unique revision, marks that revision complete, and only then switches the active revision. A failed replacement therefore leaves the previous active revision intact. Restoration uses pages of 500 rows and supports legacy workspaces without revision pointers.
 
 ## Remaining Phase 3 work
 
 ### P0 — Finish tenant-context refactor and security verification
 - Prefer passing a verified tenant context to data services rather than repeatedly accepting a free-form company ID.
-- Add tests for missing user records, missing membership, inactive membership, suspended company, and revoked tokens.
+- Add tests for missing user records, missing membership, inactive membership, suspended company, and revoked tokens; current authorization tests cover token/session identity, verified email, company mismatch and membership-email mismatch.
 - Test cross-company access against mocked Firestore references for read, write, list and delete operations.
 - Review authentication error handling so raw exception text and sensitive diagnostics are never shown to users.
 - Confirm role-based authorization before adding member/admin operations.
@@ -43,12 +43,12 @@
 ### P1 — Durable workspace and analysis persistence
 - Connect the existing Firestore record and analysis helpers to the onboarding and analysis workflow.
 - Persist validated source records and add bounded/paginated reads; analysis summaries, findings, evidence and dashboard tables are now persisted, but raw source records are not.
-- Add pagination to workspace table restoration and stronger recovery/cleanup for interrupted writes.
+- Add a retention/cleanup policy for abandoned and superseded workspace revisions; test failure injection at each persistence stage.
 - Persist cases and action history with an audit trail.
 - Keep original-file storage labelled session-only until a real private-bucket upload/retrieval test succeeds.
 
 ### P1 — Data integrity and operational hardening
-- Preserve exact financial precision; avoid silently converting currency `Decimal` values to binary floats.
+- Preserve exact financial precision; `_normalise()` currently converts `Decimal` values to binary floats and needs a lossless storage/rehydration strategy before financial source records are durably stored.
 - Add pagination and bounded reads for record retrieval.
 - Handle partial batch failures, retries, duplicate ingestion and cleanup safely.
 - Ensure connection diagnostics surface cleanup failures without exposing credentials.
@@ -63,8 +63,8 @@
 
 - Source edits are committed to `feature/company-auth`.
 - GitHub Actions workflow file is present, but its run status has not been confirmed.
-- Unit tests have not been executed in a local runtime in this session.
+- Authorization test fixtures and cases were updated for verified-email binding. The GitHub Actions status for the latest commits has not yet been confirmed; no local test runtime was available in this session.
 - No Firebase rules were loosened.
 - No production deployment or successful live Cloud Storage test is claimed.
 
-**Phase 3 status: in progress — tenant checks and dashboard analysis persistence implemented in source; automated/live verification, raw source durability, case history and operational hardening remain outstanding.**
+**Phase 3 status: in progress — tenant identity checks and revision-safe, paginated dashboard analysis persistence are implemented in source; automated/live verification, raw source durability, case history, revision retention, financial precision and operational hardening remain outstanding.**
