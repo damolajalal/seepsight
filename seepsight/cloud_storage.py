@@ -54,6 +54,8 @@ def _object_name(company_id, upload_id, filename):
 
 def upload_company_file(company_id, upload_id, filename, data, content_type=None):
     """Create a new private object and refuse to overwrite existing objects."""
+    from seepsight.firestore_db import verify_company_access
+    verify_company_access(company_id)
     object_name, safe_name = _object_name(company_id, upload_id, filename)
     if not isinstance(data, (bytes, bytearray, memoryview)):
         raise TypeError("Upload data must be bytes.")
@@ -103,6 +105,8 @@ def _validate_company_object(company_id, object_name):
 
 def download_company_file(company_id, object_name):
     """Download only an object within the authenticated company's namespace."""
+    from seepsight.firestore_db import verify_company_access
+    verify_company_access(company_id)
     object_name = _validate_company_object(company_id, object_name)
     try:
         return _client().bucket(_bucket_name()).blob(object_name).download_as_bytes()
@@ -112,6 +116,8 @@ def download_company_file(company_id, object_name):
 
 def delete_company_file(company_id, object_name, if_generation_match=None):
     """Delete only an object within the authenticated company's namespace."""
+    from seepsight.firestore_db import verify_company_access
+    verify_company_access(company_id)
     object_name = _validate_company_object(company_id, object_name)
     try:
         blob = _client().bucket(_bucket_name()).blob(object_name)
