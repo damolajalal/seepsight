@@ -35,3 +35,22 @@ values into Firestore or session state.
 These modules are implemented and unit-tested, but live provider connections,
 Secret Manager IAM, network allowlists, TLS certificates, and database
 read-only grants must be configured and verified in the target environment.
+
+
+## In-app connection management
+
+Company owners can add connection profiles from **Settings → Company database
+connections**. A profile stores the provider, display name, optional database/schema
+labels, query row/time budgets and a Secret Manager resource reference. The
+application does not accept or store raw passwords in the profile.
+
+Owners can run a bounded `SELECT 1 AS seepsight_connection_test` from Settings
+to verify the configured secret and database connection, and can disable or
+re-enable a profile. Profile CRUD and query execution re-check the authenticated
+Firebase membership and owner role on the server; hiding controls in the UI is
+not the only authorization boundary.
+
+This is a connection foundation and connectivity test, not yet a general-purpose
+SQL workbench or automatic ingestion pipeline from external databases. Those
+workflows require their own product scope, data preview, schema mapping,
+scheduling, and audit requirements.
