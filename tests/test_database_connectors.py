@@ -60,6 +60,26 @@ class ConnectionProfileTests(unittest.TestCase):
         self.assertEqual(execute.call_args.kwargs["max_rows"], 75)
         self.assertEqual(execute.call_args.kwargs["timeout_seconds"], 9)
 
+    def test_company_query_cannot_exceed_saved_profile_limits(self):
+        profile = {
+            "provider": "postgres",
+            "secret_reference": "projects/p/secrets/db/versions/latest",
+            "status": "active",
+            "max_rows": 75,
+            "timeout_seconds": 9,
+        }
+        with patch.object(firestore_db, "get_company_connection_profile", return_value=profile):
+            with patch.object(
+                database_connectors, "execute_readonly_query",
+                return_value={"rows": [], "columns": [], "row_count": 0, "truncated": False, "provider": "postgres"},
+            ) as execute:
+                database_connectors.execute_company_connection_query(
+                    "company-a", "profile-a", "SELECT 1",
+                    max_rows=500, timeout_seconds=50,
+                )
+        self.assertEqual(execute.call_args.kwargs["max_rows"], 75)
+        self.assertEqual(execute.call_args.kwargs["timeout_seconds"], 9)
+
     def test_profile_rejects_raw_credentials(self):
         with patch.object(firestore_db, "_company_ref", return_value=MagicMock()):
             with self.assertRaisesRegex(ValueError, "metadata and a secret reference"):
@@ -106,6 +126,8 @@ class ReadOnlyQueryTests(unittest.TestCase):
             database_connectors._validate_limits(1001, 10)
         with self.assertRaises(ValueError):
             database_connectors._validate_limits(10, 120)
+        with self.assertRaises(ValueError):
+            database_connectors._validate_limits(True, 10)
 
     def test_readonly_query_dispatches_with_bounds_and_parameters(self):
         with patch.object(database_connectors, "access_secret_json", return_value={"host": "db"}):
