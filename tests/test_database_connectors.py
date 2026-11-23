@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from seepsight import database_connectors, secrets_manager
+from seepsight import database_connectors, secrets_manager, firestore_db
 
 
 class SecretReferenceTests(unittest.TestCase):
@@ -15,6 +15,39 @@ class SecretReferenceTests(unittest.TestCase):
         for value in ("password=secret", "projects/p/secrets/s/versions/latest/extra", ""):
             with self.assertRaises(ValueError):
                 secrets_manager.validate_secret_reference(value)
+
+
+class ConnectionProfileTests(unittest.TestCase):
+    def test_profile_stores_secret_reference_not_password(self):
+        company = MagicMock()
+        with patch.object(firestore_db, "_company_ref", return_value=company):
+            with patch.object(firestore_db, "write_company_audit_event"):
+                result = firestore_db.save_company_connection_profile(
+                    "company-a", "db-profile-1",
+                    {
+                        "name": "Procurement warehouse",
+                        "provider": "postgres",
+                        "secret_reference": "projects/p/secrets/db/versions/latest",
+                        "database": "procurement",
+                    },
+                )
+        self.assertEqual(result, "db-profile-1")
+        payload = company.collection.return_value.document.return_value.set.call_args.args[0]
+        self.assertEqual(payload["secret_reference"], "projects/p/secrets/db/versions/latest")
+        self.assertNotIn("password", payload)
+
+    def test_profile_rejects_raw_credentials(self):
+        with patch.object(firestore_db, "_company_ref", return_value=MagicMock()):
+            with self.assertRaisesRegex(ValueError, "metadata and a secret reference"):
+                firestore_db.save_company_connection_profile(
+                    "company-a", "db-profile-1",
+                    {
+                        "name": "Bad profile",
+                        "provider": "postgres",
+                        "secret_reference": "projects/p/secrets/db/versions/latest",
+                        "password": "must-not-be-stored",
+                    },
+                )
 
 
 class ReadOnlyQueryTests(unittest.TestCase):
