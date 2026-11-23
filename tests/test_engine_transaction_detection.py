@@ -39,6 +39,8 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertIn("Slow approvals", types)
         self.assertIn("Late delivery", types)
         self.assertEqual(len(findings), 4)
+        short = findings[findings["finding_type"] == "Short delivery"]
+        self.assertEqual(float(short.iloc[0]["leakage"]), 0.0)
 
     def test_tiny_positive_price_difference_is_not_suppressed(self):
         findings = engine.detect(self.ledger)
