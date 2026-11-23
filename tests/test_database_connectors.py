@@ -50,6 +50,52 @@ class ReadOnlyQueryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             database_connectors._validate_limits(10, 120)
 
+    def test_readonly_query_dispatches_with_bounds_and_parameters(self):
+        with patch.object(database_connectors, "access_secret_json", return_value={"host": "db"}):
+            with patch.object(
+                database_connectors, "_postgres",
+                return_value=(["id"], [{"id": 1}], False),
+            ) as adapter:
+                result = database_connectors.execute_readonly_query(
+                    "postgres",
+                    "projects/p/secrets/db/versions/latest",
+                    "SELECT id FROM orders WHERE id = %s",
+                    parameters=[7],
+                    max_rows=25,
+                    timeout_seconds=8,
+                )
+        self.assertEqual(result["rows"], [{"id": 1}])
+        self.assertEqual(result["provider"], "postgres")
+        adapter.assert_called_once_with(
+            {"host": "db"}, "SELECT id FROM orders WHERE id = %s",
+            [7], 25, 8,
+        )
+
+    def test_secret_access_failure_is_sanitized(self):
+        with patch.object(
+            database_connectors, "access_secret_json",
+            side_effect=RuntimeError("private secret payload"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "private secret payload"):
+                database_connectors.execute_readonly_query(
+                    "postgres",
+                    "projects/p/secrets/db/versions/latest",
+                    "SELECT 1",
+                )
+
+    def test_provider_timeout_is_sanitized(self):
+        with patch.object(database_connectors, "access_secret_json", return_value={}):
+            with patch.object(
+                database_connectors, "_postgres",
+                side_effect=TimeoutError("socket timeout"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "database query failed"):
+                    database_connectors.execute_readonly_query(
+                        "postgres",
+                        "projects/p/secrets/db/versions/latest",
+                        "SELECT 1",
+                    )
+
     def test_invalid_query_is_rejected_before_secret_access(self):
         with patch.object(database_connectors, "access_secret_json") as secret:
             with self.assertRaises(ValueError):
