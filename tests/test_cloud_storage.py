@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from seepsight import cloud_storage
+from seepsight import cloud_storage, firestore_db
 
 
 class CloudStorageValidationTests(unittest.TestCase):
@@ -24,10 +24,11 @@ class CloudStorageValidationTests(unittest.TestCase):
             cloud_storage._object_name("../other", "upload-1", "orders.csv")
 
     def test_cross_company_download_rejected_before_cloud_access(self):
-        with patch.object(cloud_storage, "_client") as client:
-            with self.assertRaises(PermissionError):
-                cloud_storage.download_company_file("company_1", "companies/company_2/uploads/id/orders.csv")
-            client.assert_not_called()
+        with patch.object(firestore_db, "verify_company_access", return_value={"company_id": "company_1"}):
+            with patch.object(cloud_storage, "_client") as client:
+                with self.assertRaises(PermissionError):
+                    cloud_storage.download_company_file("company_1", "companies/company_2/uploads/id/orders.csv")
+                client.assert_not_called()
 
     def test_upload_is_create_only(self):
         blob = MagicMock(generation=7, size=12, content_type="text/csv")
@@ -37,8 +38,9 @@ class CloudStorageValidationTests(unittest.TestCase):
         client = MagicMock()
         client.bucket.return_value = bucket
         with patch.dict("os.environ", {"SEEPSIGHT_UPLOADS_BUCKET": "private-bucket"}):
-            with patch.object(cloud_storage, "_client", return_value=client):
-                meta = cloud_storage.upload_company_file("company_1", "upload-1", "orders.csv", b"a,b\n1,2\n")
+            with patch.object(firestore_db, "verify_company_access", return_value={"company_id": "company_1"}):
+                with patch.object(cloud_storage, "_client", return_value=client):
+                    meta = cloud_storage.upload_company_file("company_1", "upload-1", "orders.csv", b"a,b\n1,2\n")
         self.assertTrue(meta["private"])
         self.assertEqual(meta["object_name"], "companies/company_1/uploads/upload-1/orders.csv")
         self.assertEqual(blob.upload_from_string.call_args.kwargs["if_generation_match"], 0)
