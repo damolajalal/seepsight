@@ -15,7 +15,11 @@ import pandas as pd
 import streamlit as st
 
 from seepsight import cloud_storage, engine, plain, ui, workspace
-from seepsight.firestore_db import save_company_dataset, save_company_mapping
+from seepsight.firestore_db import (
+    save_company_dataset,
+    save_company_mapping,
+    save_dataset_records,
+)
 
 
 ui.page_header(
@@ -25,9 +29,9 @@ ui.page_header(
 )
 
 if cloud_storage.is_configured():
-    st.info("Original uploads are saved to private company storage only when that service is configured. Validated analysis summaries, findings and dashboard tables are saved to your company's Firestore workspace.")
+    st.info("Original uploads are saved to private company storage only when that service is configured. Validated, mapped procurement records, analysis summaries, findings and dashboard tables are saved to your company's Firestore workspace.")
 else:
-    st.warning("Private file storage is not configured yet. You can still analyse files in this session, but the original uploads will not be durably stored. They will be cleared when this session ends.")
+    st.warning("Private file storage is not configured yet, so original file bytes remain session-only. Validated, mapped procurement records and analysis results are saved separately to your company's Firestore workspace.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
@@ -491,7 +495,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 status_message = (
                     "Saving original files and preparing your company workspace..."
                     if private_storage_ready
-                    else "Preparing your session-based company workspace..."
+                    else "Saving validated records to your company workspace..."
                 )
                 with st.status(status_message, expanded=True) as status:
                     saved_upload_ids = []
@@ -518,13 +522,25 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         }
                         if storage_metadata is not None:
                             dataset_metadata["storage"] = storage_metadata
+                        normalized_tables = result.get("normalized_tables", {})
+                        normalized_frame = normalized_tables.get(dataset_kind)
+                        if not isinstance(normalized_frame, pd.DataFrame):
+                            raise RuntimeError(
+                                f"Validated records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
+                                "were not returned by the ingestion engine."
+                            )
+                        dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
+                        saved_records = normalized_frame.astype(object).where(
+                            pd.notna(normalized_frame), None
+                        ).to_dict("records")
+                        save_dataset_records(company_id, upload_id, saved_records)
                         saved_upload_ids.append(upload_id)
                     if private_storage_ready:
                         st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
                     else:
-                        st.write("Original files are available only for this active session; durable file storage is not configured.")
+                        st.write("Original file bytes remain session-only because private object storage is not configured. Validated, mapped procurement records are being saved separately to Firestore.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = check_signature
