@@ -47,13 +47,14 @@ class ConnectionProfileTests(unittest.TestCase):
         with patch.object(
             firestore_db, "get_company_connection_profile", return_value=profile
         ) as get_profile:
-            with patch.object(
-                database_connectors, "execute_readonly_query",
-                return_value={"rows": [], "columns": [], "row_count": 0, "truncated": False, "provider": "postgres"},
-            ) as execute:
-                result = database_connectors.execute_company_connection_query(
-                    "company-a", "profile-a", "SELECT 1"
-                )
+            with patch.object(firestore_db, "write_company_audit_event"):
+                with patch.object(
+                    database_connectors, "execute_readonly_query",
+                    return_value={"rows": [], "columns": [], "row_count": 0, "truncated": False, "provider": "postgres"},
+                ) as execute:
+                    result = database_connectors.execute_company_connection_query(
+                        "company-a", "profile-a", "SELECT 1"
+                    )
         get_profile.assert_called_once_with("company-a", "profile-a")
         self.assertEqual(result["provider"], "postgres")
         self.assertEqual(execute.call_args.kwargs["max_rows"], 75)
