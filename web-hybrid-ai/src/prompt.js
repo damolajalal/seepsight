@@ -12,10 +12,10 @@ export function buildFindingPrompt({ supplier = '', findingType = '', verifiedFa
     'Separate observed facts, possible implications, and recommended next checks.',
     'Keep the answer concise and practical.',
     '',
-    \`Supplier: \${supplier.trim() || 'Not specified'}\`,
-    \`Finding type: \${findingType.trim() || 'Not specified'}\`,
-    \`Verified facts from Seepsight: \${facts}\`,
-    \`Requested action or question: \${requestedAction.trim() || 'Explain the finding and suggest the next verification step.'}\`,
+    `Supplier: ${supplier.trim() || 'Not specified'}`,
+    `Finding type: ${findingType.trim() || 'Not specified'}`,
+    `Verified facts from Seepsight: ${facts}`,
+    `Requested action or question: ${requestedAction.trim() || 'Explain the finding and suggest the next verification step.'}`,
   ].join('\n');
 }
 
