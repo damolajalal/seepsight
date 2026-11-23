@@ -251,19 +251,52 @@ def _normalise(value):
 
 
 def _company_ref(company_id):
-    """Return a tenant-scoped company reference."""
+    """
+    Return a company reference only after verifying the current user.
 
-    company_id = _validate_id(
-        company_id,
-        "company_id"
-    )
+    The company ID in Streamlit session state is treated as an untrusted
+    selector, not proof of access. Firebase Admin verifies the ID token,
+    then the membership store resolves the user's authoritative company.
+    """
+
+    company_id = _validate_id(company_id, "company_id")
+
+    account = st.session_state.get("seepsight_auth")
+    if not isinstance(account, dict):
+        raise PermissionError("Please sign in before accessing company data.")
+
+    id_token = account.get("id_token")
+    session_uid = account.get("uid")
+    if not id_token or not session_uid:
+        raise PermissionError("Your sign-in session is incomplete. Please sign in again.")
+
+    try:
+        import firebase_admin
+        from firebase_admin import auth as firebase_auth
+
+        app = firebase_admin.get_app()
+        decoded_token = firebase_auth.verify_id_token(
+            id_token,
+            app=app,
+        )
+    except Exception as exc:
+        raise PermissionError(
+            "Your sign-in session could not be verified. Please sign in again."
+        ) from exc
+
+    verified_uid = decoded_token.get("uid")
+    if not verified_uid or verified_uid != session_uid:
+        raise PermissionError("The signed-in identity could not be verified.")
+
+    # Import locally to avoid the company_store/firestore_db import cycle.
+    from seepsight import company_store
+
+    membership = company_store.get_company_for_user(verified_uid)
+    if membership.get("company_id") != company_id:
+        raise PermissionError("You do not have access to this company workspace.")
 
     client = get_firestore_client()
-
-    return (
-        client.collection("companies")
-        .document(company_id)
-    )
+    return client.collection("companies").document(company_id)
 
 
 # ============================================================
