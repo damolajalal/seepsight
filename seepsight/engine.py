@@ -1264,8 +1264,9 @@ ANSWER_KEYS = {
     "company_b": [("Short delivery", "Mombasa Grain Traders"), ("Invoice price above PO price", "Rift Valley Cleaning Co"),
                   ("Slow approvals", "Kisumu branch finance approvals"), ("Supplier performance decline", "Nyali Handling Equipment")],
 }
-EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "ordered_qty", "received_qty", "invoice_qty",
-                    "po_unit_price", "invoice_unit_price", "approval_days", "days_late", "po_total"]
+EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "promised_date", "received_date",
+                    "ordered_qty", "received_qty", "invoice_qty", "po_unit_price", "invoice_unit_price",
+                    "approval_days", "days_late", "po_total"]
 
 
 def build_evidence(led, findings, cfg):
@@ -1282,12 +1283,14 @@ def build_evidence(led, findings, cfg):
         else:
             d = pd.DataFrame(columns=led.columns)
         if f.finding_type == "Short delivery" and len(d):
-            d["exposure"] = (
-                (d["ordered_qty"] - d["received_qty"]).clip(lower=0)
-                .where((d["ordered_qty"] - d["received_qty"]) > 0,
-                       (d["invoice_qty"] - d["received_qty"]).clip(lower=0))
-                * d.get("invoice_unit_price", d["po_unit_price"])
-            )
+            short_vs_order = (d["ordered_qty"] - d["received_qty"]).clip(lower=0)
+            overbilled = ((d["invoice_qty"] - d["received_qty"]).clip(lower=0)
+                          if "invoice_qty" in d else pd.Series(0.0, index=d.index))
+            short_units = pd.concat([short_vs_order, overbilled], axis=1).max(axis=1)
+            unit_price = (d["invoice_unit_price"] if "invoice_unit_price" in d else d["po_unit_price"])
+            if "po_unit_price" in d:
+                unit_price = unit_price.fillna(d["po_unit_price"])
+            d["exposure"] = short_units * unit_price
             basis = "identified exposure"
         elif f.finding_type == "Invoice price above PO price" and len(d):
             d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]).clip(lower=0) * d["invoice_qty"]
