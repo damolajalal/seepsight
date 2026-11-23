@@ -285,10 +285,14 @@ def verify_company_access(company_id):
         ) from exc
 
     verified_uid = decoded_token.get("uid")
+    verified_email = str(decoded_token.get("email") or "").strip().lower()
+    session_email = str(account.get("email") or "").strip().lower()
     if not verified_uid or verified_uid != session_uid:
         raise PermissionError("The signed-in identity could not be verified.")
     if not decoded_token.get("email_verified", False):
         raise PermissionError("Please verify your email address before accessing company data.")
+    if not verified_email or verified_email != session_email:
+        raise PermissionError("Your sign-in identity has changed. Please sign in again.")
 
     # Import locally to avoid the company_store/firestore_db import cycle.
     from seepsight import company_store
@@ -296,6 +300,8 @@ def verify_company_access(company_id):
     membership = company_store.get_company_for_user(verified_uid)
     if membership.get("company_id") != company_id:
         raise PermissionError("You do not have access to this company workspace.")
+    if str(membership.get("email") or "").strip().lower() != verified_email:
+        raise PermissionError("Your company membership email does not match your verified account.")
 
     return membership
 
