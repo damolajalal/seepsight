@@ -633,6 +633,13 @@ def detect(led, config=None):
     def available(fields):
         return all(f in led.columns and led[f].notna().any() for f in fields)
 
+    def safe_amount(value):
+        """Convert optional numeric values without treating pd.NA as a boolean."""
+        try:
+            return 0.0 if pd.isna(value) else float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
     def add_transaction(finding_type, idx, evidence, leakage=0.0, orders_held=0.0):
         row = led.loc[idx]
         supplier = row.get("supplier")
@@ -700,7 +707,7 @@ def detect(led, config=None):
                 "Slow approvals", idx,
                 f"Approval took {float(days):.2f} days; configured deadline is "
                 f"{float(cfg['approval_limit_days']):g} days.",
-                orders_held=float(row.get("po_total", 0.0) or 0.0),
+                orders_held=safe_amount(row.get("po_total", 0.0)),
             )
 
     # Any delivery after its promised date is reported, including a one-day delay.
@@ -718,9 +725,13 @@ def detect(led, config=None):
     if available(["supplier", "po_date", "promised_date", "received_date"]):
         has_fill = {"received_qty", "ordered_qty"} <= set(led.columns)
         for sup, g in led.dropna(subset=["days_late"]).groupby("supplier"):
-            m = g.groupby("po_month").agg(delay=("days_late", "mean"),
-                                          rec=("received_qty", "sum") if has_fill else ("days_late", "size"),
-                                          ordq=("ordered_qty", "sum"))
+            aggregations = {
+                "delay": ("days_late", "mean"),
+                "rec": ("received_qty", "sum") if has_fill else ("days_late", "size"),
+            }
+            if has_fill:
+                aggregations["ordq"] = ("ordered_qty", "sum")
+            m = g.groupby("po_month").agg(**aggregations)
             if len(m) < max(cfg["min_months"], 2 * cfg["decline_window"]):
                 continue
             w = cfg["decline_window"]
