@@ -24,12 +24,19 @@ def get_company_cases(company_id):
                 history_query, page_size=200
             )
         ]
+        expected_count = data.get("history_count")
+        if expected_count is not None and len(history) != int(expected_count):
+            raise RuntimeError("Case activity history is incomplete; refresh or contact support.")
         cases[snapshot.id] = {
             "status": data.get("status", "Open"),
             "owner": data.get("owner", ""),
             "note": data.get("note", ""),
             "history": history,
         }
+    firestore_db.write_company_audit_event(
+        company_id, "cases.listed", "case", None,
+        {"case_count": len(cases)},
+    )
     return cases
 
 
