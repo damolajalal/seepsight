@@ -29,6 +29,14 @@ def _bucket_name():
     return name
 
 
+def is_configured():
+    """Return whether a private uploads bucket has been configured."""
+    try:
+        return bool(_bucket_name())
+    except RuntimeError:
+        return False
+
+
 def _client():
     try:
         from google.cloud import storage
