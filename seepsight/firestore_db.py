@@ -678,6 +678,83 @@ def get_company_mapping(company_id, dataset_id):
 
 
 # ============================================================
+# 7. COMPANY DATABASE CONNECTION PROFILES
+# ============================================================
+
+def save_company_connection_profile(company_id, connection_id, profile):
+    """Store connection metadata and a Secret Manager reference, never credentials."""
+    from seepsight.secrets_manager import validate_secret_reference
+
+    company = _company_ref(company_id)
+    connection_id = _validate_id(connection_id, "connection_id")
+    if not isinstance(profile, dict):
+        raise TypeError("profile must be a dictionary.")
+
+    allowed = {
+        "name", "provider", "secret_reference", "database",
+        "schema", "description", "max_rows", "timeout_seconds",
+    }
+    if set(profile) - allowed:
+        raise ValueError("Connection profiles may contain metadata and a secret reference only.")
+    name = profile.get("name")
+    provider = str(profile.get("provider") or "").strip().lower()
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 120:
+        raise ValueError("A connection profile name of 1 to 120 characters is required.")
+    if provider not in {"postgres", "mysql", "sqlserver", "bigquery"}:
+        raise ValueError("Unsupported database provider.")
+    secret_reference = validate_secret_reference(profile.get("secret_reference"))
+    database = profile.get("database", "")
+    schema = profile.get("schema", "")
+    description = profile.get("description", "")
+    if any(not isinstance(value, str) or len(value) > limit for value, limit in (
+        (database, 128), (schema, 128), (description, 300)
+    )):
+        raise ValueError("Connection profile metadata exceeds the allowed length.")
+    max_rows = profile.get("max_rows", 500)
+    timeout_seconds = profile.get("timeout_seconds", 15)
+    if not isinstance(max_rows, int) or not 1 <= max_rows <= 1000:
+        raise ValueError("max_rows must be between 1 and 1000.")
+    if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
+        raise ValueError("timeout_seconds must be between 1 and 60.")
+
+    payload = {
+        "connection_id": connection_id,
+        "name": name.strip(),
+        "provider": provider,
+        "secret_reference": secret_reference,
+        "database": database,
+        "schema": schema,
+        "description": description,
+        "max_rows": max_rows,
+        "timeout_seconds": timeout_seconds,
+        "status": "active",
+        "updated_at": datetime.now(timezone.utc),
+    }
+    ref = company.collection("connections").document(connection_id)
+    ref.set(_normalise_workspace_value(payload), merge=True)
+    write_company_audit_event(
+        company_id, "connection.profile_saved", "connection", connection_id,
+        {"provider": provider, "name": name.strip()},
+    )
+    return connection_id
+
+
+def get_company_connection_profiles(company_id):
+    """List connection profiles without fetching or exposing secret payloads."""
+    company = _company_ref(company_id)
+    query = company.collection("connections").order_by("__name__")
+    profiles = [
+        _denormalise_workspace_value(snapshot.to_dict() or {})
+        for snapshot in _stream_query_pages(query, page_size=100)
+    ]
+    write_company_audit_event(
+        company_id, "connection.profiles_listed", "connection", None,
+        {"profile_count": len(profiles)},
+    )
+    return profiles
+
+
+# ============================================================
 # 7. ANALYSIS RESULT STORAGE
 # ============================================================
 
