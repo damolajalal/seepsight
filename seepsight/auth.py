@@ -66,7 +66,7 @@ def _friendly_error(message):
         "OPERATION_NOT_ALLOWED": "Email and password sign-in is not enabled in Firebase.",
         "API_KEY_INVALID": "The Firebase API key is invalid.",
     }
-    return errors.get(message, f"Authentication error: {message}")
+    return errors.get(message, "Authentication could not be completed. Please check your details and try again.")
 
 
 def _send_verification(id_token):
