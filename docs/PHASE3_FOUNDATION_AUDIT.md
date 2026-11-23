@@ -12,10 +12,11 @@
 | Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
 | Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are saved in Firestore | Original file bytes and raw validated source records are not durable without private object storage; bucket existence/permissions still need a live test |
 | User-facing privacy | Company Profile and Settings distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
-| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces | Raw source records/files are not yet persisted; case state and activity history now have company-scoped Firestore persistence, but automated failure/retry and live persistence tests are still needed; old analysis revisions need a retention/cleanup policy |
-| Automated checks | Added authorization unit tests, adapted cloud-storage tests to mock the authorization boundary, and added a GitHub Actions test workflow | Workflow execution and test results have not yet been confirmed |
+| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces; new workspace writes encode Decimal values as exact strings and restore them as Decimal | Raw source records/files are not yet persisted; legacy values already written as floats cannot be reconstructed exactly; old analysis revisions need a retention/cleanup policy |
+| Case/action history | Company-scoped case state and ordered append-only activity events are persisted in Firestore; Findings saves status, owner, notes and newly appended history | Automated validation tests pass, but failure/retry, concurrent-writer and live Firestore persistence tests remain |
+| Automated checks | Authorization, cloud-storage boundary, case-store and workspace Decimal serialization tests run in GitHub Actions; hybrid web checks also run on the branch | Latest observed workflow runs pass on commit `74667a9`; live Firebase behavior remains unverified |
 
-- Case history: Findings now load company-scoped case state and ordered activity events from Firestore; saving an investigation update persists case status, owner, notes and newly appended history events. The Cases and Actions page reads the same restored company case map.\n\n## Security design confirmed in source
+- Case history: Findings now load company-scoped case state and ordered activity events from Firestore; saving an investigation update persists case status, owner, notes and newly appended history events. The Cases and Actions page reads the same restored company case map.\n- Decimal handling: durable analysis-workspace writes use a tagged string representation for Python Decimal values and restore them as Decimal, avoiding binary-float conversion for new workspace revisions.\n\n## Security design confirmed in source
 
 - `auth.require_auth()` re-verifies the Firebase identity on each authenticated app rerun, checks revocation, refreshes an expired ID token where possible, and re-resolves the company and role.
 - `firestore_db.verify_company_access()` verifies the ID token with revocation checking, checks UID consistency and verified email, and resolves the user's active company membership from Firestore.
@@ -48,7 +49,7 @@
 - Keep original-file storage labelled session-only until a real private-bucket upload/retrieval test succeeds.
 
 ### P1 — Data integrity and operational hardening
-- Preserve exact financial precision; `_normalise()` currently converts `Decimal` values to binary floats and needs a lossless storage/rehydration strategy before financial source records are durably stored.
+- Extend lossless Decimal encoding/rehydration to the generic dataset-record, metadata, mapping and legacy analysis helpers before using them for financial source records; their existing `_normalise()` path still converts Decimal values to binary floats. Existing workspace revisions previously stored as floats cannot be retroactively repaired.
 - Add bounded pagination to the remaining metadata/list endpoints and verify large record/finding reads under load.
 - Handle partial batch failures, retries, duplicate ingestion and cleanup safely.
 - Ensure connection diagnostics surface cleanup failures without exposing credentials.
@@ -61,9 +62,10 @@
 
 ## Verification status
 
-- Source edits are committed to `feature/company-auth`.
-- GitHub Actions workflow file is present, but its run status has not been confirmed.
-- Authorization test fixtures and cases were updated for verified-email binding. The GitHub Actions status for the latest commits has not yet been confirmed; no local test runtime was available in this session.
+- Source edits are committed to `feature/company-auth`; `main` has not been changed.
+- Python security test Run #29 passed on commit `74667a9`: 23 tests passed, including case-history validation and exact Decimal workspace round trips.
+- Phase 7 hybrid web checks Run #59 passed on the same commit.
+- These are CI unit/workflow checks using mocked or isolated test paths; they do not prove live Firestore persistence, Firebase authentication against production, or deployment behavior.
 - No Firebase rules were loosened.
 - No production deployment or successful live Cloud Storage test is claimed.
 
