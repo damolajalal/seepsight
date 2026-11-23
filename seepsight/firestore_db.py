@@ -476,13 +476,18 @@ def get_company_datasets(company_id):
     company = _company_ref(company_id)
 
     query = company.collection("datasets").order_by("__name__")
-    return [
+    datasets = [
         {
             "id": snapshot.id,
             **_denormalise_workspace_value(snapshot.to_dict() or {}),
         }
         for snapshot in _stream_query_pages(query, page_size=200)
     ]
+    write_company_audit_event(
+        company_id, "dataset.listed", "dataset", None,
+        {"dataset_count": len(datasets)},
+    )
+    return datasets
 
 
 # ============================================================
@@ -651,7 +656,12 @@ def get_company_mapping(company_id, dataset_id):
     if not snapshot.exists:
         return None
 
-    return _denormalise_workspace_value((snapshot.to_dict() or {}).get("mapping"))
+    mapping = _denormalise_workspace_value((snapshot.to_dict() or {}).get("mapping"))
+    write_company_audit_event(
+        company_id, "dataset.mapping_read", "dataset", dataset_id,
+        {"mapped_field_count": len(mapping or {})},
+    )
+    return mapping
 
 
 # ============================================================
@@ -1009,4 +1019,8 @@ def get_latest_analysis_workspace(company_id):
                 break
         tables[table_name] = rows
 
+    write_company_audit_event(
+        company_id, "analysis.workspace_restored", "analysis", analysis_id,
+        {"table_counts": {name: len(rows) for name, rows in tables.items()}},
+    )
     return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
