@@ -194,10 +194,30 @@ st.markdown("### Priority findings")
 
 if f.empty:
 
-    st.success(
-        "No procurement findings are currently available "
-        "for this analysis."
-    )
+    run_log = w.get("log", {}) or {}
+    detector_status = run_log.get("detectors", {}) or {}
+    skipped = {
+        name: status for name, status in detector_status.items()
+        if str(status).lower() != "ready"
+    }
+
+    if skipped:
+        st.warning(
+            "No findings are currently displayed, but this is an incomplete review "
+            "because some checks could not run. See Findings for the missing data or mappings."
+        )
+        for name, status in skipped.items():
+            st.caption(f"{name}: {status}")
+    elif detector_status:
+        st.info(
+            "No qualifying discrepancies were identified by the checks that completed. "
+            "Individual discrepancies are reported even when they occur once or involve a small amount."
+        )
+    else:
+        st.warning(
+            "No findings are available and detector coverage was not recorded. "
+            "Reconnect or reanalyse the data before treating this as a clear result."
+        )
 
 else:
 
