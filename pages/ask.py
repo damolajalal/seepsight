@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from seepsight import ask_engine, ui, workspace
+from seepsight import ask_engine, hybrid_ai, ui, workspace
 
 w = workspace.current()
 ui.page_header(
@@ -175,6 +175,18 @@ if question:
         st.markdown(response)
         if table is not None:
             st.dataframe(table, hide_index=True, use_container_width=True)
+
+if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
+    with st.expander("Explain the latest answer with Hybrid AI", expanded=False):
+        st.caption(
+            "Hybrid AI receives the latest question and Seepsight's deterministic, "
+            "company-scoped answer—not the full conversation or source dataset."
+        )
+        hybrid_ai.render_answer_explainer(
+            chat[-2].get("content", ""),
+            chat[-1].get("content", ""),
+            w.get("name", "Your company"),
+        )
 
 if chat:
     if st.button("Clear conversation", key=f"clear_{workspace_key}"):
