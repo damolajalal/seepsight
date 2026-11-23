@@ -14,11 +14,12 @@ import uuid
 import pandas as pd
 import streamlit as st
 
-from seepsight import cloud_storage, engine, plain, ui, workspace
+from seepsight import engine, plain, ui, workspace
 from seepsight.firestore_db import (
     save_company_dataset,
     save_company_mapping,
     save_dataset_records,
+    save_original_file,
 )
 
 
@@ -28,10 +29,7 @@ ui.page_header(
     "confirm its structure, map up to twelve procurement dataset types and review data quality before analysis.",
 )
 
-if cloud_storage.is_configured():
-    st.info("Original file bytes are stored in private company storage when configured. Original source rows, normalized procurement records, mappings, analysis summaries, findings and dashboard tables are also saved in your company's Firestore workspace.")
-else:
-    st.warning("Private file storage is not configured yet, so original file bytes remain session-only. Original source rows, normalized records, mappings and analysis results are saved separately to your company's Firestore workspace.")
+st.info("Original uploaded files, source rows, normalized records, mappings and analysis results are saved in your company's Firestore workspace. Original files are stored as integrity-checked chunks.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
@@ -510,12 +508,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
         st.caption("Your results will be attached to the signed-in company identity shown at the top of this page.")
         if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
             try:
-                private_storage_ready = cloud_storage.is_configured()
-                status_message = (
-                    "Saving original files and preparing your company workspace..."
-                    if private_storage_ready
-                    else "Saving validated records to your company workspace..."
-                )
+                status_message = "Saving original files and preparing your company workspace..."
                 with st.status(status_message, expanded=True) as status:
                     saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
@@ -524,28 +517,14 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         upload_id = hashlib.sha256(
                             (source_filename + ":" + source_sha256).encode("utf-8")
                         ).hexdigest()[:32]
-                        storage_metadata = None
-                        if private_storage_ready:
-                            storage_metadata = cloud_storage.upload_company_file(
-                                company_id,
-                                upload_id,
-                                source_filename,
-                                source_bytes,
-                            )
-                            storage_status = "original_file_saved"
-                        else:
-                            storage_status = "session_only"
-
                         dataset_kind = kinds[source_filename]
                         dataset_metadata = {
                             "dataset_type": dataset_kind,
                             "filename": source_filename,
-                            "status": storage_status,
+                            "status": "saving",
                             "record_count": int(len(source_frame)),
                             "source_sha256": source_sha256,
                         }
-                        if storage_metadata is not None:
-                            dataset_metadata["storage"] = storage_metadata
                         normalized_tables = result.get("normalized_tables", {})
                         source_tables = result.get("source_tables", {})
                         normalized_frame = normalized_tables.get(dataset_kind)
@@ -559,6 +538,8 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
                         dataset_metadata["schema_version"] = "1"
                         save_company_dataset(company_id, upload_id, dataset_metadata)
+                        save_original_file(company_id, upload_id, source_filename, source_bytes)
+                        save_company_dataset(company_id, upload_id, {"status": "original_file_saved"})
                         save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
                         source_records = source_frame.astype(object).where(
                             pd.notna(source_frame), None
@@ -579,10 +560,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         ).to_dict("records")
                         save_dataset_records(company_id, upload_id, saved_records)
                         saved_upload_ids.append(upload_id)
-                    if private_storage_ready:
-                        st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
-                    else:
-                        st.write("Original file bytes remain session-only because private object storage is not configured. Source rows and normalized procurement records are saved separately to Firestore.")
+                    st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = check_signature
