@@ -31,7 +31,7 @@ ui.page_header(
 if cloud_storage.is_configured():
     st.info("Original uploads are saved to private company storage only when that service is configured. Validated, mapped procurement records, analysis summaries, findings and dashboard tables are saved to your company's Firestore workspace.")
 else:
-    st.warning("Private file storage is not configured yet, so original file bytes remain session-only. Validated, mapped procurement records and analysis results are saved separately to your company's Firestore workspace.")
+    st.warning("Private file storage is not configured yet, so original file bytes remain session-only. Original source rows, normalized records, mappings and analysis results are saved separately to your company's Firestore workspace.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
@@ -523,15 +523,33 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         if storage_metadata is not None:
                             dataset_metadata["storage"] = storage_metadata
                         normalized_tables = result.get("normalized_tables", {})
+                        source_tables = result.get("source_tables", {})
                         normalized_frame = normalized_tables.get(dataset_kind)
-                        if not isinstance(normalized_frame, pd.DataFrame):
+                        source_frame = source_tables.get(dataset_kind)
+                        if not isinstance(normalized_frame, pd.DataFrame) or not isinstance(source_frame, pd.DataFrame):
                             raise RuntimeError(
-                                f"Validated records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
+                                f"Validated source and normalized records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
                                 "were not returned by the ingestion engine."
                             )
+                        dataset_metadata["source_record_count"] = int(len(source_frame))
                         dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
+                        dataset_metadata["schema_version"] = "1"
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
+                        source_records = source_frame.astype(object).where(
+                            pd.notna(source_frame), None
+                        ).to_dict("records")
+                        # Preserve Excel numeric source cells as their displayed
+                        # string representation; CSV and JSON retain their source
+                        # text/Decimal representation from engine.read_any().
+                        for source_record in source_records:
+                            for field, value in list(source_record.items()):
+                                if isinstance(value, float):
+                                    source_record[field] = str(value)
+                        save_dataset_records(
+                            company_id, upload_id, source_records,
+                            collection_name="source_records",
+                        )
                         saved_records = normalized_frame.astype(object).where(
                             pd.notna(normalized_frame), None
                         ).to_dict("records")
@@ -540,7 +558,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                     if private_storage_ready:
                         st.write(f"Saved {len(saved_upload_ids)} original file(s) to private company storage")
                     else:
-                        st.write("Original file bytes remain session-only because private object storage is not configured. Validated, mapped procurement records are being saved separately to Firestore.")
+                        st.write("Original file bytes remain session-only because private object storage is not configured. Source rows and normalized procurement records are saved separately to Firestore.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = check_signature
