@@ -597,7 +597,10 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
     metadata = dataset_ref.get()
     status_key = f"{collection_name}_status"
     if metadata.exists:
-        state = (metadata.to_dict() or {}).get(status_key)
+        metadata_data = metadata.to_dict() or {}
+        state = metadata_data.get(status_key)
+        if metadata_data.get("deletion_status") in {"deleting", "failed"}:
+            raise RuntimeError("This dataset is being deleted and is not available.")
         if state in {"saving", "failed"}:
             raise RuntimeError("This dataset's records are not in a complete saved state.")
 
@@ -614,6 +617,54 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
         {"record_count": len(records), "collection": collection_name},
     )
     return records
+
+def delete_company_dataset(company_id, dataset_id):
+    """Delete a company's dataset, source rows, mappings and private original file."""
+    company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    snapshot = dataset_ref.get()
+    if not snapshot.exists:
+        return False
+
+    metadata = snapshot.to_dict() or {}
+    dataset_ref.set({
+        "deletion_status": "deleting",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+
+    storage = metadata.get("storage") or {}
+    object_name = storage.get("object_name")
+    if object_name and not metadata.get("storage_deleted", False):
+        from seepsight import cloud_storage
+        cloud_storage.delete_company_file(
+            company_id,
+            object_name,
+            if_generation_match=storage.get("generation"),
+        )
+        dataset_ref.set({
+            "storage_deleted": True,
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+
+    try:
+        get_firestore_client().recursive_delete(dataset_ref)
+    except Exception as exc:
+        try:
+            dataset_ref.set({
+                "deletion_status": "failed",
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+        except Exception:
+            pass
+        raise RuntimeError("The dataset could not be fully deleted. Retry the deletion or contact support.") from exc
+
+    write_company_audit_event(
+        company_id, "dataset.deleted", "dataset", dataset_id,
+        {"original_file_deleted": bool(object_name)},
+    )
+    return True
+
 
 # ============================================================
 # 6. DATASET MAPPING STORAGE
