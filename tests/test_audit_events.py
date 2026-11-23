@@ -35,6 +35,16 @@ class CompanyAuditEventTests(unittest.TestCase):
             {"__seepsight_decimal__": "10.000000000000000009"},
         )
 
+    def test_audit_sink_failure_is_non_blocking(self):
+        with patch.object(
+            firestore_db, "_company_ref",
+            side_effect=RuntimeError("Firestore unavailable"),
+        ):
+            result = firestore_db.write_company_audit_event(
+                "company-a", "dataset.records_saved", "dataset", "dataset-a", {}
+            )
+        self.assertIsNone(result)
+
     def test_audit_event_rejects_oversized_details(self):
         with self.assertRaisesRegex(ValueError, "size limit"):
             firestore_db.write_company_audit_event(
