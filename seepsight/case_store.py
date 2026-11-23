@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone
 
+from firebase_admin import firestore
+
 from seepsight import firestore_db
 
 
@@ -32,7 +34,7 @@ def get_company_cases(company_id):
 
 
 def save_company_case(company_id, case_id, case):
-    """Save current case state and append only new activity events."""
+    """Transactionally save case state and append-only activity events."""
     case_id = firestore_db._validate_id(case_id, "case_id")
     if not isinstance(case, dict):
         raise TypeError("case must be a dictionary.")
@@ -52,29 +54,37 @@ def save_company_case(company_id, case_id, case):
 
     company = firestore_db._company_ref(company_id)
     case_ref = company.collection("cases").document(case_id)
-    existing = case_ref.get()
-    previous_count = int(
-        (existing.to_dict() or {}).get("history_count", 0)
-    ) if existing.exists else 0
+    transaction = firestore_db.get_firestore_client().transaction()
 
-    if len(history) < previous_count:
-        raise ValueError("Case history cannot be shortened.")
+    @firestore.transactional
+    def _save(transaction):
+        existing = case_ref.get(transaction=transaction)
+        previous_count = int(
+            (existing.to_dict() or {}).get("history_count", 0)
+        ) if existing.exists else 0
 
-    for index in range(previous_count, len(history)):
-        event_ref = case_ref.collection("history").document(
-            f"event_{index:012d}"
-        )
-        event_ref.set({
-            "event_number": index,
-            "message": history[index],
-            "created_at": datetime.now(timezone.utc),
-        })
+        if len(history) < previous_count:
+            raise ValueError("Case history cannot be shortened.")
+        if len(history) > previous_count + 450:
+            raise ValueError("A single case update cannot append more than 450 history events.")
 
-    case_ref.set({
-        "status": status,
-        "owner": owner,
-        "note": note,
-        "history_count": len(history),
-        "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+        for index in range(previous_count, len(history)):
+            event_ref = case_ref.collection("history").document(
+                f"event_{index:012d}"
+            )
+            transaction.set(event_ref, {
+                "event_number": index,
+                "message": history[index],
+                "created_at": datetime.now(timezone.utc),
+            })
+
+        transaction.set(case_ref, {
+            "status": status,
+            "owner": owner,
+            "note": note,
+            "history_count": len(history),
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+
+    _save(transaction)
     return True
