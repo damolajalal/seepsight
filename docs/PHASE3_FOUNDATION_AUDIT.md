@@ -1,72 +1,54 @@
 # Phase 3 Foundation Audit
 
 **Branch:** `feature/company-auth`  
-**Audit basis:** source review of the current branch. This is not a live penetration test, successful test run, or deployment verification.
+**Scope:** Authentication and tenant boundary, durable company persistence, source-record storage, financial precision, private object-storage code, audit trail, secret references, database adapter layer, retention and automated verification.  
+**Verification boundary:** GitHub CI proves isolated unit and workflow checks only. It does not prove live Firebase, Firestore, Cloud Storage, Secret Manager, or external database connectivity.
 
-## Implemented in this branch
+## Implemented in source
 
-| Area | Current implementation | Remaining limitation |
+| Area | Implementation | Remaining environment or product dependency |
 |---|---|---|
-| Firebase authentication | Email/password authentication; email verification; ID-token verification with revocation checks; refresh-token renewal; company membership is re-resolved from Firestore | Requires runtime verification against the configured Firebase project |
-| Firestore tenant boundary | Company data helper resolves the current session token, checks UID and verified email, rejects revoked tokens, then resolves active company membership before returning a company reference | Public helper still accepts a company ID as a selector; service methods should progressively move to an explicit verified tenant context |
-| Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
-| Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are saved in Firestore | Original file bytes and raw validated source records are not durable without private object storage; bucket existence/permissions still need a live test |
-| User-facing privacy | Company Profile and Settings distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
-| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces; new workspace writes encode Decimal values as exact strings and restore them as Decimal | Raw source records/files are not yet persisted; legacy values already written as floats cannot be reconstructed exactly; old analysis revisions need a retention/cleanup policy |
-| Case/action history | Company-scoped case state and ordered append-only activity events are persisted in Firestore; Findings saves status, owner, notes and newly appended history | Automated validation tests pass, but failure/retry, concurrent-writer and live Firestore persistence tests remain |
-| Automated checks | Authorization, cloud-storage boundary, case-store and workspace Decimal serialization tests run in GitHub Actions; hybrid web checks also run on the branch | Latest observed workflow runs pass on commit `74667a9`; live Firebase behavior remains unverified |
+| Firebase identity | Email/password auth, email verification, ID-token revocation checks, token refresh, re-resolution of active membership | Must be exercised against the configured Firebase project |
+| Tenant authorization | Verified UID/email, user-profile UID, member UID/email, active membership and active company are checked before company-scoped Firestore access | No dedicated role-based admin/member actions exist yet; service methods still accept a company ID selector but independently authorize it |
+| Firestore client boundary | Client rules remain deny-all; trusted Firebase Admin service performs company-scoped reads/writes | Live rules and service-account IAM review required |
+| Company dataset metadata | Company-scoped metadata, mapping and validated procurement records are persisted from Connect; dataset metadata lists and record reads are paginated | Original uploaded file bytes require a provisioned private object bucket |
+| Record durability | Normalized/mapped validated records for all supplied dataset types are written in batches of 400, each row is bounded to 800 KB, stable row IDs support retries for the same dataset ID, and saving/complete/failed states prevent incomplete reads | Re-uploading the same file creates a new upload ID; cross-upload deduplication and source-file bytes remain separate ingestion work |
+| Financial precision | Decimal values are encoded as tagged exact decimal strings and restored as Python Decimal across metadata, mappings, source records, analysis results and workspace revisions | Historical values already stored as floats cannot be reconstructed exactly; pandas/engine conversions that occurred before persistence cannot be reversed |
+| Analysis workspace | Revisioned dashboard tables, supporting evidence and run metadata are stored in Firestore; batches are bounded, row-size checked, restored in pages of 500, and the active revision/latest-analysis pointers switch in one transaction | Live Firestore failure-injection and restart tests remain |
+| Revision retention | Successful saves retain the active revision and a recent recovery window; obsolete revisions are recursively deleted and cleanup is audited | Retention policy is currently code-defined (three recent revisions), not configurable from Settings |
+| Cases and actions | Case state and append-only history are written in one Firestore transaction; stale concurrent updates fail instead of overwriting a newer history; history reads verify event counts | Live concurrent-user and transaction retry tests remain |
+| Audit trail | Company-scoped append-only audit events cover dataset metadata, mappings, record save/read, analysis save/restore/pruning, case list/update and private file upload/download/delete | Live write/read permissions and retention policy must be checked in the target project |
+| Private file storage | GCS upload/download/delete helpers enforce company paths, allowlisted file types, size limits, create-only upload, and generation preconditions; failures are sanitized | No bucket is provisioned in the current Spark/no-billing setup, so original files remain session-only |
+| Secrets | Secret Manager helper accepts only secret-version resource references and fetches JSON server-side using ADC; secret values are not put in Streamlit state | Runtime service identity needs least-privilege Secret Manager access; rotation is by publishing a new version and updating its reference |
+| Database adapters | Optional PostgreSQL, MySQL, SQL Server and BigQuery adapters use parameter binding, query validation, read-only settings, TLS where supported, timeouts and bounded result previews | Optional dependencies, ODBC driver, network access, read-only DB principals and live provider tests must be configured |
+| Error handling | Unknown Firebase errors and Connect ingestion/persistence errors shown to users are generic; Firestore diagnostic cleanup failures are surfaced | Operational logging/alerting and deployment smoke tests remain |
 
-- Case history: Findings now load company-scoped case state and ordered activity events from Firestore; saving an investigation update persists case status, owner, notes and newly appended history events. The Cases and Actions page reads the same restored company case map.\n- Decimal handling: durable analysis-workspace writes use a tagged string representation for Python Decimal values and restore them as Decimal, avoiding binary-float conversion for new workspace revisions.\n\n## Security design confirmed in source
+## Security and persistence invariants
 
-- `auth.require_auth()` re-verifies the Firebase identity on each authenticated app rerun, checks revocation, refreshes an expired ID token where possible, and re-resolves the company and role.
-- `firestore_db.verify_company_access()` verifies the ID token with revocation checking, checks UID consistency and verified email, and resolves the user's active company membership from Firestore.
-- Dataset metadata, records, mappings, and analysis helpers obtain their company reference through the authorization boundary.
-- Cloud Storage upload, download, and delete operations call the same authorization boundary.
-- Firestore client rules remain deny-all; trusted backend Firebase Admin access bypasses client rules.
-- Workspace and case data are additionally scoped by company ID inside the Streamlit session.
-- Analysis persistence validates and normalises the payload before writes, applies an 800 KB per-row guard, writes rows in batches of 300 under a unique revision, marks that revision complete, and only then switches the active revision. A failed replacement therefore leaves the previous active revision intact. Restoration uses pages of 500 rows and supports legacy workspaces without revision pointers.
+- `firestore_db.verify_company_access()` verifies the Firebase ID token with revocation checking, binds token UID and verified email to the Streamlit session, and checks the authoritative user and membership records.
+- `company_store.get_company_for_user()` verifies user UID, company status, member UID, active membership, member email and user-profile email.
+- Every company data helper obtains its reference through `_company_ref()`; GCS helpers independently verify the company before touching an object.
+- The client-side Firestore rules have not been loosened. Firebase Admin access is server-side.
+- Dataset and analysis reads use bounded pagination. Record writes are validated before writes begin, use idempotent row IDs within a dataset ID, and mark partial failures as incomplete.
+- Analysis revisions are written separately; only a complete revision can be activated. The analysis and company latest pointers are switched transactionally.
+- Case activity events and case state are committed in a single Firestore transaction. A stale history length is rejected.
+- Audit payloads are size-limited and strip credential-like keys before persistence.
+- Database query helpers accept only a single SELECT/CTE statement, reject mutation/locking patterns, bind parameters, limit returned rows and apply timeouts. Database users must still be provisioned with read-only grants.
+- No credential values or service-account JSON are committed to the repository.
 
-## Remaining Phase 3 work
+## Automated verification
 
-### P0 — Finish tenant-context refactor and security verification
-- Prefer passing a verified tenant context to data services rather than repeatedly accepting a free-form company ID.
-- Add tests for missing user records, missing membership, inactive membership, suspended company, and revoked tokens; current authorization tests cover token/session identity, verified email, company mismatch and membership-email mismatch.
-- Test cross-company access against mocked Firestore references for read, write, list and delete operations.
-- Review authentication error handling so raw exception text and sensitive diagnostics are never shown to users.
-- Confirm role-based authorization before adding member/admin operations.
+The Python security workflow now covers authorization, company membership integrity, private storage boundaries, case transactions, generic dataset-record persistence, exact Decimal serialization, revision cleanup, audit event sanitization, and read-only connector validation/dispatch. The Phase 7 hybrid web workflow continues to run on the same branch.
 
-### P1 — Private file storage
-- Provision and verify a private object-storage bucket when billing/hosting constraints permit, or select an appropriate external object-storage provider after reviewing security, terms, location and free-tier limits.
-- Verify least-privilege service identity, private object access, upload size/type limits, retention and deletion.
-- Store object references and upload lifecycle metadata in Firestore.
-- Do not claim durable original-file storage until an actual upload and retrieval test succeeds.
+Workflow results must be read from the latest commit's run, not copied from an earlier commit. The current head's Python and hybrid workflow results are still pending at the time this audit text is written.
 
-### P1 — Durable workspace and analysis persistence
-- Connect the existing Firestore record and analysis helpers to the onboarding and analysis workflow.
-- Persist validated source records and add bounded/paginated reads; analysis summaries, findings, evidence and dashboard tables are now persisted, but raw source records are not.
-- Add a retention/cleanup policy for abandoned and superseded workspace revisions; test failure injection at each persistence stage.
-- Add automated failure/retry tests for the new case state and append-only history persistence.
-- Keep original-file storage labelled session-only until a real private-bucket upload/retrieval test succeeds.
+## External acceptance still required
 
-### P1 — Data integrity and operational hardening
-- Extend lossless Decimal encoding/rehydration to the generic dataset-record, metadata, mapping and legacy analysis helpers before using them for financial source records; their existing `_normalise()` path still converts Decimal values to binary floats. Existing workspace revisions previously stored as floats cannot be retroactively repaired.
-- Add bounded pagination to the remaining metadata/list endpoints and verify large record/finding reads under load.
-- Handle partial batch failures, retries, duplicate ingestion and cleanup safely.
-- Ensure connection diagnostics surface cleanup failures without exposing credentials.
-- Remove duplicate dependencies and validate deployment configuration.
+1. Provision a private GCS bucket under an approved billing/storage arrangement; verify private upload, download, delete, generation preconditions, IAM and recovery. Until then, original file bytes are not durable.
+2. Configure Firestore and Firebase Admin service-account IAM; run live sign-in, verification, revocation, tenant-isolation, persistence, restart, transaction and failure-injection tests.
+3. Configure Secret Manager IAM and validate each database adapter against an actual provider with TLS certificates, timeouts, read-only grants and cleanup.
+4. Decide and document audit-event retention and deletion policy.
+5. Decide whether to introduce role-based admin/member actions; current application bootstrap creates one owner and no member-management actions are exposed.
+6. Review the full Connect flow for duplicate upload IDs across repeat submissions and preserve raw unmapped source columns if source-level lineage is required. The current Firestore record layer stores normalized/mapped validated records; original files are the authoritative raw artifact when private object storage is enabled.
 
-### P2 — External integrations
-- Add secret-management lifecycle controls.
-- Implement database adapters with TLS, timeouts, read-only access by default, parameterized queries, bounded previews and sanitized errors.
-- Keep database passwords and service-account keys out of source control and client-visible state.
-
-## Verification status
-
-- Source edits are committed to `feature/company-auth`; `main` has not been changed.
-- Python security test Run #29 passed on commit `74667a9`: 23 tests passed, including case-history validation and exact Decimal workspace round trips.
-- Phase 7 hybrid web checks Run #59 passed on the same commit.
-- These are CI unit/workflow checks using mocked or isolated test paths; they do not prove live Firestore persistence, Firebase authentication against production, or deployment behavior.
-- No Firebase rules were loosened.
-- No production deployment or successful live Cloud Storage test is claimed.
-
-**Phase 3 status: in progress — tenant identity checks, revision-safe paginated dashboard analysis persistence, and company-scoped case/action history persistence are implemented in source. Automated failure/retry and live verification, raw source durability, revision retention, financial precision and remaining operational hardening are outstanding.**
+**Phase 3 status: implementation substantially complete; production acceptance is blocked on external Firebase/Firestore, GCS, Secret Manager and database-provider configuration and live verification.** Do not mark Phase 3 production-complete until those checks pass.
