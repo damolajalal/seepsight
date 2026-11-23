@@ -799,6 +799,8 @@ def _verified_account(account):
 
     if company.get("uid") != uid:
         return None
+    if str(company.get("email") or "").strip().lower() != email:
+        return None
 
     verified = {
         **account,
