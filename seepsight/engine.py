@@ -1335,7 +1335,7 @@ ANSWER_KEYS = {
 }
 EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "promised_date", "received_date",
                     "ordered_qty", "received_qty", "invoice_qty", "po_unit_price", "invoice_unit_price",
-                    "approval_days", "days_late", "po_total", "invoice_overpriced_count", "overpriced_invoice_ids"]
+                    "approval_days", "days_late", "po_total", "invoice_overpriced_count", "overpriced_invoice_ids", "invoice_overprice_exposure"]
 
 
 def build_evidence(led, findings, cfg):
@@ -1361,7 +1361,10 @@ def build_evidence(led, findings, cfg):
             d["exposure"] = overbilled * unit_price
             basis = "identified exposure"
         elif f.finding_type == "Invoice price above PO price" and len(d):
-            d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]).clip(lower=0) * d["invoice_qty"]
+            if "invoice_overprice_exposure" in d.columns:
+                d["exposure"] = d["invoice_overprice_exposure"].fillna(0.0)
+            else:
+                d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]).clip(lower=0) * d["invoice_qty"]
             basis = "identified exposure"
         elif f.finding_type == "Slow approvals" and len(d):
             d["exposure"] = d["po_total"]
