@@ -69,6 +69,15 @@ class CompanyMembershipTests(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "No company workspace"):
             company_store.get_company_for_user("user-a")
 
+    def test_rejects_user_profile_uid_mismatch(self):
+        self.user_snapshot.to_dict.return_value = {
+            "uid": "user-b",
+            "company_id": "company-a",
+            "email": "user-a@example.com",
+        }
+        with self.assertRaisesRegex(PermissionError, "profile could not be verified"):
+            company_store.get_company_for_user("user-a")
+
     def test_rejects_missing_company_or_membership(self):
         self.member_snapshot.exists = False
         with self.assertRaisesRegex(PermissionError, "membership"):
