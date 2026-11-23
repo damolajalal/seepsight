@@ -74,6 +74,10 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
         self.assertNotIn("_record_number", values[0])
 
+    def test_firestore_document_ids_are_bounded(self):
+        with self.assertRaisesRegex(ValueError, "128 UTF-8 bytes"):
+            firestore_db._validate_id("x" * 129, "dataset_id")
+
     def test_invalid_records_are_rejected_before_writes(self):
         with self.assertRaisesRegex(TypeError, "Each procurement record"):
             firestore_db.save_dataset_records(
