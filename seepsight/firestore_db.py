@@ -248,6 +248,7 @@ def _normalise(value):
 
 
 _DECIMAL_MARKER = "__seepsight_decimal__"
+_ESCAPED_MAP_MARKER = "__seepsight_escaped_map__"
 
 
 def _normalise_workspace_value(value):
@@ -257,10 +258,15 @@ def _normalise_workspace_value(value):
             return None
         return {_DECIMAL_MARKER: format(value, "f")}
     if isinstance(value, dict):
-        return {
+        cleaned = {
             str(key): _normalise_workspace_value(item)
             for key, item in value.items()
         }
+        # Escape user dictionaries that would otherwise be mistaken for our
+        # internal Decimal marker during restoration.
+        if set(cleaned) in ({_DECIMAL_MARKER}, {_ESCAPED_MAP_MARKER}):
+            return {_ESCAPED_MAP_MARKER: cleaned}
+        return cleaned
     if isinstance(value, (list, tuple)):
         return [_normalise_workspace_value(item) for item in value]
     return _normalise(value)
@@ -269,6 +275,8 @@ def _normalise_workspace_value(value):
 def _denormalise_workspace_value(value):
     """Restore exact Decimal values encoded in durable Firestore payloads."""
     if isinstance(value, dict):
+        if set(value) == {_ESCAPED_MAP_MARKER} and isinstance(value[_ESCAPED_MAP_MARKER], dict):
+            return _denormalise_workspace_value(value[_ESCAPED_MAP_MARKER])
         if (
             set(value) == {_DECIMAL_MARKER}
             and isinstance(value[_DECIMAL_MARKER], str)
