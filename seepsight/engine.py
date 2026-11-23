@@ -218,10 +218,10 @@ DATASET_REGISTRY = {
 
 DEFAULT_CONFIG = dict(
     currency="NGN",
-    price_tolerance=0.02,        # invoice price must exceed PO price by more than this share
-    approval_limit_days=5,       # approvals slower than this are "slow"
-    late_days=3,                 # delivery later than this many days counts as late
-    min_pattern=5,               # minimum orders before a pattern is reported
+    price_tolerance=0.0,         # every positive invoice-price difference is reviewable
+    approval_limit_days=5,       # business-policy deadline; configurable per company
+    late_days=0,                 # every day beyond the promised date is late
+    min_pattern=1,               # legacy compatibility only; never suppresses transaction findings
     decline_days=2.0,            # supplier delay must worsen by more than this many days
     decline_window=3,            # compare the first and last N months
     min_months=6,                # months of history needed for the decline detector
@@ -229,9 +229,10 @@ DEFAULT_CONFIG = dict(
 )
 
 DETECTORS = {   # fields each detector needs
-    "Short delivery": ["supplier", "received_qty", "invoice_qty", "invoice_unit_price"],
+    "Short delivery": ["supplier", "ordered_qty", "received_qty"],
     "Invoice price above PO price": ["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"],
     "Slow approvals": ["approval_requested_at", "approval_completed_at"],
+    "Late delivery": ["supplier", "promised_date", "received_date"],
     "Supplier performance decline": ["supplier", "po_date", "promised_date", "received_date"],
 }
 
@@ -624,49 +625,94 @@ def _severity_by_share(amount, spend, high=0.003, medium=0.0005):
 
 
 def detect(led, config=None):
-    """Run every detector whose data is available. Returns the findings register."""
+    """Detect qualifying discrepancies at transaction level; pattern frequency never gates findings."""
     cfg = {**DEFAULT_CONFIG, **(config or {})}
-    spend = float(led["po_total"].sum())
+    spend = float(led["po_total"].sum()) if "po_total" in led else 0.0
     rows = []
 
-    def ok(name):
-        return all(f in led.columns and led[f].notna().mean() >= 0.3 for f in DETECTORS[name])
+    def available(fields):
+        return all(f in led.columns and led[f].notna().any() for f in fields)
 
-    if ok("Short delivery"):
-        d = led[(led["invoice_qty"] > led["received_qty"]) & led["received_qty"].notna()].copy()
-        d["leak"] = (d["invoice_qty"] - d["received_qty"]) * d["invoice_unit_price"]
-        for sup, g in d.groupby("supplier"):
-            if len(g) >= cfg["min_pattern"]:
-                rows.append(dict(finding_type="Short delivery", entity=sup, affected_orders=len(g),
-                                 leakage=round(g["leak"].sum()), orders_held=0.0,
-                                 first_seen=g["invoice_date"].min() if "invoice_date" in g else g["po_date"].min(),
-                                 last_seen=g["invoice_date"].max() if "invoice_date" in g else g["po_date"].max(),
-                                 evidence=f"Invoiced for {int((g['invoice_qty'] - g['received_qty']).sum())} units that were never received",
-                                 severity=_severity_by_share(g["leak"].sum(), spend)))
-    if ok("Invoice price above PO price"):
-        d = led[led["price_gap_pct"] > cfg["price_tolerance"]].copy()
-        d["leak"] = (d["invoice_unit_price"] - d["po_unit_price"]) * d["invoice_qty"]
-        for sup, g in d.groupby("supplier"):
-            if len(g) >= cfg["min_pattern"]:
-                rows.append(dict(finding_type="Invoice price above PO price", entity=sup, affected_orders=len(g),
-                                 leakage=round(g["leak"].sum()), orders_held=0.0,
-                                 first_seen=g["invoice_date"].min() if "invoice_date" in g else g["po_date"].min(),
-                                 last_seen=g["invoice_date"].max() if "invoice_date" in g else g["po_date"].max(),
-                                 evidence=f"Invoice prices averaged {g['price_gap_pct'].mean() * 100:.1f}% above agreed PO prices",
-                                 severity=_severity_by_share(g["leak"].sum(), spend)))
-    if ok("Slow approvals"):
-        d = led[led["approval_days"] > cfg["approval_limit_days"]]
-        group_col = "branch" if "branch" in led.columns else None
-        groups = d.groupby(group_col) if group_col else [("company-wide", d)]
-        for name, g in groups:
-            if len(g) >= cfg["min_pattern"]:
-                label = f"{name} branch finance approvals" if group_col else "Company-wide finance approvals"
-                rows.append(dict(finding_type="Slow approvals", entity=label, affected_orders=len(g),
-                                 leakage=0.0, orders_held=round(g["po_total"].sum()),
-                                 first_seen=g["po_date"].min(), last_seen=g["po_date"].max(),
-                                 evidence=f"Held orders waited {g['approval_days'].mean():.1f} days on average for finance approval",
-                                 severity=_severity_by_share(g["po_total"].sum(), spend, high=0.05, medium=0.01)))
-    if ok("Supplier performance decline"):
+    def add_transaction(finding_type, idx, evidence, leakage=0.0, orders_held=0.0):
+        row = led.loc[idx]
+        supplier = row.get("supplier")
+        entity = supplier if pd.notna(supplier) and str(supplier).strip() else str(row.get("branch", "Unassigned"))
+        amount = float(leakage or 0.0)
+        severity = _severity_by_share(amount, spend) if amount > 0 else "Low"
+        rows.append(dict(
+            finding_type=finding_type, entity=str(entity), severity=severity,
+            affected_orders=1, leakage=round(amount, 2), orders_held=round(float(orders_held or 0.0), 2),
+            first_seen=row.get("invoice_date", row.get("po_date")),
+            last_seen=row.get("invoice_date", row.get("po_date")),
+            po_id=row.get("po_id"), evidence=evidence,
+        ))
+
+    # Short receipt and/or overbilling: one finding for each affected purchase order.
+    if available(["supplier", "ordered_qty", "received_qty"]):
+        for idx, row in led.iterrows():
+            received, ordered = row.get("received_qty"), row.get("ordered_qty")
+            invoice_qty = row.get("invoice_qty")
+            if pd.isna(received) or pd.isna(ordered):
+                continue
+            short_vs_order = max(float(ordered) - float(received), 0.0)
+            overbilled = max(float(invoice_qty) - float(received), 0.0) if pd.notna(invoice_qty) else 0.0
+            short_units = max(short_vs_order, overbilled)
+            if short_units <= 0:
+                continue
+            price = row.get("invoice_unit_price")
+            if pd.isna(price):
+                price = row.get("po_unit_price", 0.0)
+            leakage = short_units * float(price) if pd.notna(price) else 0.0
+            add_transaction(
+                "Short delivery", idx,
+                f"Ordered {float(ordered):g}, received {float(received):g}"
+                + (f", invoiced {float(invoice_qty):g}" if pd.notna(invoice_qty) else "")
+                + f"; {short_units:g} unit(s) remain unreceived.",
+                leakage=leakage,
+            )
+
+    # Any positive price difference is surfaced; no percentage/materiality floor.
+    if available(["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"]):
+        for idx, row in led.iterrows():
+            po_price, invoice_price, qty = row.get("po_unit_price"), row.get("invoice_unit_price"), row.get("invoice_qty")
+            if pd.isna(po_price) or pd.isna(invoice_price) or pd.isna(qty) or float(invoice_price) <= float(po_price):
+                continue
+            difference = float(invoice_price) - float(po_price)
+            leakage = difference * float(qty)
+            pct = (difference / float(po_price) * 100) if float(po_price) else float("inf")
+            add_transaction(
+                "Invoice price above PO price", idx,
+                f"Invoice unit price {float(invoice_price):,.4f} exceeds agreed unit price "
+                f"{float(po_price):,.4f} by {difference:,.4f} ({pct:.4f}%).",
+                leakage=leakage,
+            )
+
+    # Approval deadline remains a configurable business rule, not a monetary threshold.
+    if available(["approval_requested_at", "approval_completed_at"]):
+        for idx, row in led.iterrows():
+            days = row.get("approval_days")
+            if pd.isna(days) or float(days) <= float(cfg["approval_limit_days"]):
+                continue
+            add_transaction(
+                "Slow approvals", idx,
+                f"Approval took {float(days):.2f} days; configured deadline is "
+                f"{float(cfg['approval_limit_days']):g} days.",
+                orders_held=float(row.get("po_total", 0.0) or 0.0),
+            )
+
+    # Any delivery after its promised date is reported, including a one-day delay.
+    if available(["supplier", "promised_date", "received_date"]):
+        for idx, row in led.iterrows():
+            days = row.get("days_late")
+            if pd.isna(days) or float(days) <= 0:
+                continue
+            add_transaction(
+                "Late delivery", idx,
+                f"Goods arrived {float(days):g} day(s) after the promised delivery date.",
+            )
+
+    # Supplier deterioration remains an additional trend-level signal, never a gate on late-delivery findings.
+    if available(["supplier", "po_date", "promised_date", "received_date"]):
         has_fill = {"received_qty", "ordered_qty"} <= set(led.columns)
         for sup, g in led.dropna(subset=["days_late"]).groupby("supplier"):
             m = g.groupby("po_month").agg(delay=("days_late", "mean"),
@@ -679,35 +725,36 @@ def detect(led, config=None):
             if recent - early > cfg["decline_days"]:
                 ev = f"Average delivery delay rose from {early:.1f} to {recent:.1f} days"
                 if has_fill:
-                    fe = m["rec"].iloc[:w].sum() / m["ordq"].iloc[:w].sum()
-                    fr = m["rec"].iloc[-w:].sum() / m["ordq"].iloc[-w:].sum()
+                    denominator_early = m["ordq"].iloc[:w].sum()
+                    denominator_recent = m["ordq"].iloc[-w:].sum()
+                    fe = m["rec"].iloc[:w].sum() / denominator_early if denominator_early else np.nan
+                    fr = m["rec"].iloc[-w:].sum() / denominator_recent if denominator_recent else np.nan
                     ev += f"; fill rate went from {fe:.3f} to {fr:.3f}"
-                rows.append(dict(finding_type="Supplier performance decline", entity=sup, affected_orders=None,
-                                 leakage=0.0, orders_held=0.0, first_seen=None, last_seen=None, evidence=ev,
+                rows.append(dict(finding_type="Supplier performance decline", entity=str(sup),
+                                 affected_orders=None, leakage=0.0, orders_held=0.0,
+                                 first_seen=None, last_seen=None, po_id=None, evidence=ev,
                                  severity="High" if recent - early >= 5 else "Medium"))
+
     cols = ["finding_id", "finding_type", "entity", "severity", "affected_orders", "leakage", "orders_held",
-            "first_seen", "last_seen", "evidence"]
+            "first_seen", "last_seen", "po_id", "evidence"]
     if not rows:
         return pd.DataFrame(columns=cols)
     f = pd.DataFrame(rows).sort_values(["leakage", "orders_held"], ascending=False).reset_index(drop=True)
-    f.insert(0, "finding_id", [f"TRQ-{i + 1:03d}" for i in range(len(f))])
+    f.insert(0, "finding_id", [f"TRQ-{i + 1:05d}" for i in range(len(f))])
     return f[cols]
-
 
 def to_trace(findings, config=None):
     """Convert findings to the decision_trace layout used by the NIM explanation script."""
     cfg = {**DEFAULT_CONFIG, **(config or {})}
     method = {
-        "Short delivery": "Rule: invoiced quantity exceeds received quantity; reported when "
-                          f"{cfg['min_pattern']} or more orders show the pattern",
-        "Invoice price above PO price": f"Rule: invoice unit price more than {cfg['price_tolerance']:.0%} above PO price; "
-                                        f"reported when {cfg['min_pattern']} or more orders show the pattern",
-        "Slow approvals": f"Rule: finance approval took more than {cfg['approval_limit_days']} days; reported when "
-                          f"{cfg['min_pattern']} or more orders show the pattern",
-        "Supplier performance decline": f"Rule: average delivery delay rose by more than {cfg['decline_days']:g} days "
+        "Short delivery": "Transaction rule: ordered or invoiced quantity exceeds recorded received quantity",
+        "Invoice price above PO price": "Transaction rule: any positive invoice unit-price difference is reported",
+        "Slow approvals": f"Transaction rule: finance approval exceeded {cfg['approval_limit_days']} days",
+        "Late delivery": "Transaction rule: received date is later than the promised delivery date",
+        "Supplier performance decline": f"Trend rule: average delivery delay rose by more than {cfg['decline_days']:g} days "
                                         f"between the first and last {cfg['decline_window']} months",
     }
-    t = pd.DataFrame({
+    return pd.DataFrame({
         "trace_id": [f"TR-{i + 1:05d}" for i in range(len(findings))],
         "source": "RULE_ENGINE", "record_ref": findings["finding_id"], "entity": findings["entity"],
         "decision": findings["finding_type"], "method": findings["finding_type"].map(method),
@@ -718,7 +765,6 @@ def to_trace(findings, config=None):
         "amount_basis": np.where(findings["leakage"] > 0, "leakage",
                                  np.where(findings["orders_held"] > 0, "orders held", None)),
         "later_outcome": pd.NA, "affected_orders": findings["affected_orders"], "currency": cfg["currency"]})
-    return t
 
 
 # ---------------------------------------------------------------- per-company risk model (ML)
@@ -1223,35 +1269,49 @@ EVIDENCE_COLUMNS = ["po_id", "supplier", "branch", "product", "po_date", "ordere
 
 
 def build_evidence(led, findings, cfg):
-    """The actual orders behind every finding (one row per order per finding)."""
+    """Return evidence scoped to each transaction finding (or its aggregate trend)."""
     parts = []
-    cols = [c for c in EVIDENCE_COLUMNS if c in led.columns]
+    base_cols = [c for c in EVIDENCE_COLUMNS if c in led.columns]
     for f in findings.itertuples():
-        if f.finding_type == "Short delivery":
-            d = led[(led["supplier"] == f.entity) & (led["invoice_qty"] > led["received_qty"]) & led["received_qty"].notna()].copy()
-            d["exposure"] = (d["invoice_qty"] - d["received_qty"]) * d["invoice_unit_price"]
+        if getattr(f, "po_id", None) is not None and pd.notna(getattr(f, "po_id", None)):
+            d = led[led["po_id"].astype(str) == str(f.po_id)].copy()
+        elif f.finding_type == "Supplier performance decline":
+            d = led[(led["supplier"] == f.entity) & led["days_late"].notna()].copy()
+            months = sorted(d["po_month"].unique())[-cfg["decline_window"]:]
+            d = d[d["po_month"].isin(months) & (d["days_late"] > cfg["late_days"])]
+        else:
+            d = pd.DataFrame(columns=led.columns)
+        if f.finding_type == "Short delivery" and len(d):
+            d["exposure"] = (
+                (d["ordered_qty"] - d["received_qty"]).clip(lower=0)
+                .where((d["ordered_qty"] - d["received_qty"]) > 0,
+                       (d["invoice_qty"] - d["received_qty"]).clip(lower=0))
+                * d.get("invoice_unit_price", d["po_unit_price"])
+            )
             basis = "identified exposure"
-        elif f.finding_type == "Invoice price above PO price":
-            d = led[(led["supplier"] == f.entity) & (led["price_gap_pct"] > cfg["price_tolerance"])].copy()
-            d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]) * d["invoice_qty"]
+        elif f.finding_type == "Invoice price above PO price" and len(d):
+            d["exposure"] = (d["invoice_unit_price"] - d["po_unit_price"]).clip(lower=0) * d["invoice_qty"]
             basis = "identified exposure"
-        elif f.finding_type == "Slow approvals":
-            d = led[led["approval_days"] > cfg["approval_limit_days"]].copy()
-            if "branch" in led.columns and f.entity.endswith(" branch finance approvals"):
-                d = d[d["branch"] == f.entity[: -len(" branch finance approvals")]]
+        elif f.finding_type == "Slow approvals" and len(d):
             d["exposure"] = d["po_total"]
             basis = "order value held up"
-        else:   # supplier performance decline: the late orders in the most recent months
-            g = led[(led["supplier"] == f.entity) & led["days_late"].notna()]
-            months = sorted(g["po_month"].unique())[-cfg["decline_window"]:]
-            d = g[g["po_month"].isin(months) & (g["days_late"] > cfg["late_days"])].copy()
+        elif f.finding_type == "Late delivery" and len(d):
+            d["exposure"] = 0.0
+            basis = "delivery delay"
+        elif f.finding_type == "Supplier performance decline" and len(d):
             d["exposure"] = 0.0
             basis = "late orders in the most recent months"
+        else:
+            basis = "supporting record"
+            d = d.copy()
+            d["exposure"] = 0.0
+        cols = [c for c in base_cols if c in d.columns]
         d = d[cols + ["exposure"]].copy()
         d.insert(0, "exposure_basis", basis)
         d.insert(0, "finding_id", f.finding_id)
         parts.append(d)
-    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=["finding_id", "exposure_basis"] + cols + ["exposure"])
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
+        columns=["finding_id", "exposure_basis"] + base_cols + ["exposure"])
 
 
 def scorecard(findings, key):
