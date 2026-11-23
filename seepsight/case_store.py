@@ -54,10 +54,14 @@ def save_company_case(company_id, case_id, case):
     history = case.get("history", [])
     if not isinstance(owner, str) or not isinstance(note, str):
         raise TypeError("Case owner and note must be strings.")
+    if len(owner) > 256 or len(note) > 10_000:
+        raise ValueError("Case owner or note exceeds the safe length limit.")
     if not isinstance(history, list) or not all(
         isinstance(item, str) for item in history
     ):
         raise TypeError("Case history must be a list of strings.")
+    if any(len(item) > 4_000 for item in history):
+        raise ValueError("A case history event exceeds the safe length limit.")
 
     company = firestore_db._company_ref(company_id)
     case_ref = company.collection("cases").document(case_id)
