@@ -1214,12 +1214,14 @@ def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
     query = analysis_ref.collection("revisions").order_by(
         "created_at", direction="DESCENDING"
     )
-    revisions = list(_stream_query_pages(query, page_size=200))
     protected = {active_revision} if active_revision else set()
-    protected.update(item.id for item in revisions[:keep])
     client = get_firestore_client()
     deleted = 0
-    for item in revisions:
+    recent_count = 0
+    for item in _stream_query_pages(query, page_size=200):
+        if recent_count < keep:
+            protected.add(item.id)
+        recent_count += 1
         if item.id in protected:
             continue
         client.recursive_delete(item.reference)
