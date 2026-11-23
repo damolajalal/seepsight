@@ -57,11 +57,14 @@ class CaseStoreTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(self.history.document.call_count, 2)
         self.assertEqual(self.transaction.set.call_count, 3)
-        event_calls = [
-            call for call in self.transaction.set.call_args_list
-            if getattr(call.args[0], "id", "").startswith("event_")
-        ]
-        self.assertEqual(len(event_calls), 2)
+        self.assertEqual(
+            self.transaction.set.call_args_list[0].args[0],
+            self.event_refs["event_000000000001"],
+        )
+        self.assertEqual(
+            self.transaction.set.call_args_list[1].args[0],
+            self.event_refs["event_000000000002"],
+        )
         saved_state = self.transaction.set.call_args_list[-1].args[1]
         self.assertEqual(saved_state["history_count"], 3)
         self.assertEqual(saved_state["status"], "Investigating")
