@@ -592,9 +592,9 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
     client = get_firestore_client()
     try:
         client.recursive_delete(chunks_ref)
-        for start in range(0, count, 300):
+        for start in range(0, count, 16):
             batch = client.batch()
-            for index in range(start, min(start + 300, count)):
+            for index in range(start, min(start + 16, count)):
                 part = payload[index * _ORIGINAL_FILE_CHUNK_BYTES:(index + 1) * _ORIGINAL_FILE_CHUNK_BYTES]
                 batch.set(chunks_ref.document(f"chunk_{index:06d}"), {
                     "chunk_index": index, "data": part, "size_bytes": len(part),
