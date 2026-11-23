@@ -43,6 +43,21 @@ class WorkspaceDecimalSerializationTests(unittest.TestCase):
             {"amount": {"__seepsight_decimal__": "10.2300"}},
         )
 
+    def test_user_map_matching_decimal_marker_is_not_coerced(self):
+        original = {
+            "payload": {"__seepsight_decimal__": "not-an-internal-decimal"},
+            "nested_escape": {"__seepsight_escaped_map__": {"x": 1}},
+        }
+        for normalizer in (
+            firestore_db._normalise,
+            firestore_db._normalise_workspace_value,
+        ):
+            with self.subTest(normalizer=normalizer.__name__):
+                restored = firestore_db._denormalise_workspace_value(
+                    normalizer(original)
+                )
+                self.assertEqual(restored, original)
+
     def test_existing_non_decimal_values_remain_unchanged(self):
         value = {"label": "invoice", "units": 12, "ratio": 0.25}
         self.assertEqual(
