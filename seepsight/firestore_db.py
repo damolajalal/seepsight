@@ -834,6 +834,27 @@ def save_company_connection_profile(company_id, connection_id, profile):
     return connection_id
 
 
+def set_company_connection_profile_status(company_id, connection_id, status):
+    """Enable or disable one company-owned connection profile."""
+    if status not in {"active", "inactive"}:
+        raise ValueError("Connection status must be active or inactive.")
+    company = _company_ref(company_id)
+    connection_id = _validate_id(connection_id, "connection_id")
+    ref = company.collection("connections").document(connection_id)
+    snapshot = ref.get()
+    if not snapshot.exists:
+        raise FileNotFoundError("The requested company connection does not exist.")
+    ref.set({
+        "status": status,
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+    write_company_audit_event(
+        company_id, "connection.profile_status_changed", "connection",
+        connection_id, {"status": status},
+    )
+    return True
+
+
 def get_company_connection_profile(company_id, connection_id):
     """Load one authorized connection profile and its secret reference only."""
     company = _company_ref(company_id)
