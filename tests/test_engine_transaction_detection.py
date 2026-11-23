@@ -96,6 +96,10 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(price), 1)
         self.assertAlmostEqual(float(price.iloc[0]["leakage"]), 20.0, places=6)
         self.assertIn("INV-HIGH", price.iloc[0]["evidence"])
+        evidence = engine.build_evidence(result["ledger"], result["findings"], result["config"])
+        price_evidence = evidence[evidence["finding_id"] == price.iloc[0]["finding_id"]]
+        self.assertAlmostEqual(float(price_evidence.iloc[0]["exposure"]), 20.0, places=6)
+        self.assertIn("INV-HIGH", price_evidence.iloc[0]["overpriced_invoice_ids"])
 
     def test_multiple_receipts_use_final_receipt_date_for_delivery_delay(self):
         orders = pd.DataFrame([{
