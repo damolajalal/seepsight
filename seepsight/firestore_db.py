@@ -504,12 +504,14 @@ def get_company_datasets(company_id):
 # 5. PROCUREMENT RECORD STORAGE
 # ============================================================
 
-def save_dataset_records(company_id, dataset_id, records):
-    """Persist validated procurement records in idempotent bounded batches."""
+def save_dataset_records(company_id, dataset_id, records, collection_name="records"):
+    """Persist source or normalized procurement rows in idempotent bounded batches."""
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
+    if collection_name not in {"records", "source_records"}:
+        raise ValueError("collection_name must be 'records' or 'source_records'.")
     if not isinstance(records, (list, tuple)):
         raise TypeError("records must be a list of dictionaries.")
 
@@ -527,10 +529,14 @@ def save_dataset_records(company_id, dataset_id, records):
 
     dataset_ref = company.collection("datasets").document(dataset_id)
     client = get_firestore_client()
+    status_key = f"{collection_name}_status"
+    saved_key = f"{collection_name}_saved"
+    expected_key = f"{collection_name}_expected_count"
+    count_key = "record_count" if collection_name == "records" else "source_record_count"
     dataset_ref.set({
-        "records_status": "saving",
-        "records_saved": False,
-        "expected_record_count": len(prepared),
+        status_key: "saving",
+        saved_key: False,
+        expected_key: len(prepared),
         "updated_at": datetime.now(timezone.utc),
     }, merge=True)
 
@@ -539,12 +545,12 @@ def save_dataset_records(company_id, dataset_id, records):
             batch = client.batch()
             for record in prepared[start:start + 400]:
                 record_id = f"record_{record['_record_number']:012d}"
-                record_ref = dataset_ref.collection("records").document(record_id)
+                record_ref = dataset_ref.collection(collection_name).document(record_id)
                 batch.set(record_ref, {**record, "_saved_at": SERVER_TIMESTAMP})
             batch.commit()
 
         # Remove stale tail documents if this upload ID is retried with fewer rows.
-        records_query = dataset_ref.collection("records").order_by("_record_number")
+        records_query = dataset_ref.collection(collection_name).order_by("_record_number")
         stale_batch = client.batch()
         stale_count = 0
         for snapshot in _stream_query_pages(records_query, page_size=400):
@@ -558,16 +564,16 @@ def save_dataset_records(company_id, dataset_id, records):
             stale_batch.commit()
 
         dataset_ref.set({
-            "record_count": len(prepared),
-            "records_saved": True,
-            "records_status": "complete",
+            count_key: len(prepared),
+            saved_key: True,
+            status_key: "complete",
             "updated_at": datetime.now(timezone.utc),
         }, merge=True)
     except Exception as exc:
         try:
             dataset_ref.set({
-                "records_saved": False,
-                "records_status": "failed",
+                saved_key: False,
+                status_key: "failed",
                 "updated_at": datetime.now(timezone.utc),
             }, merge=True)
         except Exception:
@@ -575,14 +581,14 @@ def save_dataset_records(company_id, dataset_id, records):
         raise RuntimeError("Validated procurement records could not be saved completely.") from exc
 
     write_company_audit_event(
-        company_id, "dataset.records_saved", "dataset", dataset_id,
-        {"record_count": len(prepared), "records_status": "complete"},
+        company_id, f"dataset.{collection_name}_saved", "dataset", dataset_id,
+        {count_key: len(prepared), status_key: "complete"},
     )
     return len(prepared)
 
 
-def get_dataset_records(company_id, dataset_id):
-    """Retrieve all validated records for one company dataset in bounded pages."""
+def get_dataset_records(company_id, dataset_id, collection_name="records"):
+    """Retrieve source or normalized company records in bounded pages."""
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
     dataset_ref = company.collection("datasets").document(dataset_id)
