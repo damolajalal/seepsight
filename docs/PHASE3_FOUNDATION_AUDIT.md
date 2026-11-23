@@ -10,8 +10,9 @@
 | Firebase authentication | Email/password authentication; email verification; ID-token verification with revocation checks; refresh-token renewal; company membership is re-resolved from Firestore | Requires runtime verification against the configured Firebase project |
 | Firestore tenant boundary | Company data helper resolves the current session token, checks UID and verified email, rejects revoked tokens, then resolves active company membership before returning a company reference | Public helper still accepts a company ID as a selector; service methods should progressively move to an explicit verified tenant context |
 | Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
-| Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are still saved in Firestore | Original file bytes and analysis results are temporary; configured bucket existence/permissions still need a live test |
-| User-facing privacy | Company Profile and Settings now distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
+| Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are saved in Firestore | Original file bytes and raw validated source records are not durable without private object storage; bucket existence/permissions still need a live test |
+| User-facing privacy | Company Profile and Settings distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
+| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; latest completed analysis ID is stored on the company record and restored for the authenticated company in a fresh session | Raw source records/files and cases/action history are not yet persisted; table reads are currently unpaginated; partial-write and runtime behavior need tests |
 | Automated checks | Added authorization unit tests, adapted cloud-storage tests to mock the authorization boundary, and added a GitHub Actions test workflow | Workflow execution and test results have not yet been confirmed |
 
 ## Security design confirmed in source
@@ -22,6 +23,7 @@
 - Cloud Storage upload, download, and delete operations call the same authorization boundary.
 - Firestore client rules remain deny-all; trusted backend Firebase Admin access bypasses client rules.
 - Workspace and case data are additionally scoped by company ID inside the Streamlit session.
+- Analysis persistence writes each dashboard table to separate row documents, applies an 800 KB per-row guard, batches writes/deletes, and marks the analysis complete only after table writes finish. Restoration uses the latest analysis pointer on the authenticated company document.
 
 ## Remaining Phase 3 work
 
@@ -40,10 +42,10 @@
 
 ### P1 — Durable workspace and analysis persistence
 - Connect the existing Firestore record and analysis helpers to the onboarding and analysis workflow.
-- Persist validated records, mappings, analysis summaries, findings and evidence with bounded/paginated reads and idempotent writes.
-- Rehydrate only the authenticated company's workspace after a new session or app restart.
+- Persist validated source records and add bounded/paginated reads; analysis summaries, findings, evidence and dashboard tables are now persisted, but raw source records are not.
+- Add pagination to workspace table restoration and stronger recovery/cleanup for interrupted writes.
 - Persist cases and action history with an audit trail.
-- Keep session-only behavior clearly labelled until persistence is implemented and tested.
+- Keep original-file storage labelled session-only until a real private-bucket upload/retrieval test succeeds.
 
 ### P1 — Data integrity and operational hardening
 - Preserve exact financial precision; avoid silently converting currency `Decimal` values to binary floats.
@@ -65,4 +67,4 @@
 - No Firebase rules were loosened.
 - No production deployment or successful live Cloud Storage test is claimed.
 
-**Phase 3 status: in progress — tenant checks implemented in source; automated/live verification and durable persistence remain outstanding.**
+**Phase 3 status: in progress — tenant checks and dashboard analysis persistence implemented in source; automated/live verification, raw source durability, case history and operational hardening remain outstanding.**
