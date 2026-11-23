@@ -12,10 +12,10 @@
 | Cloud Storage boundary | Upload, download and delete operations verify active company membership before accessing objects | A real uploads bucket is not provisioned in the current Spark/no-billing environment |
 | Connect fallback | Connect can prepare a session-based workspace when no private uploads bucket is configured; metadata and confirmed mappings are saved in Firestore | Original file bytes and raw validated source records are not durable without private object storage; bucket existence/permissions still need a live test |
 | User-facing privacy | Company Profile and Settings distinguish Firestore metadata from temporary uploads and analysis workspaces | Must be rechecked against the deployed app |
-| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces | Raw source records/files and cases/action history are not yet persisted; old revisions need a retention/cleanup policy; partial-write behavior still needs automated and live tests |
+| Analysis workspace | Connect persists run metadata plus findings, supporting evidence and dashboard tables as bounded Firestore row documents; each save writes a separate revision and switches the active revision only after all rows complete; restoration reads rows in pages of 500 and supports legacy pre-revision workspaces | Raw source records/files are not yet persisted; case state and activity history now have company-scoped Firestore persistence, but automated failure/retry and live persistence tests are still needed; old analysis revisions need a retention/cleanup policy |
 | Automated checks | Added authorization unit tests, adapted cloud-storage tests to mock the authorization boundary, and added a GitHub Actions test workflow | Workflow execution and test results have not yet been confirmed |
 
-## Security design confirmed in source
+- Case history: Findings now load company-scoped case state and ordered activity events from Firestore; saving an investigation update persists case status, owner, notes and newly appended history events. The Cases and Actions page reads the same restored company case map.\n\n## Security design confirmed in source
 
 - `auth.require_auth()` re-verifies the Firebase identity on each authenticated app rerun, checks revocation, refreshes an expired ID token where possible, and re-resolves the company and role.
 - `firestore_db.verify_company_access()` verifies the ID token with revocation checking, checks UID consistency and verified email, and resolves the user's active company membership from Firestore.
@@ -44,7 +44,7 @@
 - Connect the existing Firestore record and analysis helpers to the onboarding and analysis workflow.
 - Persist validated source records and add bounded/paginated reads; analysis summaries, findings, evidence and dashboard tables are now persisted, but raw source records are not.
 - Add a retention/cleanup policy for abandoned and superseded workspace revisions; test failure injection at each persistence stage.
-- Persist cases and action history with an audit trail.
+- Add automated failure/retry tests for the new case state and append-only history persistence.
 - Keep original-file storage labelled session-only until a real private-bucket upload/retrieval test succeeds.
 
 ### P1 — Data integrity and operational hardening
@@ -67,4 +67,4 @@
 - No Firebase rules were loosened.
 - No production deployment or successful live Cloud Storage test is claimed.
 
-**Phase 3 status: in progress — tenant identity checks and revision-safe, paginated dashboard analysis persistence are implemented in source; automated/live verification, raw source durability, case history, revision retention, financial precision and operational hardening remain outstanding.**
+**Phase 3 status: in progress — tenant identity checks, revision-safe paginated dashboard analysis persistence, and company-scoped case/action history persistence are implemented in source. Automated failure/retry and live verification, raw source durability, revision retention, financial precision and remaining operational hardening are outstanding.**
