@@ -719,58 +719,49 @@ def save_analysis_results(
         company.collection("analyses")
         .document(analysis_id)
     )
+    cleaned_summary = _normalise_workspace_value(summary)
+    if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
+        raise ValueError("Analysis summary is too large to store safely.")
 
-    analysis_ref.set(
-        {
-            **_normalise(summary),
-            "analysis_id": analysis_id,
-            "finding_count": len(findings),
-            "updated_at": datetime.now(timezone.utc),
-        },
-        merge=True,
-    )
+    prepared_findings = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise TypeError("Each finding must be a dictionary.")
+        cleaned = _normalise_workspace_value(finding)
+        if len(json.dumps(cleaned, default=str).encode("utf-8")) > 800_000:
+            raise ValueError("An analysis finding is too large to store safely.")
+        prepared_findings.append(cleaned)
+
+    analysis_ref.set({
+        **cleaned_summary,
+        "analysis_id": analysis_id,
+        "finding_count": len(prepared_findings),
+        "results_status": "saving",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
 
     client = get_firestore_client()
-
-    batch_size = 400
-
-    for start in range(0, len(findings), batch_size):
-
+    for start in range(0, len(prepared_findings), 400):
         batch = client.batch()
-
-        current_findings = findings[
-            start:start + batch_size
-        ]
-
-        for index, finding in enumerate(current_findings):
-
-            if not isinstance(finding, dict):
-                raise TypeError(
-                    "Each finding must be a dictionary."
-                )
-
-            finding_number = start + index
-
-            finding_id = f"finding_{finding_number:012d}"
-
-            finding_ref = (
-                analysis_ref.collection("findings")
-                .document(finding_id)
-            )
-
-            cleaned_finding = _normalise(finding)
-            if len(json.dumps(cleaned_finding, default=str).encode("utf-8")) > 800_000:
-                raise ValueError("An analysis finding is too large to store safely.")
-
-            cleaned_finding["_finding_number"] = finding_number
-
-            batch.set(
-                finding_ref,
-                cleaned_finding,
-            )
-
+        for index, finding in enumerate(
+            prepared_findings[start:start + 400], start=start
+        ):
+            finding_id = f"finding_{index:012d}"
+            finding_ref = analysis_ref.collection("findings").document(finding_id)
+            batch.set(finding_ref, {
+                **finding,
+                "_finding_number": index,
+            })
         batch.commit()
 
+    analysis_ref.set({
+        "results_status": "complete",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
+    write_company_audit_event(
+        company_id, "analysis.results_saved", "analysis", analysis_id,
+        {"finding_count": len(prepared_findings)},
+    )
     return analysis_id
 
 
@@ -795,6 +786,8 @@ def get_analysis_results(company_id, analysis_id):
         return None
 
     summary = _denormalise_workspace_value(snapshot.to_dict() or {})
+    if summary.get("results_status") == "saving":
+        return None
 
     findings = (
         analysis_ref.collection("findings")
