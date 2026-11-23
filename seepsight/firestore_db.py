@@ -215,7 +215,7 @@ def _normalise(value):
         )
 
     if isinstance(value, Decimal):
-        return float(value)
+        return {_DECIMAL_MARKER: format(value, "f")}
 
     if isinstance(value, float):
         return value if math.isfinite(value) else None
@@ -268,7 +268,7 @@ def _normalise_workspace_value(value):
 
 
 def _denormalise_workspace_value(value):
-    """Restore exact Decimal values encoded in an analysis workspace."""
+    """Restore exact Decimal values encoded in durable Firestore payloads."""
     if isinstance(value, dict):
         if (
             set(value) == {_DECIMAL_MARKER}
@@ -419,17 +419,13 @@ def get_company_datasets(company_id):
 
     company = _company_ref(company_id)
 
-    snapshots = (
-        company.collection("datasets")
-        .stream()
-    )
-
+    query = company.collection("datasets").order_by("__name__")
     return [
         {
             "id": snapshot.id,
-            **(snapshot.to_dict() or {}),
+            **_denormalise_workspace_value(snapshot.to_dict() or {}),
         }
-        for snapshot in snapshots
+        for snapshot in _stream_query_pages(query, page_size=200)
     ]
 
 
@@ -437,127 +433,97 @@ def get_company_datasets(company_id):
 # 5. PROCUREMENT RECORD STORAGE
 # ============================================================
 
-def save_dataset_records(
-    company_id,
-    dataset_id,
-    records,
-):
-    """
-    Save procurement records in individual Firestore documents.
-
-    Records are written in batches of 400 to stay below
-    Firestore's batch-write limit.
-
-    Use a unique dataset_id for each new upload so that
-    previous uploads are not accidentally mixed with new ones.
-
-    Returns the number of records saved.
-    """
-
+def save_dataset_records(company_id, dataset_id, records):
+    """Persist validated procurement records in idempotent bounded batches."""
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
     company = _company_ref(company_id)
-
-    dataset_id = _validate_id(
-        dataset_id,
-        "dataset_id"
-    )
-
+    dataset_id = _validate_id(dataset_id, "dataset_id")
     if not isinstance(records, (list, tuple)):
-        raise TypeError(
-            "records must be a list of dictionaries."
-        )
+        raise TypeError("records must be a list of dictionaries.")
 
-    dataset_ref = (
-        company.collection("datasets")
-        .document(dataset_id)
-    )
+    # Validate and serialise the complete payload before the first write.
+    prepared = []
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise TypeError("Each procurement record must be a dictionary.")
+        cleaned = _normalise(record)
+        cleaned["_record_number"] = index
+        size = len(__import__("json").dumps(cleaned, default=str).encode("utf-8"))
+        if size > 800_000:
+            raise ValueError(f"Procurement record {index + 1} is too large to store safely.")
+        prepared.append(cleaned)
 
+    dataset_ref = company.collection("datasets").document(dataset_id)
     client = get_firestore_client()
+    dataset_ref.set({
+        "records_status": "saving",
+        "records_saved": False,
+        "expected_record_count": len(prepared),
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
 
-    batch_size = 400
-    saved_count = 0
+    try:
+        for start in range(0, len(prepared), 400):
+            batch = client.batch()
+            for record in prepared[start:start + 400]:
+                record_id = f"record_{record['_record_number']:012d}"
+                record_ref = dataset_ref.collection("records").document(record_id)
+                batch.set(record_ref, {**record, "_saved_at": SERVER_TIMESTAMP})
+            batch.commit()
 
-    for start in range(0, len(records), batch_size):
+        # Remove stale tail documents if this upload ID is retried with fewer rows.
+        records_query = dataset_ref.collection("records").order_by("_record_number")
+        stale = []
+        for snapshot in _stream_query_pages(records_query, page_size=400):
+            if int((snapshot.to_dict() or {}).get("_record_number", -1)) >= len(prepared):
+                stale.append(snapshot.reference)
+        for start in range(0, len(stale), 400):
+            batch = client.batch()
+            for reference in stale[start:start + 400]:
+                batch.delete(reference)
+            batch.commit()
 
-        batch = client.batch()
-
-        current_records = records[
-            start:start + batch_size
-        ]
-
-        for index, record in enumerate(current_records):
-
-            if not isinstance(record, dict):
-                raise TypeError(
-                    "Each procurement record must be a dictionary."
-                )
-
-            record_number = start + index
-
-            record_id = f"record_{record_number:012d}"
-
-            record_ref = (
-                dataset_ref.collection("records")
-                .document(record_id)
-            )
-
-            cleaned_record = _normalise(record)
-
-            cleaned_record["_record_number"] = record_number
-            cleaned_record["_saved_at"] = SERVER_TIMESTAMP
-
-            batch.set(
-                record_ref,
-                cleaned_record,
-            )
-
-        batch.commit()
-
-        saved_count += len(current_records)
-
-    # Update metadata after successful record writes.
-    dataset_ref.set(
-        {
-            "record_count": saved_count,
+        dataset_ref.set({
+            "record_count": len(prepared),
             "records_saved": True,
+            "records_status": "complete",
             "updated_at": datetime.now(timezone.utc),
-        },
-        merge=True,
-    )
+        }, merge=True)
+    except Exception as exc:
+        try:
+            dataset_ref.set({
+                "records_saved": False,
+                "records_status": "failed",
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+        except Exception:
+            pass
+        raise RuntimeError("Validated procurement records could not be saved completely.") from exc
 
-    return saved_count
+    return len(prepared)
 
 
 def get_dataset_records(company_id, dataset_id):
-    """Retrieve procurement records for one company dataset."""
-
+    """Retrieve all validated records for one company dataset in bounded pages."""
     company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    metadata = dataset_ref.get()
+    if metadata.exists:
+        state = (metadata.to_dict() or {}).get("records_status")
+        if state in {"saving", "failed"}:
+            raise RuntimeError("This dataset's records are not in a complete saved state.")
 
-    dataset_id = _validate_id(
-        dataset_id,
-        "dataset_id"
-    )
-
-    dataset_ref = (
-        company.collection("datasets")
-        .document(dataset_id)
-    )
-
-    query = (
-        dataset_ref.collection("records")
-        .order_by("_record_number")
-    )
-
-    return [
-        {
-            key: value
-            for key, value in (snapshot.to_dict() or {}).items()
+    query = dataset_ref.collection("records").order_by("_record_number")
+    records = []
+    for snapshot in _stream_query_pages(query, page_size=500):
+        item = _denormalise_workspace_value(snapshot.to_dict() or {})
+        records.append({
+            key: value for key, value in item.items()
             if not key.startswith("_")
-        }
-        for snapshot in _stream_query_pages(query, page_size=500)
-    ]
-
+        })
+    return records
 
 # ============================================================
 # 6. DATASET MAPPING STORAGE
@@ -620,7 +586,7 @@ def get_company_mapping(company_id, dataset_id):
     if not snapshot.exists:
         return None
 
-    return snapshot.to_dict().get("mapping")
+    return _denormalise_workspace_value((snapshot.to_dict() or {}).get("mapping"))
 
 
 # ============================================================
@@ -738,7 +704,7 @@ def get_analysis_results(company_id, analysis_id):
     if not snapshot.exists:
         return None
 
-    summary = snapshot.to_dict() or {}
+    summary = _denormalise_workspace_value(snapshot.to_dict() or {})
 
     findings = (
         analysis_ref.collection("findings")
@@ -748,7 +714,7 @@ def get_analysis_results(company_id, analysis_id):
     summary["findings"] = [
         {
             key: value
-            for key, value in (finding.to_dict() or {}).items()
+            for key, value in _denormalise_workspace_value(finding.to_dict() or {}).items()
             if not key.startswith("_")
         }
         for finding in _stream_query_pages(findings, page_size=500)
