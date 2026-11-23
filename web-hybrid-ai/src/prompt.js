@@ -16,12 +16,26 @@ export function buildFindingPrompt({ supplier = '', findingType = '', verifiedFa
     `Finding type: ${findingType.trim() || 'Not specified'}`,
     `Verified facts from Seepsight: ${facts}`,
     `Requested action or question: ${requestedAction.trim() || 'Explain the finding and suggest the next verification step.'}`,
-  ].join('\n');
+  ].join('\\n');
 }
 
 export function hasUnsupportedNumbers(answer, prompt) {
-  const numbers = (value) => (String(value).match(/(?:₦|\$|€|£)?\s*\b\d[\d,]*(?:\.\d+)?\s*(?:%|days?|hours?)?/gi) || [])
-    .map((item) => item.replace(/\s+/g, '').toLowerCase());
-  const allowed = new Set(numbers(prompt));
-  return numbers(answer).some((number) => !allowed.has(number));
+  const numericTokens = (value) => {
+    const matches = String(value).match(/(?:₦|\\$|€|£)?\\s*\\b\\d[\\d,]*(?:\\.\\d+)?\\s*%?/g) || [];
+    return matches.map((token) => {
+      const currency = token.match(/[₦$€£]/)?.[0] || '';
+      const percent = token.includes('%');
+      const numeric = token.replace(/[₦$€£,%\\s]/g, '');
+      const canonical = Number(numeric).toString();
+      return { canonical, currency, percent };
+    });
+  };
+  const allowed = numericTokens(prompt);
+  return numericTokens(answer).some((candidate) => {
+    const sameNumber = allowed.filter((item) => item.canonical === candidate.canonical);
+    if (!sameNumber.length) return true;
+    if (candidate.currency && !sameNumber.some((item) => item.currency === candidate.currency)) return true;
+    if (candidate.percent && !sameNumber.some((item) => item.percent)) return true;
+    return false;
+  });
 }
