@@ -12,7 +12,7 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from seepsight import engine
+from seepsight import engine, firestore_db
 
 
 # =========================================================
@@ -100,8 +100,44 @@ def from_result(result, company, company_id):
     return pack
 
 
+
+
 # =========================================================
-# 3. AUTHENTICATED COMPANY ACCESS
+# 3. DURABLE WORKSPACE RESTORATION
+# =========================================================
+
+def persist(pack, analysis_id):
+    """Save dashboard tables and compact run metadata for this company."""
+    if not isinstance(pack, dict):
+        raise TypeError("A valid company workspace is required.")
+    company_id = pack.get("company_id")
+    table_names = ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard")
+    tables = {}
+    for name in table_names:
+        frame = pack.get(name)
+        if frame is None:
+            tables[name] = []
+        elif isinstance(frame, pd.DataFrame):
+            tables[name] = frame.astype(object).where(pd.notna(frame), None).to_dict("records")
+        else:
+            raise TypeError(f"Workspace table '{name}' is not a DataFrame.")
+    summary = {"company_name": pack.get("name", ""), "currency": pack.get("cur", "NGN"), "run_log": pack.get("log", {}), "kind": pack.get("kind", "company")}
+    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables)
+
+
+def restore_latest(company_id):
+    """Rebuild a dashboard workspace from the authenticated company's latest run."""
+    saved = firestore_db.get_latest_analysis_workspace(company_id)
+    if not saved:
+        return None
+    summary, tables = saved["summary"], saved["tables"]
+    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"]}
+    for name in ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard"):
+        pack[name] = pd.DataFrame(tables.get(name, []))
+    return pack
+
+# =========================================================
+# 4. AUTHENTICATED COMPANY ACCESS
 # =========================================================
 
 def _authenticated_company():
@@ -201,6 +237,12 @@ def current(allow_empty=False):
             raise PermissionError(
                 "This workspace does not belong to your company."
             )
+
+    if mine is None:
+        # Restore only the latest workspace belonging to this authenticated company.
+        mine = restore_latest(company_id)
+        if mine is not None:
+            st.session_state["mine"] = mine
 
     if mine is None:
         if allow_empty:
