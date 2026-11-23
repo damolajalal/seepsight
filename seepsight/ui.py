@@ -235,9 +235,20 @@ div[data-testid="stMetricLabel"] {
 
 div[data-testid="stMetricValue"] {
     color: var(--sp-navy);
-    font-size: 27px;
+    font-size: clamp(16px, 1.7vw, 25px);
     font-weight: 750;
     letter-spacing: -0.7px;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: keep-all;
+    font-variant-numeric: tabular-nums;
+}
+
+div[data-testid="stMetricValue"] > div {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: keep-all;
+    font-size: inherit;
 }
 
 div[data-testid="stMetricDelta"] {
@@ -376,7 +387,13 @@ hr {
     }
 
     div[data-testid="stMetricValue"] {
-        font-size: 22px;
+        font-size: clamp(14px, 3.4vw, 19px);
+        white-space: nowrap;
+    }
+
+    div[data-testid="stMetricValue"] > div {
+        white-space: nowrap;
+        font-size: inherit;
     }
 }
 """
