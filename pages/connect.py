@@ -25,7 +25,7 @@ ui.page_header(
 )
 
 if cloud_storage.is_configured():
-    st.info("Original uploaded files will be saved to private company storage when you open the validated workspace. Analysis workspaces and results are still session-based; durable result history is not yet available.")
+    st.info("Original uploads are saved to private company storage only when that service is configured. Validated analysis summaries, findings and dashboard tables are saved to your company's Firestore workspace.")
 else:
     st.warning("Private file storage is not configured yet. You can still analyse files in this session, but the original uploads will not be durably stored. They will be cleared when this session ends.")
 
@@ -527,6 +527,9 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         st.write("Original files are available only for this active session; durable file storage is not configured.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
+                    analysis_id = check_signature
+                    workspace.persist(pack, analysis_id)
+                    pack["analysis_id"] = analysis_id
                     st.session_state["mine"] = pack
                     status.update(label="Your procurement review is ready", state="complete")
                 st.session_state["_ws_next"] = "mine"
