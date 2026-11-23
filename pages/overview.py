@@ -155,15 +155,17 @@ held_value = (
     else 0
 )
 
-c = st.columns(4)
+# Two KPI columns per row preserve readable values on narrow screens.
+kpi_row_one = st.columns(2, gap="medium")
+kpi_row_two = st.columns(2, gap="medium")
 
-c[0].metric(
+kpi_row_one[0].metric(
     "Purchasing spend reviewed",
     ui.money(cur, spend),
     help="Total purchasing value represented in the connected records.",
 )
 
-c[1].metric(
+kpi_row_one[1].metric(
     "Potential cost exposure",
     ui.money(cur, exposure),
     help=(
@@ -173,13 +175,13 @@ c[1].metric(
     ),
 )
 
-c[2].metric(
+kpi_row_two[0].metric(
     "Issues identified",
     f"{issue_count:,}",
     help="Findings identified by Seepsight's procurement checks.",
 )
 
-c[3].metric(
+kpi_row_two[1].metric(
     "Orders awaiting attention",
     ui.money(cur, held_value),
     help="Value associated with orders flagged for further attention.",
