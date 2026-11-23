@@ -27,6 +27,11 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         )
         self.client_patch.start()
         self.addCleanup(self.client_patch.stop)
+        self.audit_patch = patch.object(
+            firestore_db, "write_company_audit_event", return_value="audit-id"
+        )
+        self.audit_patch.start()
+        self.addCleanup(self.audit_patch.stop)
 
     def test_records_are_written_and_marked_complete(self):
         saved = firestore_db.save_dataset_records(
