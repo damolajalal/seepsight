@@ -1,7 +1,7 @@
 """Tests for safe external connector boundaries."""
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from seepsight import database_connectors, secrets_manager, firestore_db
 
