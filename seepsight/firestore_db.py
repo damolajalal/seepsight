@@ -794,9 +794,9 @@ def save_company_connection_profile(company_id, connection_id, profile):
         raise ValueError("Connection profile metadata exceeds the allowed length.")
     max_rows = profile.get("max_rows", 500)
     timeout_seconds = profile.get("timeout_seconds", 15)
-    if not isinstance(max_rows, int) or not 1 <= max_rows <= 1000:
+    if isinstance(max_rows, bool) or not isinstance(max_rows, int) or not 1 <= max_rows <= 1000:
         raise ValueError("max_rows must be between 1 and 1000.")
-    if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 60:
         raise ValueError("timeout_seconds must be between 1 and 60.")
 
     payload = {
