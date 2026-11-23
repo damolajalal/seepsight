@@ -739,6 +739,21 @@ def save_company_connection_profile(company_id, connection_id, profile):
     return connection_id
 
 
+def get_company_connection_profile(company_id, connection_id):
+    """Load one authorized connection profile and its secret reference only."""
+    company = _company_ref(company_id)
+    connection_id = _validate_id(connection_id, "connection_id")
+    snapshot = company.collection("connections").document(connection_id).get()
+    if not snapshot.exists:
+        return None
+    profile = _denormalise_workspace_value(snapshot.to_dict() or {})
+    write_company_audit_event(
+        company_id, "connection.profile_read", "connection", connection_id,
+        {"provider": profile.get("provider")},
+    )
+    return profile
+
+
 def get_company_connection_profiles(company_id):
     """List connection profiles without fetching or exposing secret payloads."""
     company = _company_ref(company_id)
