@@ -140,7 +140,11 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             firestore_db.get_dataset_records("company-a", "missing-dataset")
         
     def test_upload_record_count_is_bounded_before_writes(self):
-        records = [{"id": index} for index in range(250_001)]
+        class OversizedList(list):
+            def __len__(self):
+                return 250_001
+
+        records = OversizedList()
         with self.assertRaisesRegex(ValueError, "250,000 records"):
             firestore_db.save_dataset_records(
                 "company-a", "dataset-a", records
