@@ -36,6 +36,29 @@ class ConnectionProfileTests(unittest.TestCase):
         self.assertEqual(payload["secret_reference"], "projects/p/secrets/db/versions/latest")
         self.assertNotIn("password", payload)
 
+    def test_company_query_uses_tenant_scoped_saved_profile(self):
+        profile = {
+            "provider": "postgres",
+            "secret_reference": "projects/p/secrets/db/versions/latest",
+            "status": "active",
+            "max_rows": 75,
+            "timeout_seconds": 9,
+        }
+        with patch.object(
+            firestore_db, "get_company_connection_profile", return_value=profile
+        ) as get_profile:
+            with patch.object(
+                database_connectors, "execute_readonly_query",
+                return_value={"rows": [], "columns": [], "row_count": 0, "truncated": False, "provider": "postgres"},
+            ) as execute:
+                result = database_connectors.execute_company_connection_query(
+                    "company-a", "profile-a", "SELECT 1"
+                )
+        get_profile.assert_called_once_with("company-a", "profile-a")
+        self.assertEqual(result["provider"], "postgres")
+        self.assertEqual(execute.call_args.kwargs["max_rows"], 75)
+        self.assertEqual(execute.call_args.kwargs["timeout_seconds"], 9)
+
     def test_profile_rejects_raw_credentials(self):
         with patch.object(firestore_db, "_company_ref", return_value=MagicMock()):
             with self.assertRaisesRegex(ValueError, "metadata and a secret reference"):
