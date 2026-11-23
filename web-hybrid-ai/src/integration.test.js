@@ -2,16 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const read = (name) => readFile(new URL(name, import.meta.url), 'utf8');
-test('Firebase AI Logic implements consent-gated hybrid and on-device modes', async () => {
+
+test('cloud fallback is explicitly consent-gated', async () => {
   const source = await read('./firebase.js');
   const main = await read('./main.js');
-  assert.match(source, /from 'firebase\/ai'/);
-  assert.match(source, /InferenceMode\.PREFER_ON_DEVICE/);
-  assert.match(source, /InferenceMode\.ONLY_ON_DEVICE/);
-  assert.match(main, /await model\.initializeDeviceModel/);
-  assert.match(main, /await model\.generateContent\(prompt\)/);
-  assert.match(main, /inferenceSource/);
+  assert.match(source, /cloudFallbackAllowed \? InferenceMode\.PREFER_ON_DEVICE : InferenceMode\.ONLY_ON_DEVICE/);
+  assert.match(source, /InferenceMode\.ONLY_IN_CLOUD/);
+  assert.match(main, /const allowCloud = consent\.checked === true/);
+  assert.match(main, /if \(!allowCloud\) throw localError/);
+  assert.match(main, /createCloudOnlyModel\(\)\.generateContent\(prompt\)/);
+  assert.match(main, /route === 'IN_CLOUD' && !allowCloud/);
 });
+
+test('inference source values from Firebase are normalised for display', async () => {
+  const main = await read('./main.js');
+  assert.match(main, /sourceValue === 'on_device'/);
+  assert.match(main, /sourceValue === 'in_cloud'/);
+  assert.match(main, /return 'ON_DEVICE'/);
+  assert.match(main, /return 'IN_CLOUD'/);
+});
+
 test('App Check is initialized before AI requests are made available', async () => {
   const source = await read('./firebase.js');
   assert.match(source, /initializeAppCheck/);
