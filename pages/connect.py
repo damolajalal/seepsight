@@ -388,7 +388,34 @@ if st.button("Clear uploaded files and start again", key="clear_connect_uploads"
 for message in st.session_state.get("connect_load_errors", []):
     st.error(message)
 
-raw = st.session_state.get("connect_raw", {})
+raw = dict(st.session_state.get("connect_raw", {}))
+source_file_bytes = dict(st.session_state.get("connect_source_file_bytes", {}))
+saved_file_kinds = {}
+saved_file_mappings = {}
+
+if target_group_id:
+    selected_group = next(
+        (item for item in extendable_groups if item.get("dataset_group_id") == target_group_id),
+        None,
+    )
+    if not selected_group:
+        st.error("The selected saved dataset is no longer available. Refresh and choose it again.")
+        st.stop()
+    try:
+        for file_item in selected_group.get("file_items", []):
+            saved = firestore_db.get_original_file(company_id, file_item["dataset_id"])
+            filename = saved.get("filename") or file_item.get("filename")
+            if filename in raw:
+                st.error(f"A new upload named '{filename}' conflicts with a file already in the selected dataset. Rename the new file and retry.")
+                st.stop()
+            raw[filename] = _read_bytes(filename, saved["data"])
+            source_file_bytes[filename] = saved["data"]
+            saved_file_kinds[filename] = file_item.get("dataset_type")
+            saved_file_mappings[filename] = firestore_db.get_company_mapping(company_id, file_item["dataset_id"]) or {}
+    except Exception:
+        st.error("The saved dataset's original files could not all be restored and verified. No combined analysis was started.")
+        st.stop()
+
 if not raw:
     st.info("Upload one or more procurement files to begin. You can also download the blank template to see the expected fields.")
     st.stop()
