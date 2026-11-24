@@ -55,6 +55,40 @@ class HybridRetrievalTests(unittest.TestCase):
         self.assertIn("Coverage limitations", result)
         self.assertIn("Do not treat absent records as zero risk", result)
 
+
+    def test_reads_company_scoped_normalized_dataset_records(self):
+        from unittest.mock import patch
+
+        dataset = {
+            "id": "dataset-1", "dataset_type": "orders", "filename": "orders.csv",
+            "record_count": 30, "source_record_count": 30, "status": "complete",
+        }
+        rows = {"records": [{"po_id": "PO-10", "supplier": "Apex"}], "scanned_count": 30, "total_count": 30, "scan_limited": False}
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \
+             patch("seepsight.firestore_db.get_company_mapping", return_value={"supplier": "Supplier name"}), \
+             patch("seepsight.firestore_db.search_dataset_records", return_value=rows) as search:
+            result = retrieve_workspace_context(
+                self.workspace, "Show purchase orders for Apex", company_id="company-1"
+            )
+        self.assertIn("orders normalized records", result)
+        self.assertIn("PO-10", result)
+        self.assertIn("Supplier name", result)
+        search.assert_called_once()
+
+    def test_source_rows_are_only_requested_explicitly(self):
+        from unittest.mock import patch
+
+        dataset = {"id": "dataset-1", "dataset_type": "orders", "filename": "orders.csv"}
+        result_rows = {"records": [], "scanned_count": 0, "total_count": 0, "scan_limited": False}
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \
+             patch("seepsight.firestore_db.search_dataset_records", return_value=result_rows) as search:
+            retrieve_workspace_context(
+                self.workspace, "Show the original source rows for orders", company_id="company-1"
+            )
+        collections = [call.kwargs.get("collection_name") for call in search.call_args_list]
+        self.assertIn("source_records", collections)
+
     def test_empty_question_is_rejected(self):
         with self.assertRaises(ValueError):
             retrieve_workspace_context(self.workspace, "  ")
