@@ -8,6 +8,7 @@ on:
       - feature/phase8-unified-hybrid-assistant
   pull_request:
     branches:
+      - main
       - feature/company-auth
       - fix/ask-hybrid-ai-reliability
   workflow_dispatch:
