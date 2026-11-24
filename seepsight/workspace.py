@@ -122,16 +122,17 @@ def persist(pack, analysis_id):
         else:
             raise TypeError(f"Workspace table '{name}' is not a DataFrame.")
     summary = {"company_name": pack.get("name", ""), "currency": pack.get("cur", "NGN"), "run_log": pack.get("log", {}), "kind": pack.get("kind", "company")}
-    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables)
+    dataset_group_id = pack.get("dataset_group_id")
+    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_group_id=dataset_group_id)
 
 
-def restore_latest(company_id):
+def restore_latest(company_id, analysis_id=None):
     """Rebuild a dashboard workspace from the authenticated company's latest run."""
-    saved = firestore_db.get_latest_analysis_workspace(company_id)
+    saved = firestore_db.get_latest_analysis_workspace(company_id, analysis_id=analysis_id)
     if not saved:
         return None
     summary, tables = saved["summary"], saved["tables"]
-    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"]}
+    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"], "dataset_group_id": summary.get("dataset_group_id") or saved["analysis_id"]}
     for name in ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard"):
         pack[name] = pd.DataFrame(tables.get(name, []))
     return pack
@@ -193,16 +194,38 @@ def workspace_picker():
         return
 
     mine = st.session_state.get("mine")
+    try:
+        saved_workspaces = firestore_db.get_company_analysis_workspaces(company_id)
+    except Exception:
+        saved_workspaces = []
 
-    if (
-        isinstance(mine, dict)
-        and mine.get("company_id") == company_id
-    ):
-        workspace_name = mine.get("name", company_name or "Your company")
-
+    if saved_workspaces:
+        labels = {}
+        for item in saved_workspaces:
+            updated = item.get("updated_at")
+            stamp = updated.strftime("%Y-%m-%d %H:%M") if hasattr(updated, "strftime") else item["analysis_id"][:8]
+            labels[item["analysis_id"]] = f'{item.get("company_name") or company_name or "Dataset"} · {stamp}'
+        ids = [item["analysis_id"] for item in saved_workspaces]
+        current_id = mine.get("analysis_id") if isinstance(mine, dict) and mine.get("company_id") == company_id else None
+        if current_id not in ids:
+            current_id = ids[0]
+        selected = st.selectbox(
+            "Active dataset",
+            ids,
+            index=ids.index(current_id),
+            format_func=lambda value: labels.get(value, value),
+            key="company_dataset_selector",
+        )
+        if selected != current_id:
+            restored = restore_latest(company_id, selected)
+            if restored is not None:
+                st.session_state["mine"] = restored
+                st.session_state.pop("cases", None)
+                st.rerun()
+        st.caption("Switching changes the active procurement analysis for this company.")
+    elif isinstance(mine, dict) and mine.get("company_id") == company_id:
         st.caption("ACTIVE COMPANY")
-        st.write(workspace_name)
-
+        st.write(mine.get("name", company_name or "Your company"))
     else:
         st.caption("COMPANY WORKSPACE")
         st.write(company_name or "Your company")
