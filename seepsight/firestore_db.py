@@ -1489,12 +1489,12 @@ def search_dataset_records(
                 if not str(key).startswith("_")
             }
             ranked.append((score, record_number, record))
-            ranked.sort(key=lambda row: (-row[0], row[1]))
-            if len(ranked) > limit:
-                ranked.pop()
 
+    # Sort once after the full scan; repeated sorting per row becomes expensive
+    # when Ask Hybrid AI requests comprehensive dataset coverage.
+    ranked.sort(key=lambda row: (-row[0], row[1]))
     coverage_complete = not budget_reached
-    selected = [row[2] for row in ranked]
+    selected = [row[2] for row in ranked[:limit]]
     write_company_audit_event(
         company_id, f"dataset.{collection_name}_searched", "dataset", dataset_id,
         {
