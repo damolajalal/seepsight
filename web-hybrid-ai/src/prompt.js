@@ -75,7 +75,7 @@ export function hasUnsupportedNumbers(answer, prompt) {
       case '/': case '÷': case 'divided by': calculated = right.value === 0 ? NaN : left.value / right.value; break;
       default: continue;
     }
-    const expectedCurrency = stated.currency || left.currency || right.currency;
+    const expectedCurrency = left.currency || right.currency;
     if (Number.isFinite(calculated) && Math.abs(calculated - stated.value) <= Math.max(0.01, Math.abs(calculated) * 0.000001)
       && stated.currency === expectedCurrency) {
       derived.push({ value: stated.value, currency: stated.currency, percent: stated.percent });
