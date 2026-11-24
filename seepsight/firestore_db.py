@@ -1492,18 +1492,20 @@ def delete_company_dataset_group(company_id, dataset_group_id):
         client.recursive_delete(reference)
 
     if deleting_active:
-        remaining = list(_stream_query_pages(
-            company.collection("analyses")
-            .where("workspace_status", "==", "complete")
-            .order_by("updated_at", direction="DESCENDING"),
-            page_size=200,
-        ))
+        remaining = [item for item in _stream_query_pages(
+            company.collection("analyses").order_by("__name__"), page_size=200
+        ) if (item.to_dict() or {}).get("workspace_status") == "complete"]
+        remaining.sort(
+            key=lambda item: (item.to_dict() or {}).get("updated_at") or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
         if remaining:
             company.set({
                 "latest_analysis_id": remaining[0].id,
                 "latest_analysis_updated_at": (remaining[0].to_dict() or {}).get("updated_at"),
             }, merge=True)
         else:
+            from firebase_admin import firestore
             company.set({
                 "latest_analysis_id": firestore.DELETE_FIELD,
                 "latest_analysis_updated_at": firestore.DELETE_FIELD,
