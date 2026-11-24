@@ -8,7 +8,8 @@ app.innerHTML = `
   <header class="topbar"><a class="brand" href="#"><span class="mark">S</span> Seepsight <small>HYBRID AI</small></a><span id="config" class="pill">Checking setup…</span></header>
   <section class="intro"><p class="eyebrow">EVIDENCE-LED PROCUREMENT INTELLIGENCE</p><h1 id="hero-title">Understand the finding.<br><em>Keep control of your data.</em></h1><p class="lead" id="hero-copy">Turn a verified Seepsight finding into a clear explanation. Your procurement figures remain grounded in the evidence you provide.</p></section>
   <section class="workspace"><div class="section-title"><div><p class="eyebrow" id="mode-label">FINDING EXPLAINER</p><h2 id="form-title">Explain a procurement finding</h2></div><span class="tag">Firebase AI Logic</span></div>
-    <form id="form">\n      <p id="question-display" class="lead" hidden></p>
+    <form id="form">
+      <p id="question-display" class="lead" hidden></p>
       <div class="fields"><label>Supplier or company <input id="supplier" maxlength="160" placeholder="Company or supplier name (optional)"></label><label>Finding type or context <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
       <label id="facts-label">Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="A concise, verified summary from your Seepsight workspace."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
       <label id="action-label">What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
