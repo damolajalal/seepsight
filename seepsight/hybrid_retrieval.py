@@ -93,7 +93,7 @@ _DATASET_HINTS = {
 
 
 def _append_saved_dataset_context(sections, company_id, question, terms, broad):
-    """Retrieve bounded normalized rows and mappings from this company's saved datasets."""
+    """Retrieve all matching normalized rows and mapped fields from saved company datasets."""
     from seepsight import firestore_db
 
     datasets = firestore_db.get_company_datasets(company_id)
@@ -179,17 +179,18 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
             if isinstance(mapping, dict) and mapping:
                 mapping_lines = [
                     f"{field} -> {str(details)[:160]}"
-                    for field, details in list(mapping.items())[:24]
+                    for field, details in mapping.items()
                 ]
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
                 company_id, dataset_id, terms if not broad else [],
-                collection_name="records", limit=2 if broad else 4,
+                collection_name="records", limit=250000,
             )
             sections.append(
                 f"{dataset_type} normalized rows: scanned {normalized['scanned_count']} records; "
                 f"{normalized.get('match_count', len(normalized['records']))} matched; "
-                f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}."
+                f"{len(normalized['records'])} included in context; "
+                f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}.
             )
             sections.append(_format_rows(f"{dataset_type} normalized records", normalized["records"]))
             if not normalized.get("coverage_complete", not normalized.get("scan_limited", False)):
@@ -219,7 +220,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
 
 _MAX_ROWS_PER_TABLE = 18
 _MAX_ROW_CHARS = 500
-_MAX_CONTEXT_CHARS = 12000
+_MAX_CONTEXT_CHARS = 40000
 
 
 def _normalise_text(value):
@@ -269,11 +270,11 @@ def _format_rows(label, rows):
             text = _normalise_text(value)
             if not text:
                 continue
-            text = re.sub(r"\s+", " ", text)[:240]
+            text = re.sub(r"\s+", " ", text)
             parts.append(f"{key}={text}")
         line = "; ".join(parts)
         if line:
-            lines.append("- " + line[:_MAX_ROW_CHARS])
+            lines.append("- " + line)
     return "\n".join(lines)
 
 
@@ -306,6 +307,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
     # Broad questions receive a compact cross-workspace view; specific questions
     # receive only tables whose subject matches the question.
     broad = any(word in q for word in ("overview", "summarise", "summary", "all risks", "overall", "across", "workspace"))
+    comprehensive = broad or any(phrase in q for phrase in ("compare", "versus", " vs ", "entire dataset", "whole dataset", "all records", "all data", "all suppliers"))
     if broad:
         selected_names = [(key, value[0]) for key, value in _TABLES.items()]
 
@@ -315,7 +317,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         f"Authenticated company workspace: {company}",
         f"Reporting currency: {currency}",
         f"User question: {question}",
-        "Retrieval scope: current active company workspace; selected rows only. This is not a complete export.",
+        "Retrieval scope: current active company workspace. Relevant workspace tables and matching normalized dataset records are retrieved across available rows and fields; the context-size limit may still omit lower-priority content, which is reported below.",
     ]
     run_log = workspace.get("log") or {}
     detectors = run_log.get("detectors") or {}
@@ -341,7 +343,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         frame = workspace.get(pack_key)
         if isinstance(frame, pd.DataFrame) and not frame.empty:
             available.add(key)
-        rows = _select_rows(frame, terms, limit=3 if broad else 10)
+        rows = _select_rows(frame, terms, limit=(len(frame) if comprehensive and isinstance(frame, pd.DataFrame) else (3 if broad else 10)))
         sections.append(_format_rows(key.replace("_", " ").title(), rows))
 
     if "findings" in available:
