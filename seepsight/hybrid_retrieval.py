@@ -102,6 +102,13 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
         return
 
     q = question.casefold()
+    case_only = any(word in q for word in ("case", "cases", "investigation", "assigned", "owner")) and not any(
+        trigger in q for triggers in _DATASET_HINTS.values() for trigger in triggers
+    )
+    if case_only:
+        sections.append("Ingested datasets: not queried because this question is about case ownership or activity.")
+        return
+
     selected_types = set()
     for dataset_type, triggers in _DATASET_HINTS.items():
         if any(trigger in q for trigger in triggers):
