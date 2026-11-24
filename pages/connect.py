@@ -512,7 +512,7 @@ else:
         with st.expander(f"{CORE_DATASETS[kind]} · {filename}", expanded=(kind == "orders")):
             required_fields = engine.REQUIRED if kind == "orders" else engine.DATASET_REGISTRY[kind].get("required", [])
             overrides, selected = _mapping_editor(
-                frame, fields, f"map_{kind}_{target_group_id or 'new'}", required_fields,
+                frame, fields, f"map_{kind}_{target_group_id or 'new'}_{hashlib.sha1(filename.encode()).hexdigest()[:8]}", required_fields,
                 saved_file_mappings.get(filename),
             )
         file_mapping_overrides[filename] = overrides
@@ -601,7 +601,10 @@ if st.button("Validate and analyse records", type="primary", use_container_width
         st.session_state["connect_check"] = result
         st.session_state["connect_check_signature"] = check_signature
         st.session_state.pop("_done", None)
-    except Exception as exc:
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+    except Exception:
         st.error("We could not validate these records. Check the file structure and mappings, then try again.")
         st.stop()
 
