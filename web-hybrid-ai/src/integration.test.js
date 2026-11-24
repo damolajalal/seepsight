@@ -12,7 +12,7 @@ test('cloud fallback is explicitly consent-gated', async () => {
   assert.match(main, /const allowCloud = consent\.checked === true/);
   assert.match(main, /if \(!allowCloud\) throw localError/);
   assert.match(main, /createCloudOnlyModel\(\)\.generateContent\(prompt\)/);
-  assert.match(main, /reportedRoute === 'IN_CLOUD' && !allowCloud/);
+  assert.match(main, /!allowCloud && reportedRoute === 'IN_CLOUD'/);
   assert.match(main, /const route = allowCloud \? reportedRoute : 'ON_DEVICE'/);
 });
 
