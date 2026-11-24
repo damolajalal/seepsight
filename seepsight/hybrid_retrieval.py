@@ -180,9 +180,13 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                     f"{dataset_type}: retrieval scanned a bounded prefix only; later records may not be represented."
                 )
             if include_source:
+                source_terms = [
+                    term for term in terms
+                    if term not in {"source", "data", "raw", "original", "row", "rows", "uploaded", "columns"}
+                ]
                 source = firestore_db.search_dataset_records(
-                    company_id, dataset_id, terms, collection_name="source_records",
-                    limit=2, scan_limit=500,
+                    company_id, dataset_id, source_terms, collection_name="source_records",
+                    limit=2, scan_limit=250,
                 )
                 sections.append(_format_rows(f"{dataset_type} source rows", source["records"]))
                 if source.get("scan_limited"):
