@@ -1055,6 +1055,8 @@ def save_analysis_results(
         .document(analysis_id)
     )
     cleaned_summary = _normalise_workspace_value(summary)
+    if dataset_group_id is not None:
+        cleaned_summary['dataset_group_id'] = _validate_id(dataset_group_id, 'dataset_group_id')
     if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Analysis summary is too large to store safely.")
 
@@ -1207,7 +1209,7 @@ def get_firestore_status():
 # 9. DURABLE ANALYSIS WORKSPACES
 # ============================================================
 
-def save_analysis_workspace(company_id, analysis_id, summary, tables):
+def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_group_id=None):
     """Persist a new workspace revision, then atomically make it active.
 
     Existing completed revisions remain readable if a replacement write fails.
@@ -1351,15 +1353,17 @@ def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
     return deleted
 
 
-def get_latest_analysis_workspace(company_id):
-    """Load the latest complete analysis using bounded, paginated row reads."""
+def get_latest_analysis_workspace(company_id, analysis_id=None):
+    """Load a selected complete analysis, or the latest one, with bounded row reads."""
     company = _company_ref(company_id)
-    company_snapshot = company.get()
-    if not company_snapshot.exists:
-        return None
-    analysis_id = (company_snapshot.to_dict() or {}).get("latest_analysis_id")
-    if not analysis_id:
-        return None
+    if analysis_id is None:
+        company_snapshot = company.get()
+        if not company_snapshot.exists:
+            return None
+        analysis_id = (company_snapshot.to_dict() or {}).get("latest_analysis_id")
+        if not analysis_id:
+            return None
+    analysis_id = _validate_id(analysis_id, "analysis_id")
 
     analysis_ref = company.collection("analyses").document(
         _validate_id(analysis_id, "analysis_id")
@@ -1414,6 +1418,23 @@ def get_latest_analysis_workspace(company_id):
         {"table_counts": {name: len(rows) for name, rows in tables.items()}},
     )
     return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
+
+def get_company_analysis_workspaces(company_id):
+    """List completed analysis workspaces for this authenticated company."""
+    company = _company_ref(company_id)
+    query = company.collection("analyses").order_by("updated_at", direction="DESCENDING")
+    items = []
+    for snapshot in _stream_query_pages(query, page_size=200):
+        data = _denormalise_workspace_value(snapshot.to_dict() or {})
+        if data.get("workspace_status") == "complete":
+            items.append({
+                "analysis_id": snapshot.id,
+                "dataset_group_id": data.get("dataset_group_id") or snapshot.id,
+                "company_name": data.get("company_name", "Company dataset"),
+                "updated_at": data.get("updated_at"),
+            })
+    return items
+
 
 def search_dataset_records(
     company_id, dataset_id, terms, collection_name="records",
