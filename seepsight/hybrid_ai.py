@@ -44,6 +44,10 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
         json.dumps(payload, ensure_ascii=False).encode("utf-8")
     ).decode("ascii")
 
+    # Open a top-level companion tab for Chrome's on-device Prompt API.
+    # Chrome does not grant language-model to cross-origin frames by default.
+    st.link_button("Open Hybrid AI separately for on-device testing", hybrid_url)
+
     # Base64 keeps untrusted supplier/evidence text out of the HTML/JS source.
     # postMessage is restricted to the configured HTTPS companion origin.
     html = f"""
@@ -51,6 +55,7 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
       <iframe id="seepsight-hybrid-frame"
         src="{iframe_src}"
         title="Seepsight Hybrid AI"
+        allow="language-model"
         style="width:100%; height:820px; border:0; border-radius:12px;"
         referrerpolicy="strict-origin-when-cross-origin"
         loading="lazy"></iframe>
