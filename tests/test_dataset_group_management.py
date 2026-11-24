@@ -100,7 +100,7 @@ class DatasetGroupManagementTests(unittest.TestCase):
 
         self.assertEqual(len(groups), 1)
         self.assertFalse(groups[0]["deletion_safe"])
-        self.assertNotIn("file_items", groups[0])
+        self.assertEqual(groups[0]["file_items"][0]["dataset_id"], "legacy-file")
 
 
 if __name__ == "__main__":
