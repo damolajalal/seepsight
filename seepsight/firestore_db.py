@@ -1427,8 +1427,8 @@ def search_dataset_records(
     """
     if collection_name not in {"records", "source_records"}:
         raise ValueError("collection_name must be 'records' or 'source_records'.")
-    if not isinstance(limit, int) or limit < 1 or limit > 25:
-        raise ValueError("limit must be between 1 and 25.")
+    if not isinstance(limit, int) or limit < 1 or limit > 250000:
+        raise ValueError("limit must be between 1 and 250000.")
     if scan_limit is not None and (
         not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 250000
     ):
