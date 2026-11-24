@@ -12,7 +12,7 @@ app.innerHTML = `
       <div class="fields"><label>Supplier <input id="supplier" maxlength="160" placeholder="Supplier name (optional)"></label><label>Finding type <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
       <label>Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="Paste a short verified finding summary—not a full spreadsheet. Include exact figures and evidence references."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
       <label>What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
-      <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model only when you consent.</p><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
+      <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model only when you consent.</p><span id="device-status" class="pill">Checking local model availability…</span><small id="device-note">On-device AI requires supported desktop Chrome and may be blocked inside embedded frames.</small><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
       <div class="actions"><button id="submit" type="submit" disabled>Explain finding →</button><span>Cloud fallback is off unless you consent above.</span></div>
     </form>
   </section>
@@ -28,10 +28,39 @@ const answer = document.querySelector('#answer');
 const source = document.querySelector('#source');
 const note = document.querySelector('#note');
 const consent = document.querySelector('#consent');
+const deviceStatus = document.querySelector('#device-status');
+const deviceNote = document.querySelector('#device-note');
 config.textContent = status.ready ? 'Firebase ready' : 'Setup required';
 config.classList.toggle('ready', status.ready);
 config.title = status.message;
 submit.disabled = !status.ready;
+
+async function checkOnDeviceAvailability() {
+  if (!globalThis.LanguageModel || typeof globalThis.LanguageModel.availability !== 'function') {
+    deviceStatus.textContent = 'Local model API not detected';
+    deviceNote.textContent = 'Use supported desktop Chrome 139 or later. Mobile Chrome and other browsers are not supported for this web inference path.';
+    return;
+  }
+  try {
+    const availability = await globalThis.LanguageModel.availability({
+      expectedInputs: [{ type: 'text', languages: ['en'] }],
+      expectedOutputs: [{ type: 'text', languages: ['en'] }],
+    });
+    const messages = {
+      available: ['Gemini Nano available', 'The browser reports that the local model is ready.'],
+      downloadable: ['Gemini Nano can be downloaded', 'The first request may download the model and take several minutes.'],
+      downloading: ['Gemini Nano is downloading', 'Wait for the browser model download to finish.'],
+      unavailable: ['Gemini Nano unavailable here', 'This browser, device, model setting, or embedded-frame permission may not support local inference. Open the companion directly in supported desktop Chrome to test.'],
+    };
+    const [label, detail] = messages[availability] || ['Local model status unknown', `Browser availability response: ${String(availability)}`];
+    deviceStatus.textContent = label;
+    deviceNote.textContent = detail;
+  } catch (error) {
+    deviceStatus.textContent = 'Could not check local model';
+    deviceNote.textContent = error?.message || 'The browser did not provide an availability result.';
+  }
+}
+void checkOnDeviceAvailability();
 
 function show(message, route = 'NOTICE', detail = '') {
   result.hidden = false;
@@ -86,7 +115,12 @@ form.addEventListener('submit', async (event) => {
     }
 
     const generatedText = response.response.text();
-    const route = normaliseInferenceSource(response.response.inferenceSource);
+    const reportedRoute = normaliseInferenceSource(response.response.inferenceSource);
+    // ONLY_ON_DEVICE cannot use the cloud. The SDK may omit inferenceSource for this mode.
+    if (!allowCloud && reportedRoute === 'IN_CLOUD') {
+      throw new Error('Privacy protection stopped an unexpected cloud response.');
+    }
+    const route = allowCloud ? reportedRoute : 'ON_DEVICE';
     if (!generatedText?.trim()) throw new Error('The model returned an empty response.');
     if (route === 'IN_CLOUD' && !allowCloud) {
       throw new Error('Privacy protection stopped a cloud response because this request did not have cloud consent.');
@@ -118,7 +152,10 @@ form.addEventListener('submit', async (event) => {
  * the documented payload shape; never accept arbitrary HTML or model settings.
  */
 window.addEventListener('message', (event) => {
-  if (event.source !== window.parent) return;
+  const trustedStreamlitOrigins = new Set(['https://seepsight.streamlit.app', 'https://traceiq.streamlit.app']);
+  const fromParent = event.source === window.parent;
+  const fromTrustedOpener = event.source === window.opener && trustedStreamlitOrigins.has(event.origin);
+  if (!fromParent && !fromTrustedOpener) return;
   const data = event.data;
   if (!data || data.type !== 'seepsight:explain-finding' || data.version !== 1) return;
   const fields = {
