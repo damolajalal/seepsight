@@ -183,7 +183,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 ]
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
-                company_id, dataset_id, terms if not broad else [],
+                company_id, dataset_id, terms if not comprehensive else [],
                 collection_name="records", limit=250000,
             )
             sections.append(
@@ -313,7 +313,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
     # Broad questions receive a compact cross-workspace view; specific questions
     # receive only tables whose subject matches the question.
     broad = any(word in q for word in ("overview", "summarise", "summary", "all risks", "overall", "across", "workspace"))
-    comprehensive = broad or any(phrase in q for phrase in ("compare", "versus", " vs ", "entire dataset", "whole dataset", "all records", "all data", "all suppliers"))
+    comprehensive = True
     if broad:
         selected_names = [(key, value[0]) for key, value in _TABLES.items()]
 
@@ -349,7 +349,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         frame = workspace.get(pack_key)
         if isinstance(frame, pd.DataFrame) and not frame.empty:
             available.add(key)
-        rows = _select_rows(frame, terms, limit=(len(frame) if comprehensive and isinstance(frame, pd.DataFrame) else (3 if broad else 10)))
+        rows = _select_rows(frame, [] if comprehensive else terms, limit=(len(frame) if comprehensive and isinstance(frame, pd.DataFrame) else (3 if broad else 10)))
         sections.append(_format_rows(key.replace("_", " ").title(), rows))
 
     if "findings" in available:
@@ -360,7 +360,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
             ids = set(finding_frame["finding_id"].dropna().astype(str))
         if isinstance(evidence_frame, pd.DataFrame) and "finding_id" in evidence_frame.columns and ids:
             linked = evidence_frame[evidence_frame["finding_id"].astype(str).isin(ids)]
-            evidence_rows = _select_rows(linked, terms, limit=6)
+            evidence_rows = _select_rows(linked, [] if comprehensive else terms, limit=(len(linked) if comprehensive else 6))
             sections.append(_format_rows("Linked evidence", evidence_rows))
 
     if cases is not None:
@@ -375,7 +375,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
                     " ".join(str(x) for x in case.get("history", [])[-3:]),
                 ])
                 case_question = any(word in q for word in ("case", "action", "investigation", "owner", "assigned"))
-                if broad or case_question or not terms or any(term in blob.casefold() for term in terms):
+                if broad or comprehensive or case_question or not terms or any(term in blob.casefold() for term in terms):
                     case_lines.append(
                         f"- Case {finding_id}: status={case.get('status', 'Unknown')}; "
                         f"owner={case.get('owner', '')}; note={str(case.get('note', ''))[:300]}; "
