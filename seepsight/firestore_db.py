@@ -1433,7 +1433,11 @@ def get_company_dataset_groups(company_id):
             "record_count": 0,
             "source_record_count": 0,
             "company_name": data.get("company_name") or "Procurement dataset",
+            "all_files_linked": True,
+            "has_analysis": False,
         })
+        if not data.get("dataset_group_id"):
+            item["all_files_linked"] = False
         item["files"].append(data.get("filename") or snapshot.id)
         item["file_count"] += 1
         item["record_count"] += int(data.get("record_count", data.get("normalized_record_count", 0)) or 0)
@@ -1452,9 +1456,14 @@ def get_company_dataset_groups(company_id):
             "source_record_count": 0,
             "company_name": data.get("company_name") or "Procurement dataset",
         })
+        item["has_analysis"] = True
         if "analysis_id" not in item:
             item["analysis_id"] = snapshot.id
             item["updated_at"] = data.get("updated_at")
+    for item in groups.values():
+        item["deletion_safe"] = bool(item["all_files_linked"] and item["has_analysis"])
+        item.pop("all_files_linked", None)
+        item.pop("has_analysis", None)
     return sorted(groups.values(), key=lambda item: item.get("updated_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
 
