@@ -129,7 +129,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
         selected_types.update({"contracts", "quotations"})
     if any(word in q for word in ("return", "dispute", "claim", "rejected")):
         selected_types.update({"returns", "invoices"})
-    if broad:
+    if comprehensive:
         selected_types = {str(item.get("dataset_type") or "") for item in datasets}
     if not selected_types:
         for item in datasets:
@@ -274,9 +274,7 @@ def _format_rows(label, rows):
         parts = []
         for key, value in row.items():
             text = _normalise_text(value)
-            if not text:
-                continue
-            text = re.sub(r"\s+", " ", text)
+            text = re.sub(r"\s+", " ", text) if text else "(blank)"
             parts.append(f"{key}={text}")
         line = "; ".join(parts)
         if line:
