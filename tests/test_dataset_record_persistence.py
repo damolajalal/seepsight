@@ -105,6 +105,56 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
         self.assertNotIn("_record_number", values[0])
 
+    def test_search_scans_middle_records_and_reports_complete_coverage(self):
+        metadata = MagicMock(exists=True)
+        metadata.to_dict.return_value = {"records_status": "complete", "record_count": 7}
+        self.dataset_ref.get.return_value = metadata
+
+        snapshots = []
+        for number in range(7):
+            row = MagicMock()
+            row.to_dict.return_value = {
+                "po_id": f"PO-{number}",
+                "supplier": "Target Supplier" if number == 3 else "Other Supplier",
+                "_record_number": number,
+            }
+            snapshots.append(row)
+
+        with patch.object(firestore_db, "_stream_query_pages", return_value=iter(snapshots)):
+            result = firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["Target Supplier"], limit=5
+            )
+
+        self.assertEqual(result["scanned_count"], 7)
+        self.assertEqual(result["match_count"], 1)
+        self.assertEqual(result["records"][0]["po_id"], "PO-3")
+        self.assertTrue(result["coverage_complete"])
+        self.assertFalse(result["scan_limited"])
+
+    def test_search_read_budget_reports_partial_coverage_not_no_match(self):
+        metadata = MagicMock(exists=True)
+        metadata.to_dict.return_value = {"records_status": "complete", "record_count": 7}
+        self.dataset_ref.get.return_value = metadata
+
+        snapshots = []
+        for number in range(7):
+            row = MagicMock()
+            row.to_dict.return_value = {
+                "po_id": f"PO-{number}", "supplier": "Other Supplier",
+                "_record_number": number,
+            }
+            snapshots.append(row)
+
+        with patch.object(firestore_db, "_stream_query_pages", return_value=iter(snapshots)):
+            result = firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["Missing Supplier"], limit=5, scan_limit=3
+            )
+
+        self.assertEqual(result["scanned_count"], 3)
+        self.assertEqual(result["match_count"], 0)
+        self.assertFalse(result["coverage_complete"])
+        self.assertTrue(result["scan_limited"])
+
     def test_dataset_deletion_recursively_removes_company_records(self):
         snapshot = MagicMock(exists=True)
         snapshot.to_dict.return_value = {"storage": None}
