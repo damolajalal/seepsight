@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/company-auth
+      - feature/phase8-unified-hybrid-assistant
   pull_request:
     branches:
       - feature/company-auth
+      - fix/ask-hybrid-ai-reliability
 
 jobs:
   hybrid-web:

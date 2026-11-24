@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-from seepsight import ask_engine, hybrid_ai, ui, workspace
+from seepsight import ask_engine, hybrid_ai, hybrid_retrieval, ui, workspace
 
 w = workspace.current()
 ui.page_header(
@@ -175,6 +175,73 @@ if question:
         st.markdown(response)
         if table is not None:
             st.dataframe(table, hide_index=True, use_container_width=True)
+
+
+# ---------------------------------------------------------
+# Integrated Firebase Hybrid AI assistant
+# ---------------------------------------------------------
+st.divider()
+st.markdown("### Ask Seepsight with Gemini Hybrid AI")
+st.caption(
+    "Use the same Ask Seepsight workspace to ask evidence-based questions. "
+    "Relevant saved records are retrieved from the active company before they are sent "
+    "to Firebase AI Logic. Cloud fallback remains subject to the consent choice in the panel."
+)
+
+hybrid_request_key = f"ask_hybrid_pending_{workspace_key}"
+with st.form(f"ask_hybrid_form_{workspace_key}", clear_on_submit=False):
+    hybrid_question = st.text_area(
+        "Question for the Hybrid AI assistant",
+        key=f"ask_hybrid_question_{workspace_key}",
+        max_chars=500,
+        height=90,
+        placeholder="e.g. Compare Cedarline Traders and Northstar Supplies using all available evidence.",
+    )
+    hybrid_submitted = st.form_submit_button(
+        "Prepare evidence for Gemini",
+        type="primary",
+        use_container_width=True,
+    )
+
+if hybrid_submitted:
+    st.session_state.pop(hybrid_request_key, None)
+    if not hybrid_question.strip():
+        st.warning("Enter a question first.")
+    else:
+        try:
+            company_cases = workspace.cases()
+            # workspace.current() has already verified this workspace belongs to the signed-in company.
+            company_id = w.get("company_id")
+            retrieved_context = hybrid_retrieval.retrieve_workspace_context(
+                w,
+                hybrid_question.strip(),
+                cases=company_cases,
+                company_id=company_id,
+            )
+            if not str(retrieved_context or "").strip():
+                st.warning("No relevant saved company evidence was retrieved. Connect or refresh your data before asking Hybrid AI.")
+            else:
+                st.session_state[hybrid_request_key] = {
+                    "question": hybrid_question.strip(),
+                    "context": retrieved_context,
+                    "company_name": str(w.get("name") or "Your company"),
+                }
+        except Exception:
+            st.error(
+                "Could not prepare evidence from the active company workspace. "
+                "Refresh the workspace and try again."
+            )
+
+hybrid_pending = st.session_state.get(hybrid_request_key)
+if isinstance(hybrid_pending, dict):
+    st.caption("Evidence retrieved from the active company's saved workspace:")
+    with st.expander("Review retrieved evidence before sending", expanded=False):
+        st.text(hybrid_pending.get("context", ""))
+    hybrid_ai.render_workspace_assistant(
+        hybrid_pending["company_name"],
+        hybrid_pending["context"],
+        question=hybrid_pending["question"],
+    )
 
 if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
     with st.expander("Explain the latest answer with Hybrid AI", expanded=False):

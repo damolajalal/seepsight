@@ -34,7 +34,7 @@ def _render_context(payload, missing_context_message):
         )
         return
 
-    facts = str(payload.get("verifiedFacts") or "").strip()[:12000]
+    facts = str(payload.get("verifiedFacts") or "").strip()[:40000]
     if not facts:
         st.warning(missing_context_message)
         return
