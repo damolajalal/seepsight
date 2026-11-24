@@ -7,7 +7,7 @@ import pandas as pd
 
 _TABLES = {
     "findings": ("findings", ("finding", "issue", "risk", "priority", "severity", "exposure", "problem")),
-    "evidence": ("evidence", ("evidence", "proof", "invoice", "purchase order", "po", "receipt", "delivery")),
+    "evidence": ("evidence", ("evidence", "proof", "invoice", "purchase order", "receipt", "delivery")),
     "exposure": ("exposure", ("supplier", "vendor", "spend", "exposure", "concentration", "top")),
     "monthly": ("monthly", ("trend", "monthly", "month", "over time", "delivery trend")),
     "supplier_month": ("supplier_month", ("supplier", "vendor", "monthly", "performance", "trend")),
@@ -39,7 +39,7 @@ def _frame_records(frame):
 
 
 def _row_text(row):
-    return " ".join(_normalise_text(v) for v in row.values())
+    return " ".join(f"{key} {_normalise_text(value)}" for key, value in row.items())
 
 
 def _select_rows(frame, terms, limit=_MAX_ROWS_PER_TABLE):
@@ -110,6 +110,25 @@ def retrieve_workspace_context(workspace, question, cases=None):
         f"User question: {question}",
         "Retrieval scope: current active company workspace; selected rows only. This is not a complete export.",
     ]
+    run_log = workspace.get("log") or {}
+    detectors = run_log.get("detectors") or {}
+    if isinstance(detectors, dict) and detectors:
+        sections.append(
+            "Detector coverage: " + "; ".join(
+                f"{name}={status}" for name, status in detectors.items()
+            )
+        )
+        incomplete = [
+            str(name) for name, status in detectors.items()
+            if str(status).casefold() != "ready"
+        ]
+        if incomplete:
+            sections.append(
+                "Coverage warning: checks not marked ready: "
+                + ", ".join(incomplete)
+                + ". Missing or incomplete checks must not be treated as clean results."
+            )
+
     available = set()
     for key, pack_key in selected_names:
         frame = workspace.get(pack_key)
