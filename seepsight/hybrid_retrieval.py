@@ -140,7 +140,8 @@ def retrieve_workspace_context(workspace, question, cases=None):
                     str(case.get("owner", "")), str(case.get("note", "")),
                     " ".join(str(x) for x in case.get("history", [])[-3:]),
                 ])
-                if broad or not terms or any(term in blob.casefold() for term in terms):
+                case_question = any(word in q for word in ("case", "action", "investigation", "owner", "assigned"))
+                if broad or case_question or not terms or any(term in blob.casefold() for term in terms):
                     case_lines.append(
                         f"- Case {finding_id}: status={case.get('status', 'Unknown')}; "
                         f"owner={case.get('owner', '')}; note={str(case.get('note', ''))[:300]}; "
