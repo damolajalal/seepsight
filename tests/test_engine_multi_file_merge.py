@@ -41,6 +41,17 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
                 "orders", [pd.DataFrame([first]), pd.DataFrame([conflicting])]
             )
 
+    def test_equivalent_po_id_formatting_is_consolidated_when_other_fields_match(self):
+        first = pd.DataFrame([{
+            "po_id": "PO-001", "supplier": "Example Supplies", "ordered_qty": 10,
+        }])
+        second = pd.DataFrame([{
+            "po_id": "po 001", "supplier": "Example Supplies", "ordered_qty": 10,
+        }])
+        combined, report = engine.combine_dataset_frames("orders", [first, second])
+        self.assertEqual(len(combined), 1)
+        self.assertEqual(report["duplicate_order_ids_removed"], 1)
+
     def test_different_purchase_orders_combine(self):
         first = pd.DataFrame([{"po_id": "PO-001", "ordered_qty": 10}])
         second = pd.DataFrame([{"po_id": "PO-002", "ordered_qty": 20}])
