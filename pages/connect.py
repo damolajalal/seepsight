@@ -439,13 +439,23 @@ for filename, frame in raw.items():
     with st.container(border=True):
         st.write(f"**{filename}**")
         st.caption(f"{len(frame):,} rows · {len(frame.columns):,} columns · suggested: {guessed_label} ({confidence:.0%} signal)")
-        chosen_label = st.selectbox(
-            "What kind of procurement information is this?",
-            labels,
-            index=labels.index(guessed_label),
-            key=f"dataset_type_{hashlib.sha1(filename.encode()).hexdigest()[:10]}",
-        )
-        kinds[filename] = LABEL_TO_DATASET[chosen_label]
+        saved_kind = saved_file_kinds.get(filename)
+        if saved_kind in DATASET_LABELS:
+            chosen_label = st.selectbox(
+                "Saved procurement information type",
+                labels,
+                index=labels.index(DATASET_LABELS[saved_kind]),
+                key=f"dataset_type_{hashlib.sha1(filename.encode()).hexdigest()[:10]}",
+                disabled=True,
+            )
+        else:
+            chosen_label = st.selectbox(
+                "What kind of procurement information is this?",
+                labels,
+                index=labels.index(guessed_label),
+                key=f"dataset_type_{hashlib.sha1(filename.encode()).hexdigest()[:10]}",
+            )
+        kinds[filename] = saved_kind if saved_kind in DATASET_LABELS else LABEL_TO_DATASET[chosen_label]
         if len(ranked) > 1:
             alternatives = ", ".join(f"{DATASET_LABELS[item['dataset']]} {item['confidence']:.0%}" for item in ranked[:3])
             st.caption(f"Other recognition signals: {alternatives}")
@@ -487,7 +497,10 @@ if single_file:
     frame = raw[filename]
     fields = engine.FLAT_FIELDS
     with st.expander(f"Map columns in {filename}", expanded=True):
-        one_overrides, one_selected = _mapping_editor(frame, fields, "connect_single_map", engine.REQUIRED)
+        one_overrides, one_selected = _mapping_editor(
+            frame, fields, "connect_single_map", engine.REQUIRED,
+            saved_file_mappings.get(filename),
+        )
     mapping_overrides = one_overrides
     selected_mappings["orders"] = one_selected
 else:
@@ -496,7 +509,10 @@ else:
         fields = engine.TABLE_FIELDS[kind]
         with st.expander(f"{CORE_DATASETS[kind]} · {filename}", expanded=(kind == "orders")):
             required_fields = engine.REQUIRED if kind == "orders" else engine.DATASET_REGISTRY[kind].get("required", [])
-            overrides, selected = _mapping_editor(frame, fields, f"map_{kind}", required_fields)
+            overrides, selected = _mapping_editor(
+                frame, fields, f"map_{kind}", required_fields,
+                saved_file_mappings.get(filename),
+            )
         mapping_overrides[kind] = overrides
         selected_mappings[kind] = selected
 
