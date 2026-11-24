@@ -1447,7 +1447,17 @@ def search_dataset_records(
         .order_by("_record_number")
         .limit(scan_limit)
     )
-    clean_terms = [term.casefold().strip() for term in terms if term.strip()]
+    clean_terms = []
+    for term in terms:
+        term = term.casefold().strip()
+        if not term:
+            continue
+        clean_terms.append(term)
+        if term.endswith("ies") and len(term) > 4:
+            clean_terms.append(term[:-3] + "y")
+        elif term.endswith("s") and len(term) > 4:
+            clean_terms.append(term[:-1])
+    clean_terms = list(dict.fromkeys(clean_terms))
     ranked = []
     scanned = 0
     for snapshot in query.stream():
