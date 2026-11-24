@@ -313,7 +313,13 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
     # Broad questions receive a compact cross-workspace view; specific questions
     # receive only tables whose subject matches the question.
     broad = any(word in q for word in ("overview", "summarise", "summary", "all risks", "overall", "across", "workspace"))
-    comprehensive = True
+    comprehensive = broad or any(
+        phrase in q for phrase in (
+            "compare", "versus", " vs ", "entire dataset", "whole dataset",
+            "all records", "all data", "all suppliers", "supplier risk",
+            "supplier with risk", "suppliers at risk",
+        )
+    )
     if broad:
         selected_names = [(key, value[0]) for key, value in _TABLES.items()]
 
