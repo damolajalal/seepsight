@@ -29,7 +29,7 @@ def get_company_cases(company_id, dataset_group_id=None):
         expected_count = data.get("history_count")
         if expected_count is not None and len(history) != int(expected_count):
             raise RuntimeError("Case activity history is incomplete; refresh or contact support.")
-        cases[snapshot.id] = {
+        cases[data.get("finding_id", snapshot.id)] = {
             "status": data.get("status", "Open"),
             "owner": data.get("owner", ""),
             "note": data.get("note", ""),
