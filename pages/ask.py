@@ -210,7 +210,8 @@ if hybrid_submitted:
     else:
         try:
             company_cases = workspace.cases()
-            company_id = (st.session_state.get("seepsight_auth") or {}).get("company_id")
+            # workspace.current() has already verified this workspace belongs to the signed-in company.
+            company_id = w.get("company_id")
             retrieved_context = hybrid_retrieval.retrieve_workspace_context(
                 w,
                 hybrid_question.strip(),
