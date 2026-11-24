@@ -39,7 +39,7 @@ test('builds a structured evidence-grounded assistant prompt', () => {
     requestedAction: 'Which issue should we review first?',
   });
   assert.match(prompt, /Answer the procurement user question/);
-  assert.match(prompt, /## Observed facts/);
+  assert.match(prompt, /## What the records show/);
   assert.match(prompt, /Findings in the latest analysis: 2/);
   assert.match(prompt, /Which issue should we review first/);
 });
