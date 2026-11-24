@@ -1469,7 +1469,8 @@ def search_dataset_records(
     match_count = 0
     scanned = 0
     budget_reached = False
-    for snapshot in _stream_query_pages(base_query, page_size=500):
+    page_size = min(500, scan_limit) if scan_limit is not None else 500
+    for snapshot in _stream_query_pages(base_query, page_size=page_size):
         if scan_limit is not None and scanned >= scan_limit:
             budget_reached = True
             break
