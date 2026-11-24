@@ -25,7 +25,7 @@ def _configured_hybrid_url():
 
 
 def _render_context(payload, missing_context_message):
-    """Embed Hybrid AI and pass only bounded, verified, human-readable context."""
+    """Embed Hybrid AI and pass bounded, question-specific verified context."""
     hybrid_url, parsed = _configured_hybrid_url()
     if not hybrid_url:
         st.info(
@@ -34,7 +34,7 @@ def _render_context(payload, missing_context_message):
         )
         return
 
-    facts = str(payload.get("verifiedFacts") or "").strip()[:5000]
+    facts = str(payload.get("verifiedFacts") or "").strip()[:12000]
     if not facts:
         st.warning(missing_context_message)
         return
@@ -45,7 +45,7 @@ def _render_context(payload, missing_context_message):
         "supplier": str(payload.get("supplier") or "")[:160],
         "findingType": str(payload.get("findingType") or "")[:160],
         "verifiedFacts": facts,
-        "requestedAction": str(payload.get("requestedAction") or "")[:300],
+        "requestedAction": str(payload.get("requestedAction") or "")[:500],
     }
     iframe_src = html_lib.escape(hybrid_url, quote=True)
     target_origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -63,7 +63,7 @@ def _render_context(payload, missing_context_message):
         src="{iframe_src}"
         title="Seepsight Hybrid AI"
         allow="language-model"
-        style="width:100%; height:900px; border:0; border-radius:12px;"
+        style="width:100%; height:700px; border:0; border-radius:12px;"
         referrerpolicy="strict-origin-when-cross-origin"
         loading="lazy"></iframe>
       <script>
@@ -79,7 +79,7 @@ def _render_context(payload, missing_context_message):
       </script>
     </div>
     """
-    st.components.v1.html(html, height=920, scrolling=True)
+    st.components.v1.html(html, height=720, scrolling=True)
 
 
 def render_verified_context(supplier, finding_type, verified_facts, requested_action):
@@ -120,15 +120,15 @@ def render_answer_explainer(question, answer, company_name=""):
     )
 
 
-def render_workspace_assistant(company_name, verified_facts):
-    """Open Ask Hybrid AI with a bounded summary from the active company workspace."""
+def render_workspace_assistant(company_name, verified_facts, question=""):
+    """Open Ask Hybrid AI with question-specific records from the active company."""
     _render_context(
         {
             "type": "seepsight:ask-hybrid-ai",
             "supplier": company_name,
-            "findingType": "Company procurement workspace",
+            "findingType": "Question-specific company procurement evidence",
             "verifiedFacts": verified_facts,
-            "requestedAction": "Ask a question about this verified procurement summary.",
+            "requestedAction": question or "Explain the retrieved company procurement evidence.",
         },
-        "There is no verified procurement summary available for this company yet.",
+        "There is no verified procurement context available for this question.",
     )
