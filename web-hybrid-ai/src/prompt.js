@@ -1,7 +1,7 @@
 function buildPrompt({ supplier = '', findingType = '', verifiedFacts = '', requestedAction = '', assistantMode = false }) {
   const facts = String(verifiedFacts).trim();
   if (!facts) throw new Error('Add the verified facts from a Seepsight workspace before requesting an explanation.');
-  if (facts.length > 5000) throw new Error('Keep the evidence summary below 5,000 characters. Do not paste full procurement files.');
+  if (facts.length > 12000) throw new Error('Keep the evidence summary below 12,000 characters. Do not paste full procurement files.');
   const purpose = assistantMode
     ? 'Answer the procurement user question using only the bounded company workspace summary supplied below. Be explicit when the summary does not contain enough information.'
     : 'Explain the supplied finding clearly to a procurement manager.';
