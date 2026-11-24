@@ -587,7 +587,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         source_bytes = st.session_state["connect_source_file_bytes"][source_filename]
                         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
                         upload_id = hashlib.sha256(
-                            (source_filename + ":" + source_sha256).encode("utf-8")
+                            (check_signature + ":" + source_filename + ":" + source_sha256).encode("utf-8")
                         ).hexdigest()[:32]
                         dataset_kind = kinds[source_filename]
                         dataset_metadata = {
@@ -597,6 +597,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             "record_count": int(len(source_frame)),
                             "source_sha256": source_sha256,
                             "dataset_group_id": check_signature,
+                            "company_name": company_name,
                         }
                         normalized_tables = result.get("normalized_tables", {})
                         source_tables = result.get("source_tables", {})
