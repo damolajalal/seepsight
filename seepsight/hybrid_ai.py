@@ -119,7 +119,7 @@ def render_answer_explainer(question, answer, company_name="", table=None):
         except (AttributeError, TypeError, ValueError):
             table_text = ""
         if table_text:
-            facts += "\\n\\nSupporting result table (displayed by Seepsight):\\n" + table_text[:12000]
+            facts += "\n\nSupporting result table (displayed by Seepsight):\n" + table_text[:12000]
     render_verified_context(
         "",
         f"Grounded Ask Seepsight answer for {company_name or 'the active company'}",
