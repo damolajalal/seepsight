@@ -52,10 +52,10 @@ def _account():
     return value if isinstance(value, dict) else {}
 
 
-def _read_upload(upload):
-    suffix = os.path.splitext(upload.name)[1].lower()
+def _read_bytes(filename, payload):
+    suffix = os.path.splitext(filename)[1].lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(upload.getvalue())
+        tmp.write(payload)
         path = tmp.name
     try:
         return engine.read_any(path)
@@ -64,6 +64,10 @@ def _read_upload(upload):
             os.unlink(path)
         except OSError:
             pass
+
+
+def _read_upload(upload):
+    return _read_bytes(upload.name, upload.getvalue())
 
 
 def _fingerprint(uploaded_files):
@@ -128,9 +132,10 @@ def _dataset_guess(df, filename):
     return ranked[0]["dataset"], ranked[0]["confidence"], ranked
 
 
-def _mapping_editor(df, fields, key_prefix, required_fields=None):
+def _mapping_editor(df, fields, key_prefix, required_fields=None, saved_mapping=None):
     """Show ranked suggestions and let the user confirm or correct each field."""
     required_fields = set(required_fields if required_fields is not None else engine.REQUIRED)
+    saved_mapping = saved_mapping if isinstance(saved_mapping, dict) else {}
     suggested, _, _ = engine.suggest_mapping(
         df,
         engine.DEFAULT_CONFIG["accept_score"],
@@ -143,7 +148,11 @@ def _mapping_editor(df, fields, key_prefix, required_fields=None):
 
     for field in fields:
         info = suggested.get(field)
-        default = info["column"] if info else NOT_MAPPED
+        saved_choice = saved_mapping.get(field)
+        if saved_choice in columns or saved_choice == NOT_MAPPED:
+            default = saved_choice
+        else:
+            default = info["column"] if info else NOT_MAPPED
         ranked = candidates.get(field, [])
         ranked_names = [item["column"] for item in ranked]
         options = [NOT_MAPPED] + list(dict.fromkeys(ranked_names + columns))
