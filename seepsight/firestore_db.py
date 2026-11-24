@@ -1455,6 +1455,8 @@ def get_company_dataset_groups(company_id):
             "record_count": 0,
             "source_record_count": 0,
             "company_name": data.get("company_name") or "Procurement dataset",
+            "all_files_linked": True,
+            "has_analysis": False,
         })
         item["has_analysis"] = True
         if "analysis_id" not in item:
@@ -1474,10 +1476,13 @@ def delete_company_dataset_group(company_id, dataset_group_id):
     datasets = []
     analyses = []
     cases = []
+    has_unlinked_file = False
 
     for snapshot in _stream_query_pages(company.collection("datasets").order_by("__name__"), page_size=200):
         data = snapshot.to_dict() or {}
         if (data.get("dataset_group_id") or snapshot.id) == dataset_group_id:
+            if data.get("dataset_group_id") != dataset_group_id:
+                has_unlinked_file = True
             datasets.append(snapshot.reference)
     for snapshot in _stream_query_pages(company.collection("analyses").order_by("__name__"), page_size=200):
         data = snapshot.to_dict() or {}
@@ -1488,6 +1493,8 @@ def delete_company_dataset_group(company_id, dataset_group_id):
         if data.get("dataset_group_id") == dataset_group_id:
             cases.append(snapshot.reference)
 
+    if has_unlinked_file or not analyses:
+        raise RuntimeError("This dataset does not have complete file-to-analysis links and cannot be safely deleted.")
     if not datasets and not analyses and not cases:
         return False
 
@@ -1498,7 +1505,23 @@ def delete_company_dataset_group(company_id, dataset_group_id):
 
     client = get_firestore_client()
     for reference in datasets + analyses + cases:
-        client.recursive_delete(reference)
+        reference.set({
+            "deletion_status": "deleting",
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True)
+    try:
+        for reference in datasets + analyses + cases:
+            client.recursive_delete(reference)
+    except Exception as exc:
+        for reference in datasets + analyses + cases:
+            try:
+                reference.set({
+                    "deletion_status": "deletion_failed",
+                    "updated_at": datetime.now(timezone.utc),
+                }, merge=True)
+            except Exception:
+                pass
+        raise RuntimeError("The dataset deletion was incomplete. Retry the same deletion before using this dataset.") from exc
 
     if deleting_active:
         remaining = [item for item in _stream_query_pages(
