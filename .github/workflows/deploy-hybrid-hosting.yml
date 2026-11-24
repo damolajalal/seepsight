@@ -1,5 +1,6 @@
 name: Deploy Seepsight Hybrid AI to Firebase Hosting
 
+# Manual and push deployments for the hybrid AI site.
 on:
   push:
     branches:
