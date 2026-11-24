@@ -4,6 +4,7 @@ import base64
 import html as html_lib
 import json
 import os
+import uuid
 from urllib.parse import urlparse
 
 import streamlit as st
@@ -97,17 +98,72 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
 
 
 def render_finding_explainer(finding, evidence, currency):
-    """Pass a deterministic Seepsight finding and its summary to Hybrid AI."""
+    """Render a native, evidence-grounded Gemini explanation for one finding."""
     from seepsight import plain
 
-    facts = plain.what_we_found(finding, evidence, currency)
-    supplier = finding.get("supplier", finding.get("entity", ""))
-    render_verified_context(
-        supplier,
-        finding.get("finding_type", ""),
-        facts,
-        "Explain this finding and identify the next evidence checks for the reviewer.",
-    )
+    finding_id = str(finding.get("finding_id", finding.get("id", "finding")))
+    safe_id = "".join(char if char.isalnum() else "_" for char in finding_id)[:80]
+    pending_key = f"finding_hybrid_pending_{safe_id}"
+    response_key = f"finding_hybrid_response_{safe_id}"
+    facts = str(plain.what_we_found(finding, evidence, currency) or "")
+    if evidence is not None:
+        try:
+            rows = evidence.to_string(index=False, max_rows=25, max_cols=12)
+        except (AttributeError, TypeError, ValueError):
+            rows = ""
+        if rows:
+            facts += "\\n\\nSupporting evidence rows from the selected finding:\\n" + rows[:12000]
+
+    form_key = f"finding_hybrid_form_{safe_id}"
+    with st.form(form_key, clear_on_submit=False):
+        question = st.text_area(
+            "What should Gemini explain?",
+            value="Explain this finding, assess what the evidence establishes, and identify the next checks.",
+            key=f"finding_hybrid_question_{safe_id}",
+            max_chars=500,
+            height=80,
+        )
+        allow_cloud = st.checkbox(
+            "I consent to cloud fallback for this request if on-device inference cannot run.",
+            value=False,
+            key=f"finding_hybrid_consent_{safe_id}",
+        )
+        submitted = st.form_submit_button("Explain with Gemini Hybrid AI", use_container_width=True)
+
+    if submitted:
+        try:
+            prompt = build_native_prompt(question, facts)
+            st.session_state[pending_key] = {
+                "request_id": uuid.uuid4().hex,
+                "prompt": prompt,
+                "allow_cloud": bool(allow_cloud),
+            }
+            st.session_state.pop(response_key, None)
+        except ValueError as exc:
+            st.warning(str(exc))
+
+    pending = st.session_state.get(pending_key)
+    if not isinstance(pending, dict):
+        return
+    result = render_native_ai_request(pending, key=f"finding_native_hybrid_{safe_id}")
+    response = getattr(result, "response", None) if result is not None else None
+    if isinstance(response, dict) and response.get("requestId") == pending.get("request_id"):
+        st.session_state[response_key] = response
+    response = st.session_state.get(response_key)
+    if isinstance(response, dict) and response.get("requestId") == pending.get("request_id"):
+        if response.get("status") == "success":
+            st.markdown(response.get("text", ""))
+            route = response.get("inferenceSource")
+            if route == "on_device":
+                st.caption("Processed on this device. Firebase AI Logic confirmed the on-device route.")
+            elif route == "in_cloud":
+                st.caption("Processed in the cloud through Firebase AI Logic after your consent.")
+        else:
+            st.warning("Gemini Hybrid AI could not complete this request. The verified finding remains unchanged.")
+            if response.get("message"):
+                st.caption(response["message"])
+    elif result is not None:
+        st.info("Gemini Hybrid AI is preparing the evidence-based explanation.")
 
 
 def render_answer_explainer(question, answer, company_name="", table=None):
