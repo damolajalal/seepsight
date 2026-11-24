@@ -7,6 +7,7 @@ import streamlit as st
 from seepsight import ask_engine, hybrid_ai, hybrid_retrieval, ui, workspace
 
 w = workspace.current()
+company_id = w.get("company_id")
 ui.page_header(
     "Ask Seepsight",
     "Ask questions grounded in your company's saved procurement analysis and evidence.",
@@ -96,6 +97,7 @@ hybrid_question_key = f"ask_hybrid_question_{workspace_key}_{len(chat)}"
 hybrid_consent_key = f"ask_hybrid_consent_{workspace_key}_{len(chat)}"
 hybrid_pending_key = f"ask_hybrid_pending_{workspace_key}"
 hybrid_response_key = f"ask_hybrid_response_{workspace_key}"
+hybrid_review_key = f"ask_hybrid_review_{workspace_key}"
 
 with st.form(hybrid_form_key, clear_on_submit=False):
     hybrid_question = st.text_area(
@@ -131,7 +133,7 @@ if hybrid_submitted:
                 w,
                 question_text,
                 cases=workspace.cases(),
-                company_id=w.get("company_id"),
+                company_id=company_id,
             )
             evidence = str(retrieved_context or "").strip()
             if not evidence:
@@ -155,13 +157,12 @@ if hybrid_submitted:
                             evidence += "\n\nSupporting result table displayed by Seepsight:\n"
                             evidence += table_text[:12000]
 
-                prompt = hybrid_ai.build_native_prompt(question_text, evidence)
-                request = {
-                    "request_id": uuid.uuid4().hex,
-                    "prompt": prompt,
+                st.session_state[hybrid_review_key] = {
+                    "question": question_text,
+                    "context": evidence[:40000],
                     "allow_cloud": bool(allow_cloud),
                 }
-                st.session_state[hybrid_pending_key] = request
+                st.session_state.pop(hybrid_pending_key, None)
                 st.session_state.pop(hybrid_response_key, None)
         except ValueError as exc:
             st.warning(str(exc))
@@ -170,6 +171,31 @@ if hybrid_submitted:
                 "Could not retrieve evidence from the active company workspace. "
                 "Refresh the workspace and try again."
             )
+
+review_payload = st.session_state.get(hybrid_review_key)
+if isinstance(review_payload, dict):
+    with st.expander("Review retrieved evidence before sending", expanded=True):
+        st.caption("Check the company evidence below. Only this retrieved context will be sent to Gemini.")
+        st.text_area(
+            "Retrieved evidence",
+            value=review_payload.get("context", ""),
+            height=260,
+            disabled=True,
+            key=f"ask_hybrid_review_context_{workspace_key}_{len(chat)}",
+        )
+        if st.button("Send reviewed evidence to Gemini", type="primary", key=f"send_reviewed_hybrid_evidence_{workspace_key}"):
+            try:
+                prompt = hybrid_ai.build_native_prompt(review_payload.get("question", ""), review_payload.get("context", ""))
+                st.session_state[hybrid_pending_key] = {
+                    "request_id": uuid.uuid4().hex,
+                    "prompt": prompt,
+                    "allow_cloud": bool(review_payload.get("allow_cloud")),
+                }
+                st.session_state.pop(hybrid_review_key, None)
+                st.session_state.pop(hybrid_response_key, None)
+                st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
 
 hybrid_pending = st.session_state.get(hybrid_pending_key)
 if isinstance(hybrid_pending, dict):
@@ -225,5 +251,6 @@ if chat:
     if st.button("Clear conversation", key=f"clear_{workspace_key}"):
         st.session_state[chat_key] = []
         st.session_state.pop(hybrid_pending_key, None)
+        st.session_state.pop(hybrid_review_key, None)
         st.session_state.pop(hybrid_response_key, None)
         st.rerun()
