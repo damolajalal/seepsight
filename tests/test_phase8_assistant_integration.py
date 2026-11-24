@@ -55,6 +55,7 @@ class Phase8AssistantIntegrationTests(unittest.TestCase):
         self.assertIn("seepsight:ask-hybrid-ai", source)
         self.assertIn("postMessage(payload", source)
         self.assertIn("target_origin", source)
+        self.assertIn("[:40000]", source)
 
 
 if __name__ == "__main__":
