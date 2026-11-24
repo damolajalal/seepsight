@@ -36,7 +36,7 @@ test('App Check is initialized before AI requests are made available', async () 
 
 test('embedded Seepsight context accepts only a bounded parent message', async () => {
   const main = await read('./main.js');
-  assert.match(main, /event\.source !== window\.parent/);
+  assert.match(main, /event\.source === window\.parent/);
   assert.match(main, /seepsight:explain-finding/);
   assert.match(main, /data\.version !== 1/);
   assert.match(main, /facts: data\.verifiedFacts/);
