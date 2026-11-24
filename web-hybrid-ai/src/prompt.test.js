@@ -69,3 +69,10 @@ test('assistant prompt requires plain language, provenance and honest coverage d
   assert.match(prompt, /If the context says records or fields were omitted, state that limitation/);
   assert.match(prompt, /Recommended next steps/);
 });
+
+test('allows explicit calculations when procurement units are written naturally', () => {
+  const prompt = 'Verified facts from Seepsight: Ordered 100 bags; delivered 85 bags; unit price ₦50,000 per bag.';
+  assert.equal(hasUnsupportedNumbers('Shortfall: 100 bags - 85 bags = 15 bags. Potential exposure: 15 bags × ₦50,000 per bag = ₦750,000.', prompt), false);
+  assert.equal(hasUnsupportedNumbers('Shortfall: 100 bags minus 85 bags = 15 bags. Potential exposure: 15 bags x ₦50,000 per bag = ₦750,000.', prompt), false);
+  assert.equal(hasUnsupportedNumbers('Potential exposure: 15 bags × ₦50,000 per bag = ₦900,000.', prompt), true);
+});
