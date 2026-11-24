@@ -5,20 +5,19 @@ Phase 7 adds `web-hybrid-ai/` as the Firebase AI Logic Web/Chrome experience emb
 ## Implemented
 - Firebase JavaScript SDK and Firebase AI Logic imports.
 - Request-level consent: `ONLY_ON_DEVICE` by default; `PREFER_ON_DEVICE` only when cloud fallback is explicitly approved.
-- Device-model initialization before inference, live `LanguageModel.availability()` diagnostics, and display of the actual inference route. For `ONLY_ON_DEVICE`, the app labels a successful result as local because that mode cannot fall back to cloud even when the SDK omits `inferenceSource`.
+- Device-model initialization before inference, live `LanguageModel.availability()` diagnostics, and display of the SDK-reported inference route. If Firebase AI Logic does not report `ON_DEVICE` or `IN_CLOUD`, the app withholds the answer rather than guessing the route. When cloud fallback consent is absent, any response not explicitly reported as `ON_DEVICE` is blocked.
 - Explicit English text input/output options for Gemini Nano.
 - Firebase App Check initialization with reCAPTCHA Enterprise and local debug-token guidance.
 - Evidence-bounded prompts and a numeric consistency guardrail. The deterministic procurement engine remains the source of procurement facts.
 
 ## Verify before calling Phase 7 live
-1. Run `npm install`, `npm test` and `npm run build` in `web-hybrid-ai/`.
+1. Automated CI on the production-review PR has passed `npm test` and `npm run build` for the current validated commit. Re-run them after any subsequent code change.
 2. Configure the Firebase Web App environment values and the reCAPTCHA Enterprise key for the exact hosting domain.
 3. Confirm App Check is enforced for Firebase AI Logic.
 4. Deploy the Vite `dist/` output to Firebase Hosting and verify the public URL.
 5. Test a real `ON_DEVICE` response in supported desktop Chrome and a consented `IN_CLOUD` response. Record the actual Chrome model/version; source code alone cannot prove the required Gemini Nano version.
 
 This code integration does not by itself configure Firebase Console, create App Check attestation, deploy Hosting, or prove live inference.
-
 
 ## Streamlit workspace integration
 - Set `SEEPSIGHT_HYBRID_AI_URL` in the Streamlit app's environment or secrets to the deployed HTTPS Firebase Hosting URL.
@@ -37,6 +36,6 @@ This code integration does not by itself configure Firebase Console, create App 
 - [ ] Confirm only the selected finding / latest deterministic answer is prefilled.
 - [ ] Confirm App Check works from the actual Firebase Hosting domain.
 - [ ] Open the standalone companion in supported desktop Chrome and confirm `LanguageModel.availability()` reports `available`, `downloadable`, or `downloading`.
-- [ ] Complete a real `ONLY_ON_DEVICE` request and confirm the result is labelled `ON_DEVICE`.
+- [ ] Complete a real `ONLY_ON_DEVICE` request and confirm the SDK reports `ON_DEVICE`.
 - [ ] Re-test the embedded Chrome path separately; verify the iframe permission is delegated by every ancestor.
 - [ ] Re-test cloud inference only after explicit per-request consent.
