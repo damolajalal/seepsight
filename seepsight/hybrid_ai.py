@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 import streamlit as st
 
 
-def render_verified_context(supplier, finding_type, verified_facts, requested_action):
-    """Embed Hybrid AI and pass only bounded, verified, human-readable context."""
+def _configured_hybrid_url():
+    """Return only a configured HTTPS Hybrid AI origin."""
     hybrid_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "").strip()
     if not hybrid_url:
         try:
@@ -19,36 +19,42 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
             hybrid_url = ""
     parsed = urlparse(hybrid_url)
     if parsed.scheme != "https" or not parsed.netloc:
+        return "", None
+    return hybrid_url, parsed
+
+
+def _render_context(payload, missing_context_message):
+    """Embed Hybrid AI and pass only bounded, verified, human-readable context."""
+    hybrid_url, parsed = _configured_hybrid_url()
+    if not hybrid_url:
         st.info(
             "Hybrid AI is not configured for embedding yet. Set "
             "SEEPSIGHT_HYBRID_AI_URL to the deployed HTTPS Hybrid AI URL."
         )
         return
 
-    facts = str(verified_facts or "").strip()[:5000]
+    facts = str(payload.get("verifiedFacts") or "").strip()[:5000]
     if not facts:
-        st.warning("There is no verified company context to send to Hybrid AI.")
+        st.warning(missing_context_message)
         return
 
-    payload = {
-        "type": "seepsight:explain-finding",
+    safe_payload = {
+        "type": payload["type"],
         "version": 1,
-        "supplier": str(supplier or "")[:160],
-        "findingType": str(finding_type or "")[:160],
+        "supplier": str(payload.get("supplier") or "")[:160],
+        "findingType": str(payload.get("findingType") or "")[:160],
         "verifiedFacts": facts,
-        "requestedAction": str(requested_action or "")[:300],
+        "requestedAction": str(payload.get("requestedAction") or "")[:300],
     }
     iframe_src = html_lib.escape(hybrid_url, quote=True)
     target_origin = f"{parsed.scheme}://{parsed.netloc}"
     encoded = base64.b64encode(
-        json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        json.dumps(safe_payload, ensure_ascii=False).encode("utf-8")
     ).decode("ascii")
 
-    # Open a top-level companion tab for Chrome's on-device Prompt API.
-    # Chrome does not grant language-model to cross-origin frames by default.
     st.link_button("Open Hybrid AI separately for on-device testing", hybrid_url)
 
-    # Base64 keeps untrusted supplier/evidence text out of the HTML/JS source.
+    # Base64 keeps untrusted company/evidence text out of the HTML/JS source.
     # postMessage is restricted to the configured HTTPS companion origin.
     html = f"""
     <div style="font-family: sans-serif; color: inherit;">
@@ -56,7 +62,7 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
         src="{iframe_src}"
         title="Seepsight Hybrid AI"
         allow="language-model"
-        style="width:100%; height:820px; border:0; border-radius:12px;"
+        style="width:100%; height:900px; border:0; border-radius:12px;"
         referrerpolicy="strict-origin-when-cross-origin"
         loading="lazy"></iframe>
       <script>
@@ -72,7 +78,21 @@ def render_verified_context(supplier, finding_type, verified_facts, requested_ac
       </script>
     </div>
     """
-    st.components.v1.html(html, height=840, scrolling=True)
+    st.components.v1.html(html, height=920, scrolling=True)
+
+
+def render_verified_context(supplier, finding_type, verified_facts, requested_action):
+    """Pass a deterministic Seepsight finding to the existing Hybrid AI app."""
+    _render_context(
+        {
+            "type": "seepsight:explain-finding",
+            "supplier": supplier,
+            "findingType": finding_type,
+            "verifiedFacts": verified_facts,
+            "requestedAction": requested_action,
+        },
+        "There is no verified company context to send to Hybrid AI.",
+    )
 
 
 def render_finding_explainer(finding, evidence, currency):
@@ -96,4 +116,18 @@ def render_answer_explainer(question, answer, company_name=""):
         "Grounded Ask Seepsight answer",
         answer,
         question or "Explain the verified answer and suggest the next review step.",
+    )
+
+
+def render_workspace_assistant(company_name, verified_facts):
+    """Open Ask Hybrid AI with a bounded summary from the active company workspace."""
+    _render_context(
+        {
+            "type": "seepsight:ask-hybrid-ai",
+            "supplier": company_name,
+            "findingType": "Company procurement workspace",
+            "verifiedFacts": verified_facts,
+            "requestedAction": "Ask a question about this verified procurement summary.",
+        },
+        "There is no verified procurement summary available for this company yet.",
     )
