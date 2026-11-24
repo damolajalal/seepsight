@@ -12,6 +12,7 @@ on:
       - main
       - feature/company-auth
       - fix/ask-hybrid-ai-reliability
+      - feature/hybrid-ai-native-ask
   workflow_dispatch:
 
 jobs:
