@@ -92,7 +92,7 @@ _DATASET_HINTS = {
 }
 
 
-def _append_saved_dataset_context(sections, company_id, question, terms, broad):
+def _append_saved_dataset_context(sections, company_id, question, terms, comprehensive):
     """Retrieve all matching normalized rows and mapped fields from saved company datasets."""
     from seepsight import firestore_db
 
@@ -390,7 +390,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         sections.append("Cases and actions:\n" + ("\n".join(case_lines) if case_lines else "No matching saved case records."))
 
     if company_id:
-        _append_saved_dataset_context(sections, company_id, question, terms, broad)
+        _append_saved_dataset_context(sections, company_id, question, terms, comprehensive)
 
     missing = [
         key.replace("_", " ") for key, pack_key in selected_names
