@@ -31,6 +31,7 @@ test('allows a derived currency exposure only through a traceable chain of equat
   assert.equal(hasUnsupportedNumbers(answer, prompt), false);
   assert.equal(hasUnsupportedNumbers('Potential value: 15 × ₦50,000 = ₦900,000.', prompt), true);
   assert.equal(hasUnsupportedNumbers('Potential value: ₦900,000.', prompt), true);
+  assert.equal(hasUnsupportedNumbers('Potential value: 15 × ₦50,000 = $750,000.', prompt), true);
 });
 test('does not accept an equation with an unverified operand or mismatched currency', () => {
   const prompt = 'Verified facts from Seepsight: Ordered 100; delivered 85; unit price ₦50,000.';
