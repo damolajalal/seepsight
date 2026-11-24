@@ -132,7 +132,7 @@ def restore_latest(company_id, analysis_id=None):
     if not saved:
         return None
     summary, tables = saved["summary"], saved["tables"]
-    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"], "dataset_group_id": summary.get("dataset_group_id") or saved["analysis_id"]}
+    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"], "dataset_group_id": summary.get("dataset_group_id")}
     for name in ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard"):
         pack[name] = pd.DataFrame(tables.get(name, []))
     return pack
