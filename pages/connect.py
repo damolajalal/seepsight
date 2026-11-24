@@ -482,6 +482,12 @@ if "orders" not in core_files.values():
     st.stop()
 
 st.markdown("### Step 3. Confirm column mappings")
+if any(list(core_files.values()).count(kind) > 1 for kind in set(core_files.values())):
+    st.info(
+        "Files of the same procurement type can be combined. Map each file separately. "
+        "Exact duplicate rows are removed; conflicting purchase-order rows with the same PO number "
+        "are blocked for review instead of choosing one version automatically."
+    )
 multiple_tables = len(core_files) > 1
 single_file = len(raw) == 1 and len(core_files) == 1 and next(iter(core_files.values())) == "orders"
 mapping_overrides = {}
@@ -602,6 +608,17 @@ if st.button("Validate and analyse records", type="primary", use_container_width
 result = st.session_state.get("connect_check")
 if result and st.session_state.get("connect_check_signature") == check_signature:
     quality = result.get("quality", {})
+    merge_report = result.get("dataset_merge", {})
+    if merge_report:
+        with st.expander("Review multi-file merge results"):
+            for dataset_name, details in merge_report.items():
+                st.write(f"**{DATASET_LABELS.get(dataset_name, dataset_name)}**")
+                st.caption(
+                    f"{details.get('files_combined', 0)} files · "
+                    f"{details.get('rows_before_deduplication', 0):,} input rows · "
+                    f"{details.get('exact_duplicate_rows_removed', 0):,} exact duplicate rows removed · "
+                    f"{details.get('rows_after_deduplication', 0):,} rows retained"
+                )
     st.markdown("### Step 5. Review validation results")
 
     if result.get("stopped"):
