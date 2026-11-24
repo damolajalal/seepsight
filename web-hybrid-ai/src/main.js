@@ -38,7 +38,7 @@ submit.disabled = !status.ready;
 async function checkOnDeviceAvailability() {
   if (!globalThis.LanguageModel || typeof globalThis.LanguageModel.availability !== 'function') {
     deviceStatus.textContent = 'Local model API not detected';
-    deviceNote.textContent = 'Use supported desktop Chrome 139 or later. Mobile Chrome and other browsers are not supported for this web inference path.';
+    deviceNote.textContent = 'Use desktop Chrome 139+ with compatible hardware: 16 GB RAM and 4 CPU cores, or a GPU with over 4 GB VRAM, plus 22 GB free disk space. Chrome on Android is not supported.';
     return;
   }
   try {
@@ -122,9 +122,6 @@ form.addEventListener('submit', async (event) => {
     }
     const route = allowCloud ? reportedRoute : 'ON_DEVICE';
     if (!generatedText?.trim()) throw new Error('The model returned an empty response.');
-    if (route === 'IN_CLOUD' && !allowCloud) {
-      throw new Error('Privacy protection stopped a cloud response because this request did not have cloud consent.');
-    }
     if (hasUnsupportedNumbers(generatedText, prompt)) {
       show('Response withheld: it introduced a numeric value not present in the supplied facts. The original finding is unchanged.', route, 'Numeric consistency guardrail triggered.');
     } else {
