@@ -1055,8 +1055,6 @@ def save_analysis_results(
         .document(analysis_id)
     )
     cleaned_summary = _normalise_workspace_value(summary)
-    if dataset_group_id is not None:
-        cleaned_summary['dataset_group_id'] = _validate_id(dataset_group_id, 'dataset_group_id')
     if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Analysis summary is too large to store safely.")
 
@@ -1221,6 +1219,8 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
 
     # Validate and normalise the complete payload before changing Firestore.
     cleaned_summary = _normalise_workspace_value(summary)
+    if dataset_group_id is not None:
+        cleaned_summary['dataset_group_id'] = _validate_id(dataset_group_id, 'dataset_group_id')
     if len(json.dumps(cleaned_summary, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Analysis workspace summary is too large to store safely.")
     prepared = {}
