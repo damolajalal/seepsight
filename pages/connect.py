@@ -14,7 +14,7 @@ import uuid
 import pandas as pd
 import streamlit as st
 
-from seepsight import connection_ui, engine, plain, ui, workspace
+from seepsight import connection_ui, engine, firestore_db, plain, ui, workspace
 from seepsight.firestore_db import (
     save_company_dataset,
     save_company_mapping,
@@ -204,6 +204,73 @@ st.caption("Your upload will be associated with the signed-in company account.")
 
 st.markdown("### Database connections")
 connection_ui.render_company_database_connections(company_id, account)
+
+st.markdown("### Saved procurement datasets")
+try:
+    saved_groups = firestore_db.get_company_dataset_groups(company_id)
+except Exception:
+    saved_groups = []
+    st.warning("Saved datasets could not be loaded right now. Refresh the page and try again.")
+
+if saved_groups:
+    for group in saved_groups:
+        files_label = ", ".join(group.get("files", [])[:4])
+        if len(group.get("files", [])) > 4:
+            files_label += f" and {len(group['files']) - 4} more"
+        st.write(f"**{group.get('company_name') or 'Procurement dataset'}**")
+        st.caption(
+            f"{group.get('file_count', 0)} file(s) · "
+            f"{group.get('record_count', 0):,} normalized rows · "
+            f"{group.get('source_record_count', 0):,} source rows"
+        )
+        if files_label:
+            st.caption(files_label)
+    if account.get("role") == "owner":
+        group_options = {
+            item["dataset_group_id"]: (
+                f"{item.get('company_name') or 'Dataset'} · "
+                f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+            )
+            for item in saved_groups
+        }
+        with st.expander("Delete a saved dataset", expanded=False):
+            delete_group_id = st.selectbox(
+                "Choose the dataset to delete",
+                list(group_options),
+                format_func=lambda value: group_options[value],
+                key="delete_dataset_group_choice",
+            )
+            st.warning(
+                "This permanently deletes the selected dataset's uploaded files, "
+                "source and normalized records, saved analysis, findings and cases."
+            )
+            confirm_delete = st.checkbox(
+                "I understand this deletion cannot be undone.",
+                key="confirm_delete_dataset_group",
+            )
+            if st.button(
+                "Delete selected dataset",
+                type="secondary",
+                disabled=not confirm_delete,
+                key="delete_selected_dataset_group",
+            ):
+                try:
+                    deleted = firestore_db.delete_company_dataset_group(company_id, delete_group_id)
+                    if deleted:
+                        mine = st.session_state.get("mine")
+                        if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
+                            st.session_state.pop("mine", None)
+                        st.session_state.pop("cases", None)
+                        st.success("Dataset and its associated records were deleted.")
+                        st.rerun()
+                    else:
+                        st.info("That dataset no longer exists.")
+                except PermissionError:
+                    st.error("Only the company owner can delete a dataset.")
+                except Exception:
+                    st.error("The dataset could not be fully deleted. No success was reported; contact support before retrying.")
+else:
+    st.caption("No saved procurement datasets yet.")
 
 st.divider()
 
