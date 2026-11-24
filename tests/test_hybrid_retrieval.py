@@ -75,6 +75,49 @@ class HybridRetrievalTests(unittest.TestCase):
         self.assertIn("Supplier name", result)
         search.assert_called_once()
 
+    def test_partial_saved_dataset_scan_is_explicitly_warned(self):
+        from unittest.mock import patch
+
+        dataset = {
+            "id": "dataset-1", "dataset_type": "orders",
+            "filename": "orders.csv", "record_count": 3000,
+        }
+        rows = {
+            "records": [], "scanned_count": 500, "total_count": 3000,
+            "match_count": 0, "coverage_complete": False, "scan_limited": True,
+        }
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+             patch("seepsight.firestore_db.search_dataset_records", return_value=rows):
+            result = retrieve_workspace_context(
+                self.workspace, "Show purchase orders for Apex", company_id="company-1"
+            )
+
+        self.assertIn("coverage incomplete", result)
+        self.assertIn("Do not conclude that no matching risk exists", result)
+        self.assertNotIn("no records matched the search terms in the complete", result)
+
+    def test_complete_saved_dataset_no_match_is_reported_as_complete(self):
+        from unittest.mock import patch
+
+        dataset = {
+            "id": "dataset-1", "dataset_type": "orders",
+            "filename": "orders.csv", "record_count": 30,
+        }
+        rows = {
+            "records": [], "scanned_count": 30, "total_count": 30,
+            "match_count": 0, "coverage_complete": True, "scan_limited": False,
+        }
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+             patch("seepsight.firestore_db.search_dataset_records", return_value=rows):
+            result = retrieve_workspace_context(
+                self.workspace, "Show purchase orders for Apex", company_id="company-1"
+            )
+
+        self.assertIn("coverage complete", result)
+        self.assertIn("no records matched the search terms in the complete normalized dataset scan", result)
+
     def test_source_rows_are_only_requested_explicitly(self):
         from unittest.mock import patch
 
