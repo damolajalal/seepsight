@@ -1,4 +1,3 @@
-
 import streamlit as st
 
 st.set_page_config(
@@ -57,6 +56,11 @@ def authenticated_pages():
                 "pages/cases.py",
                 title="Cases and actions",
                 icon=":material/task_alt:",
+            ),
+            st.Page(
+                "pages/ask_hybrid.py",
+                title="Ask Hybrid AI",
+                icon=":material/psychology:",
             ),
             st.Page(
                 "pages/ask.py",

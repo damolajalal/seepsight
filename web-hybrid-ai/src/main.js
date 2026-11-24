@@ -1,22 +1,22 @@
 import './style.css';
 import { createHybridModel, createCloudOnlyModel, getFirebaseStatus } from './firebase.js';
-import { buildFindingPrompt, hasUnsupportedNumbers } from './prompt.js';
+import { buildFindingPrompt, buildAssistantPrompt, hasUnsupportedNumbers } from './prompt.js';
 
 const app = document.querySelector('#app');
 app.innerHTML = `
 <main class="shell">
   <header class="topbar"><a class="brand" href="#"><span class="mark">S</span> Seepsight <small>HYBRID AI</small></a><span id="config" class="pill">Checking setup…</span></header>
-  <section class="intro"><p class="eyebrow">EVIDENCE-LED PROCUREMENT INTELLIGENCE</p><h1>Understand the finding.<br><em>Keep control of your data.</em></h1><p class="lead">Turn a verified Seepsight finding into a clear explanation. Your procurement figures remain grounded in the evidence you provide.</p></section>
-  <section class="workspace"><div class="section-title"><div><p class="eyebrow">FINDING EXPLAINER</p><h2>Explain a procurement finding</h2></div><span class="tag">Firebase AI Logic</span></div>
+  <section class="intro"><p class="eyebrow">EVIDENCE-LED PROCUREMENT INTELLIGENCE</p><h1 id="hero-title">Understand the finding.<br><em>Keep control of your data.</em></h1><p class="lead" id="hero-copy">Turn a verified Seepsight finding into a clear explanation. Your procurement figures remain grounded in the evidence you provide.</p></section>
+  <section class="workspace"><div class="section-title"><div><p class="eyebrow" id="mode-label">FINDING EXPLAINER</p><h2 id="form-title">Explain a procurement finding</h2></div><span class="tag">Firebase AI Logic</span></div>
     <form id="form">
-      <div class="fields"><label>Supplier <input id="supplier" maxlength="160" placeholder="Supplier name (optional)"></label><label>Finding type <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
-      <label>Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="Paste a short verified finding summary—not a full spreadsheet. Include exact figures and evidence references."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
-      <label>What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
+      <div class="fields"><label>Supplier or company <input id="supplier" maxlength="160" placeholder="Company or supplier name (optional)"></label><label>Finding type or context <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
+      <label id="facts-label">Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="A concise, verified summary from your Seepsight workspace."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
+      <label id="action-label">What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
       <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model only when you consent.</p><span id="device-status" class="pill">Checking local model availability…</span><small id="device-note">On-device AI requires supported desktop Chrome and may be blocked inside embedded frames.</small><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
       <div class="actions"><button id="submit" type="submit" disabled>Explain finding →</button><span>Cloud fallback is off unless you consent above.</span></div>
     </form>
   </section>
-  <section id="result" class="result" hidden aria-live="polite"><div class="section-title"><div><p class="eyebrow">AI EXPLANATION</p><h2>What this finding means</h2></div><span id="source" class="pill">Waiting</span></div><p id="answer"></p><small id="note"></small></section>
+  <section id="result" class="result" hidden aria-live="polite"><div class="section-title"><div><p class="eyebrow">AI RESPONSE</p><h2 id="result-title">What this finding means</h2></div><span id="source" class="pill">Waiting</span></div><div id="answer" class="answer-content"></div><small id="note"></small></section>
   <footer><span>Evidence first. Privacy choice. Human review.</span><span>Seepsight · Hybrid AI</span></footer>
 </main>`;
 const status = getFirebaseStatus();
@@ -30,6 +30,9 @@ const note = document.querySelector('#note');
 const consent = document.querySelector('#consent');
 const deviceStatus = document.querySelector('#device-status');
 const deviceNote = document.querySelector('#device-note');
+const actionInput = document.querySelector('#action');
+let assistantMode = false;
+
 config.textContent = status.ready ? 'Firebase ready' : 'Setup required';
 config.classList.toggle('ready', status.ready);
 config.title = status.message;
@@ -62,9 +65,53 @@ async function checkOnDeviceAvailability() {
 }
 void checkOnDeviceAvailability();
 
+function appendInline(parent, text) {
+  const pattern = /\*\*(.+?)\*\*/g;
+  let cursor = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > cursor) parent.append(document.createTextNode(text.slice(cursor, match.index)));
+    const strong = document.createElement('strong');
+    strong.textContent = match[1];
+    parent.append(strong);
+    cursor = pattern.lastIndex;
+  }
+  if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
+}
+
+function renderStructuredAnswer(markdown) {
+  answer.replaceChildren();
+  let list = null;
+  for (const rawLine of String(markdown).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) { list = null; continue; }
+    if (/^#{1,3}\s+/.test(line)) {
+      list = null;
+      const heading = document.createElement('h3');
+      appendInline(heading, line.replace(/^#{1,3}\s+/, ''));
+      answer.append(heading);
+      continue;
+    }
+    if (/^(?:[-*]|\d+\.)\s+/.test(line)) {
+      if (!list) {
+        list = document.createElement('ul');
+        answer.append(list);
+      }
+      const item = document.createElement('li');
+      appendInline(item, line.replace(/^(?:[-*]|\d+\.)\s+/, ''));
+      list.append(item);
+      continue;
+    }
+    list = null;
+    const paragraph = document.createElement('p');
+    appendInline(paragraph, line);
+    answer.append(paragraph);
+  }
+}
+
 function show(message, route = 'NOTICE', detail = '') {
   result.hidden = false;
-  answer.textContent = message;
+  renderStructuredAnswer(message);
   source.textContent = route;
   note.textContent = detail;
 }
@@ -81,18 +128,18 @@ form.addEventListener('submit', async (event) => {
   if (!status.ready) return;
   let prompt;
   try {
-    prompt = buildFindingPrompt({
+    const input = {
       supplier: document.querySelector('#supplier').value,
       findingType: document.querySelector('#type').value,
       verifiedFacts: document.querySelector('#facts').value,
-      requestedAction: document.querySelector('#action').value,
-    });
+      requestedAction: actionInput.value,
+    };
+    prompt = assistantMode ? buildAssistantPrompt(input) : buildFindingPrompt(input);
   } catch (error) {
     show(error.message, 'INPUT REQUIRED');
     return;
   }
 
-  // Snapshot explicit consent at click time; do not infer consent from model availability.
   const allowCloud = consent.checked === true;
   submit.disabled = true;
   consent.disabled = true;
@@ -108,7 +155,6 @@ form.addEventListener('submit', async (event) => {
       });
       response = await localModel.generateContent(prompt);
     } catch (localError) {
-      // Without explicit consent, stop here. No cloud-capable model is created or called.
       if (!allowCloud) throw localError;
       note.textContent = 'Local model unavailable. Cloud fallback is being attempted because you explicitly consented.';
       response = await createCloudOnlyModel().generateContent(prompt);
@@ -116,14 +162,13 @@ form.addEventListener('submit', async (event) => {
 
     const generatedText = response.response.text();
     const reportedRoute = normaliseInferenceSource(response.response.inferenceSource);
-    // ONLY_ON_DEVICE cannot use the cloud. The SDK may omit inferenceSource for this mode.
     if (!allowCloud && reportedRoute === 'IN_CLOUD') {
       throw new Error('Privacy protection stopped an unexpected cloud response.');
     }
     const route = allowCloud ? reportedRoute : 'ON_DEVICE';
     if (!generatedText?.trim()) throw new Error('The model returned an empty response.');
     if (hasUnsupportedNumbers(generatedText, prompt)) {
-      show('Response withheld: it introduced a numeric value not present in the supplied facts. The original finding is unchanged.', route, 'Numeric consistency guardrail triggered.');
+      show('## Response withheld\nThe response introduced a numeric value not present in the supplied verified facts. The original finding is unchanged.', route, 'Numeric consistency guardrail triggered.');
     } else {
       show(generatedText, route, route === 'ON_DEVICE'
         ? 'Processed on this device in Chrome.'
@@ -133,33 +178,33 @@ form.addEventListener('submit', async (event) => {
     }
   } catch (error) {
     show(allowCloud
-      ? 'Hybrid request failed. Check Firebase AI Logic, App Check, network access and model availability.'
-      : 'On-device inference is unavailable. This request was not sent to the cloud because cloud consent was not given.',
+      ? '## Request failed\nHybrid AI could not complete this request. Check Firebase AI Logic, App Check, network access and model availability.'
+      : '## On-device inference unavailable\nThis request was not sent to the cloud because cloud consent was not given.',
       'REQUEST FAILED', error?.message || 'No further error details.');
   } finally {
     consent.disabled = false;
     submit.disabled = false;
-    submit.textContent = 'Explain finding →';
+    submit.textContent = assistantMode ? 'Ask Hybrid AI →' : 'Explain finding →';
   }
 });
 
 /*
- * Receive a minimal, verified finding summary from the authenticated Seepsight
- * workspace. Accept messages only from the immediate embedding parent and only
- * the documented payload shape; never accept arbitrary HTML or model settings.
+ * Accept only the documented context payload from the authenticated Seepsight
+ * parent or a trusted Seepsight top-level opener. Never accept HTML or model settings.
  */
 window.addEventListener('message', (event) => {
   const trustedStreamlitOrigins = new Set(['https://seepsight.streamlit.app', 'https://traceiq.streamlit.app']);
-  const fromParent = event.source === window.parent;
+  const fromParent = event.source === window.parent && trustedStreamlitOrigins.has(event.origin);
   const fromTrustedOpener = event.source === window.opener && trustedStreamlitOrigins.has(event.origin);
   if (!fromParent && !fromTrustedOpener) return;
   const data = event.data;
-  if (!data || data.type !== 'seepsight:explain-finding' || data.version !== 1) return;
+  const supportedTypes = new Set(['seepsight:explain-finding', 'seepsight:ask-hybrid-ai']);
+  if (!data || !supportedTypes.has(data.type) || data.version !== 1) return;
   const fields = {
     supplier: document.querySelector('#supplier'),
     type: document.querySelector('#type'),
     facts: document.querySelector('#facts'),
-    action: document.querySelector('#action'),
+    action: actionInput,
   };
   const values = {
     supplier: data.supplier,
@@ -171,9 +216,26 @@ window.addEventListener('message', (event) => {
   for (const key of Object.keys(fields)) {
     if (typeof values[key] !== 'string' || values[key].length > limits[key]) return;
   }
+  assistantMode = data.type === 'seepsight:ask-hybrid-ai';
   fields.supplier.value = values.supplier;
   fields.type.value = values.type;
   fields.facts.value = values.facts;
   fields.action.value = values.action;
-  show('A verified finding summary was received from your Seepsight workspace. Review it, choose your inference privacy setting, then select Explain finding.', 'FINDING LOADED');
+  if (assistantMode) {
+    document.querySelector('#hero-title').innerHTML = 'Ask better questions.<br><em>Stay grounded in evidence.</em>';
+    document.querySelector('#hero-copy').textContent = 'Explore your authenticated company procurement summary with privacy-aware Hybrid AI.';
+    document.querySelector('#mode-label').textContent = 'COMPANY AI ASSISTANT';
+    document.querySelector('#form-title').textContent = 'Ask Hybrid AI';
+    document.querySelector('#facts-label').firstChild.textContent = 'Verified company procurement summary';
+    document.querySelector('#action-label').firstChild.textContent = 'What would you like to ask?';
+    actionInput.placeholder = 'e.g. Which findings need attention and what evidence should we review?';
+    submit.textContent = 'Ask Hybrid AI →';
+    document.querySelector('#result-title').textContent = 'Hybrid AI response';
+  }
+  show(
+    assistantMode
+      ? 'Your authenticated company summary is ready. Enter a question, choose your privacy setting, then select Ask Hybrid AI.'
+      : 'A verified finding summary was received from your Seepsight workspace. Review the summary, choose your inference privacy setting, then select Explain finding.',
+    assistantMode ? 'WORKSPACE LOADED' : 'FINDING LOADED'
+  );
 });

@@ -50,6 +50,44 @@ class HybridAIHandoffTests(unittest.TestCase):
         render.assert_not_called()
         warning.assert_called_once()
 
+    @patch("seepsight.hybrid_ai.st.components.v1.html")
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_workspace_assistant_uses_separate_typed_payload(self, link_button, render):
+        with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
+            hybrid_ai.render_workspace_assistant(
+                "Northstar Supplies",
+                "Company workspace: Northstar Supplies\nFindings: 2",
+            )
+
+        html = render.call_args.args[0]
+        encoded = re.search(r"const encoded = '([^']+)'", html).group(1)
+        payload = json.loads(base64.b64decode(encoded).decode("utf-8"))
+        self.assertEqual(payload["type"], "seepsight:ask-hybrid-ai")
+        self.assertEqual(payload["version"], 1)
+        self.assertEqual(payload["supplier"], "Northstar Supplies")
+        self.assertIn("Findings: 2", payload["verifiedFacts"])
+
+    @patch("seepsight.hybrid_ai.st.warning")
+    @patch("seepsight.hybrid_ai.st.components.v1.html")
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_workspace_assistant_does_not_send_empty_summary(self, link_button, render, warning):
+        with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
+            hybrid_ai.render_workspace_assistant("Northstar Supplies", "")
+        render.assert_not_called()
+        warning.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
+
+    @patch("seepsight.hybrid_ai.st.components.v1.html")
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_deployed_hybrid_url_is_default_when_no_override_exists(self, link_button, render):
+        with patch.dict(os.environ, {}, clear=True):
+            hybrid_ai.render_workspace_assistant("Northstar Supplies", "Verified summary")
+        html = render.call_args.args[0]
+        self.assertIn("https://seepsight-hybrid-ai.web.app/", html)
+        link_button.assert_called_once_with(
+            "Open Hybrid AI separately for on-device testing",
+            "https://seepsight-hybrid-ai.web.app/",
+        )

@@ -1,3 +1,4 @@
+# Trigger full regression validation for Ask Hybrid AI workspace handoff.
 name: Python detection and regression tests
 
 on:
