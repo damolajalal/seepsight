@@ -474,25 +474,8 @@ if not core_files:
     st.error("Upload at least one procurement dataset to continue.")
     st.stop()
 
-# One file per dataset type avoids silently concatenating records with different
-# structures. Multi-file-per-entity support can be added with explicit append
-# and deduplication rules in a later engine change.
-for dataset_kind in CORE_DATASETS:
-    matches = [filename for filename, kind in core_files.items() if kind == dataset_kind]
-    if len(matches) > 1:
-        if target_group_id:
-            st.error(
-                f"The selected dataset already contains {CORE_DATASETS[dataset_kind]} data. "
-                "This extension workflow currently accepts complementary dataset types only. "
-                "To add more rows of the same type, combine and deduplicate that export before uploading."
-            )
-        else:
-            st.error(
-                f"You uploaded {len(matches)} files classified as {CORE_DATASETS[dataset_kind]}. "
-                "This version accepts one file per dataset type. Combine files with the same "
-                "structure before uploading, or classify the files correctly."
-            )
-        st.stop()
+# Multiple files of the same type are mapped individually and merged under
+# explicit engine rules before the combined analysis is run.
 
 if "orders" not in core_files.values():
     st.error("A Purchase orders dataset is required. Add the purchase-order file before validating other procurement datasets.")
@@ -503,6 +486,7 @@ multiple_tables = len(core_files) > 1
 single_file = len(raw) == 1 and len(core_files) == 1 and next(iter(core_files.values())) == "orders"
 mapping_overrides = {}
 selected_mappings = {}
+file_mapping_overrides = {}
 
 if single_file:
     filename = next(iter(core_files))
@@ -525,8 +509,8 @@ else:
                 frame, fields, f"map_{kind}_{target_group_id or 'new'}", required_fields,
                 saved_file_mappings.get(filename),
             )
-        mapping_overrides[kind] = overrides
-        selected_mappings[kind] = selected
+        file_mapping_overrides[filename] = overrides
+        selected_mappings[filename] = selected
 
 # Build a deterministic signature from every input that can change the result.
 # This prevents a previous check from being processed after edits to data,
@@ -571,17 +555,43 @@ if st.button("Validate and analyse records", type="primary", use_container_width
                     verbose=False,
                 )
             else:
+                mapped_files = {}
+                grouped_frames = {}
+                for filename, kind in core_files.items():
+                    choices = selected_mappings.get(filename, {})
+                    file_map = {
+                        field: {"column": column}
+                        for field, column in choices.items()
+                        if column != NOT_MAPPED and column in raw[filename].columns
+                    }
+                    mapped = engine.apply_mapping(raw[filename], file_map)
+                    mapped_files[filename] = mapped
+                    grouped_frames.setdefault(kind, []).append(mapped)
+
                 tables = {}
                 table_overrides = {}
-                for filename, kind in core_files.items():
-                    tables[kind] = raw[filename]
-                    table_overrides[kind] = mapping_overrides.get(kind, {})
+                merge_report = {}
+                for kind, frames in grouped_frames.items():
+                    combined, details = engine.combine_dataset_frames(kind, frames)
+                    tables[kind] = combined
+                    table_overrides[kind] = {
+                        field: field for field in combined.columns
+                    }
+                    merge_report[kind] = details
+
                 result = engine.onboard_tables(
                     tables,
                     overrides=table_overrides,
                     config=config,
                     verbose=False,
                 )
+                result["dataset_merge"] = merge_report
+                st.session_state["connect_file_normalized_tables"] = mapped_files
+            if single_file:
+                filename = next(iter(core_files))
+                st.session_state["connect_file_normalized_tables"] = {
+                    filename: result.get("normalized_tables", {}).get("orders", raw[filename])
+                }
         st.session_state["connect_check"] = result
         st.session_state["connect_check_signature"] = check_signature
         st.session_state.pop("_done", None)
@@ -709,10 +719,9 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             "dataset_group_id": dataset_group_id,
                             "company_name": company_name,
                         }
-                        normalized_tables = result.get("normalized_tables", {})
-                        source_tables = result.get("source_tables", {})
-                        normalized_frame = normalized_tables.get(dataset_kind)
-                        source_frame = source_tables.get(dataset_kind)
+                        normalized_tables = st.session_state.get("connect_file_normalized_tables", {})
+                        normalized_frame = normalized_tables.get(source_filename)
+                        source_frame = raw[source_filename]
                         if not isinstance(normalized_frame, pd.DataFrame) or not isinstance(source_frame, pd.DataFrame):
                             raise RuntimeError(
                                 f"Validated source and normalized records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
@@ -724,7 +733,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         save_original_file(company_id, upload_id, source_filename, source_bytes)
                         save_company_dataset(company_id, upload_id, {"status": "original_file_saved"})
-                        save_company_mapping(company_id, upload_id, selected_mappings.get(dataset_kind, {}))
+                        save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
                         source_records = source_frame.astype(object).where(
                             pd.notna(source_frame), None
                         ).to_dict("records")
