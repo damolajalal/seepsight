@@ -1414,3 +1414,94 @@ def get_latest_analysis_workspace(company_id):
         {"table_counts": {name: len(rows) for name, rows in tables.items()}},
     )
     return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
+
+def search_dataset_records(
+    company_id, dataset_id, terms, collection_name="records",
+    limit=10, scan_limit=1500,
+):
+    """Search bounded beginning/end slices of a tenant-owned dataset."""
+    from google.cloud.firestore_v1 import Query
+
+    if collection_name not in {"records", "source_records"}:
+        raise ValueError("collection_name must be 'records' or 'source_records'.")
+    if not isinstance(limit, int) or limit < 1 or limit > 25:
+        raise ValueError("limit must be between 1 and 25.")
+    if not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 5000:
+        raise ValueError("scan_limit must be between 1 and 5000.")
+    if not isinstance(terms, (list, tuple)) or not all(isinstance(x, str) for x in terms):
+        raise TypeError("terms must be a list of strings.")
+
+    company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    metadata_snapshot = dataset_ref.get()
+    if not metadata_snapshot.exists:
+        raise FileNotFoundError("The requested company dataset does not exist.")
+    metadata = metadata_snapshot.to_dict() or {}
+    status_key = f"{collection_name}_status"
+    if metadata.get("deletion_status") in {"deleting", "failed"}:
+        raise RuntimeError("This dataset is being deleted and is not available.")
+    if metadata.get(status_key) in {"saving", "failed"}:
+        raise RuntimeError("This dataset's records are not in a complete saved state.")
+
+    count_key = "source_record_count" if collection_name == "source_records" else "record_count"
+    total_count = int(metadata.get(count_key, 0) or 0)
+    base_query = dataset_ref.collection(collection_name)
+    if total_count > scan_limit:
+        half = max(1, scan_limit // 2)
+        first = list(base_query.order_by("_record_number").limit(half).stream())
+        last = list(
+            base_query.order_by("_record_number", direction=Query.DESCENDING)
+            .limit(scan_limit - half).stream()
+        )
+        snapshots = first + list(reversed(last))
+    else:
+        snapshots = list(
+            base_query.order_by("_record_number").limit(scan_limit).stream()
+        )
+
+    clean_terms = []
+    for term in terms:
+        term = term.casefold().strip()
+        if not term:
+            continue
+        clean_terms.append(term)
+        if term.endswith("ies") and len(term) > 4:
+            clean_terms.append(term[:-3] + "y")
+        elif term.endswith("s") and len(term) > 4:
+            clean_terms.append(term[:-1])
+    clean_terms = list(dict.fromkeys(clean_terms))
+
+    ranked = []
+    seen = set()
+    scanned = 0
+    for snapshot in snapshots:
+        item = _denormalise_workspace_value(snapshot.to_dict() or {})
+        record_number = int(item.get("_record_number", scanned))
+        if record_number in seen:
+            continue
+        seen.add(record_number)
+        scanned += 1
+        searchable = " ".join(
+            f"{key} {value}" for key, value in item.items()
+            if not str(key).startswith("_") and value is not None
+        ).casefold()
+        score = sum(1 for term in clean_terms if term in searchable)
+        if not clean_terms or score:
+            record = {
+                key: value for key, value in item.items()
+                if not str(key).startswith("_")
+            }
+            ranked.append((score, record_number, record))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    selected = [row[2] for row in ranked[:limit]]
+    write_company_audit_event(
+        company_id, f"dataset.{collection_name}_searched", "dataset", dataset_id,
+        {"scanned_count": scanned, "returned_count": len(selected), "collection": collection_name},
+    )
+    return {
+        "records": selected,
+        "scanned_count": scanned,
+        "total_count": total_count,
+        "scan_limited": total_count > scanned,
+    }
