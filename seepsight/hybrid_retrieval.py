@@ -96,11 +96,12 @@ def _append_saved_dataset_context(sections, company_id, question, terms, compreh
     """Retrieve all matching normalized rows and mapped fields from saved company datasets."""
     from seepsight import firestore_db
 
-    if not dataset_group_id:
-        sections.append("Saved ingestion datasets were not queried because this older analysis has no dataset-group link. This prevents unrelated company datasets from being mixed into the answer.")
-        return
     datasets = firestore_db.get_company_datasets(company_id)
-    datasets = [item for item in datasets if item.get("dataset_group_id") == dataset_group_id]
+    if dataset_group_id:
+        datasets = [item for item in datasets if item.get("dataset_group_id") == dataset_group_id]
+    elif len(datasets) != 1:
+        sections.append("Saved ingestion datasets were not queried because this older analysis has no dataset-group link and the company has multiple datasets. This prevents unrelated data from being mixed into the answer.")
+        return
     if not datasets:
         sections.append("Ingested datasets: no saved dataset metadata is available.")
         return
