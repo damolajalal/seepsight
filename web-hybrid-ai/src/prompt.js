@@ -54,7 +54,7 @@ export function hasUnsupportedNumbers(answer, prompt) {
   // Accept procurement units around explicit arithmetic, e.g. “15 bags × ₦50,000 per bag = ₦750,000”.
   const unit = String.raw`(?:\s+(?:bags?|units?|items?|pieces?|pcs?|kg|kgs|tonnes?|tons?|cartons?|cases?|packs?|per\s+[a-z]+))*`;
   const number = String.raw`(?:₦|\$|€|£)?\s*\d[\d,]*(?:\.\d+)?%?`;
-  const equation = new RegExp(`(${number})${unit}\s*([+\-−×xX*/÷]|plus|minus|times|multiplied by|divided by)\s*(${number})${unit}\s*=\s*(${number})${unit}`, 'g');
+  const equation = new RegExp(`(${number})${unit}\\s*([+\\-−×xX*/÷]|plus|minus|times|multiplied by|divided by)\\s*(${number})${unit}\\s*=\\s*(${number})${unit}`, 'g');
   const derived = [];
   let match;
   while ((match = equation.exec(String(answer))) !== null) {
@@ -74,7 +74,6 @@ export function hasUnsupportedNumbers(answer, prompt) {
       case '*': case '×': case 'x': case 'X': case 'times': case 'multiplied by': calculated = left.value * right.value; break;
       case '/': case '÷': case 'divided by': calculated = right.value === 0 ? NaN : left.value / right.value; break;
       default: continue;
-    }
     }
     const expectedCurrency = stated.currency || left.currency || right.currency;
     if (Number.isFinite(calculated) && Math.abs(calculated - stated.value) <= Math.max(0.01, Math.abs(calculated) * 0.000001)
