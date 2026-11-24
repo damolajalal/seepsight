@@ -1,0 +1,46 @@
+name: Deploy Seepsight Hybrid AI to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - feature/company-auth
+    paths:
+      - "web-hybrid-ai/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-hybrid-hosting.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install web dependencies
+        working-directory: web-hybrid-ai
+        run: npm install --no-audit --no-fund
+
+      - name: Build Hybrid AI website
+        working-directory: web-hybrid-ai
+        run: npm run build
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SEEPSIGHT_HYBRID_AI }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Firebase Hosting
+        run: firebase deploy --only hosting --project seepsight-hybrid-ai --non-interactive
