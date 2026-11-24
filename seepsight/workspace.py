@@ -206,17 +206,16 @@ def workspace_picker():
             stamp = updated.strftime("%Y-%m-%d %H:%M") if hasattr(updated, "strftime") else item["analysis_id"][:8]
             labels[item["analysis_id"]] = f'{item.get("company_name") or company_name or "Dataset"} · {stamp}'
         ids = [item["analysis_id"] for item in saved_workspaces]
-        current_id = mine.get("analysis_id") if isinstance(mine, dict) and mine.get("company_id") == company_id else None
-        if current_id not in ids:
-            current_id = ids[0]
+        active_id = mine.get("analysis_id") if isinstance(mine, dict) and mine.get("company_id") == company_id else None
+        selected_default = active_id if active_id in ids else ids[0]
         selected = st.selectbox(
             "Active dataset",
             ids,
-            index=ids.index(current_id),
+            index=ids.index(selected_default),
             format_func=lambda value: labels.get(value, value),
-            key=f"company_dataset_selector_{company_id}_{current_id}",
+            key=f"company_dataset_selector_{company_id}_{selected_default}",
         )
-        if selected != current_id:
+        if selected != active_id:
             restored = restore_latest(company_id, selected)
             if restored is not None:
                 st.session_state["mine"] = restored
