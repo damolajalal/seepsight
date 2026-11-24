@@ -14,7 +14,7 @@ import uuid
 import pandas as pd
 import streamlit as st
 
-from seepsight import engine, plain, ui, workspace
+from seepsight import connection_ui, engine, plain, ui, workspace
 from seepsight.firestore_db import (
     save_company_dataset,
     save_company_mapping,
@@ -201,6 +201,11 @@ if not company_id or not company_name:
 st.markdown("### Company workspace")
 st.write(f"**{company_name}**")
 st.caption("Your upload will be associated with the signed-in company account.")
+
+st.markdown("### Database connections")
+connection_ui.render_company_database_connections(company_id, account)
+
+st.divider()
 
 st.markdown("### Step 1. Choose your data")
 left, right = st.columns([1, 1])
