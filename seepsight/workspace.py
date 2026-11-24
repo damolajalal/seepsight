@@ -216,6 +216,17 @@ def workspace_picker():
             key=f"company_dataset_selector_{company_id}_{selected_default}",
         )
         if selected != active_id:
+            # A reviewed or pending Gemini request is tied to the dataset that
+            # produced its evidence. Never carry it across an active-dataset switch.
+            for key in list(st.session_state.keys()):
+                if not isinstance(key, str):
+                    continue
+                if key.startswith((
+                    f"ask_hybrid_pending_{company_id}",
+                    f"ask_hybrid_review_{company_id}",
+                    f"ask_hybrid_response_{company_id}",
+                )):
+                    st.session_state.pop(key, None)
             restored = restore_latest(company_id, selected)
             if restored is not None:
                 st.session_state["mine"] = restored
