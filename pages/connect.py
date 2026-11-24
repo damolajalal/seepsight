@@ -411,7 +411,8 @@ if target_group_id:
             raw[filename] = _read_bytes(filename, saved["data"])
             source_file_bytes[filename] = saved["data"]
             saved_file_kinds[filename] = file_item.get("dataset_type")
-            saved_file_mappings[filename] = firestore_db.get_company_mapping(company_id, file_item["dataset_id"]) or {}
+            saved_mapping = firestore_db.get_company_mapping(company_id, file_item["dataset_id"]) or {}
+            saved_file_mappings[filename] = saved_mapping.get("mapping", saved_mapping)
     except Exception:
         st.error("The saved dataset's original files could not all be restored and verified. No combined analysis was started.")
         st.stop()
@@ -523,6 +524,7 @@ signature_payload = {
     "fingerprint": st.session_state.get("connect_upload_fingerprint"),
     "company_id": str(company_id),
     "company_name": company_name,
+    "target_group_id": target_group_id,
     "currency": currency,
     "kinds": sorted(kinds.items()),
     "mappings": selected_mappings,
@@ -532,9 +534,13 @@ if st.session_state.get("connect_check_signature") != check_signature:
     st.session_state.pop("connect_check", None)
     st.session_state.pop("_done", None)
 
-if st.session_state.get("connect_dataset_group_signature") != check_signature:
+desired_group_id = target_group_id or uuid.uuid4().hex
+if (
+    st.session_state.get("connect_dataset_group_signature") != check_signature
+    or st.session_state.get("connect_dataset_group_id") != desired_group_id
+):
     st.session_state["connect_dataset_group_signature"] = check_signature
-    st.session_state["connect_dataset_group_id"] = uuid.uuid4().hex
+    st.session_state["connect_dataset_group_id"] = desired_group_id
 
 dataset_group_id = st.session_state["connect_dataset_group_id"]
 
@@ -677,7 +683,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 with st.status(status_message, expanded=True) as status:
                     saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
-                        source_bytes = st.session_state["connect_source_file_bytes"][source_filename]
+                        source_bytes = source_file_bytes[source_filename]
                         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
                         upload_id = hashlib.sha256(
                             (dataset_group_id + ":" + source_filename + ":" + source_sha256).encode("utf-8")
