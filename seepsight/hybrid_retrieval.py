@@ -190,13 +190,19 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 f"{dataset_type} normalized rows: scanned {normalized['scanned_count']} records; "
                 f"{normalized.get('match_count', len(normalized['records']))} matched; "
                 f"{len(normalized['records'])} included in context; "
-                f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}.
+                f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}."
             )
             sections.append(_format_rows(f"{dataset_type} normalized records", normalized["records"]))
             if not normalized.get("coverage_complete", not normalized.get("scan_limited", False)):
                 sections.append(
                     f"{dataset_type}: retrieval reached its read budget; later records may not be represented. "
                     "Do not conclude that no matching risk exists."
+                )
+            elif len(normalized["records"]) < normalized.get("match_count", len(normalized["records"])):
+                sections.append(
+                    f"{dataset_type}: only {len(normalized['records'])} of "
+                    f"{normalized.get('match_count')} matching rows were included. "
+                    "The answer must disclose this limitation."
                 )
             elif not normalized.get("match_count", len(normalized["records"])):
                 sections.append(
@@ -263,7 +269,7 @@ def _select_rows(frame, terms, limit=_MAX_ROWS_PER_TABLE):
 def _format_rows(label, rows):
     if not rows:
         return f"{label}: no saved records available."
-    lines = [f"{label} ({len(rows)} selected record(s)):"]
+    lines = [f"{label} ({len(rows)} retrieved record(s)):"]
     for row in rows:
         parts = []
         for key, value in row.items():
