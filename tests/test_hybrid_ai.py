@@ -67,9 +67,6 @@ class HybridAIHandoffTests(unittest.TestCase):
         self.assertEqual(payload["supplier"], "Northstar Supplies")
         self.assertIn("Findings: 2", payload["verifiedFacts"])
 
-    @patch("seepsight.hybrid_ai.st.warning")
-    @patch("seepsight.hybrid_ai.st.components.v1.html")
-    @patch("seepsight.hybrid_ai.st.link_button")
     def test_native_prompt_includes_evidence_and_anti_invention_rules(self):
         prompt = hybrid_ai.build_native_prompt(
             "Which supplier has the highest potential exposure?",
@@ -94,6 +91,9 @@ class HybridAIHandoffTests(unittest.TestCase):
         self.assertIn("setStateValue", hybrid_ai._NATIVE_AI_JS)
         self.assertNotIn("<iframe", hybrid_ai._NATIVE_AI_JS)
 
+    @patch("seepsight.hybrid_ai.st.warning")
+    @patch("seepsight.hybrid_ai.st.components.v1.html")
+    @patch("seepsight.hybrid_ai.st.link_button")
     def test_workspace_assistant_does_not_send_empty_summary(self, link_button, render, warning):
         with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
             hybrid_ai.render_workspace_assistant("Northstar Supplies", "")
@@ -101,8 +101,7 @@ class HybridAIHandoffTests(unittest.TestCase):
         warning.assert_called_once()
 
 
-if __name__ == "__main__":
-    unittest.main()
+
 
     @patch("seepsight.hybrid_ai.st.components.v1.html")
     @patch("seepsight.hybrid_ai.st.link_button")
@@ -115,3 +114,7 @@ if __name__ == "__main__":
             "Open Hybrid AI separately for on-device testing",
             "https://seepsight-hybrid-ai.web.app/",
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
