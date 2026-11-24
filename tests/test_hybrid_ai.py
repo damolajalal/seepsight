@@ -79,3 +79,15 @@ class HybridAIHandoffTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    @patch("seepsight.hybrid_ai.st.components.v1.html")
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_deployed_hybrid_url_is_default_when_no_override_exists(self, link_button, render):
+        with patch.dict(os.environ, {}, clear=True):
+            hybrid_ai.render_workspace_assistant("Northstar Supplies", "Verified summary")
+        html = render.call_args.args[0]
+        self.assertIn("https://seepsight-hybrid-ai.web.app/", html)
+        link_button.assert_called_once_with(
+            "Open Hybrid AI separately for on-device testing",
+            "https://seepsight-hybrid-ai.web.app/",
+        )
