@@ -1414,3 +1414,68 @@ def get_latest_analysis_workspace(company_id):
         {"table_counts": {name: len(rows) for name, rows in tables.items()}},
     )
     return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
+
+def search_dataset_records(
+    company_id, dataset_id, terms, collection_name="records",
+    limit=10, scan_limit=1500,
+):
+    """Search a bounded prefix of a tenant-owned dataset without loading all rows."""
+    from google.cloud.firestore_v1 import Query
+
+    if collection_name not in {"records", "source_records"}:
+        raise ValueError("collection_name must be 'records' or 'source_records'.")
+    if not isinstance(limit, int) or limit < 1 or limit > 25:
+        raise ValueError("limit must be between 1 and 25.")
+    if not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 5000:
+        raise ValueError("scan_limit must be between 1 and 5000.")
+    if not isinstance(terms, (list, tuple)) or not all(isinstance(x, str) for x in terms):
+        raise TypeError("terms must be a list of strings.")
+
+    company = _company_ref(company_id)
+    dataset_id = _validate_id(dataset_id, "dataset_id")
+    dataset_ref = company.collection("datasets").document(dataset_id)
+    metadata_snapshot = dataset_ref.get()
+    if not metadata_snapshot.exists:
+        raise FileNotFoundError("The requested company dataset does not exist.")
+    metadata = metadata_snapshot.to_dict() or {}
+    status_key = f"{collection_name}_status"
+    if metadata.get("deletion_status") in {"deleting", "failed"}:
+        raise RuntimeError("This dataset is being deleted and is not available.")
+    if metadata.get(status_key) in {"saving", "failed"}:
+        raise RuntimeError("This dataset's records are not in a complete saved state.")
+
+    query = (
+        dataset_ref.collection(collection_name)
+        .order_by("_record_number")
+        .limit(scan_limit)
+    )
+    clean_terms = [term.casefold().strip() for term in terms if term.strip()]
+    ranked = []
+    scanned = 0
+    for snapshot in query.stream():
+        scanned += 1
+        item = _denormalise_workspace_value(snapshot.to_dict() or {})
+        searchable = " ".join(
+            f"{key} {value}" for key, value in item.items()
+            if not str(key).startswith("_") and value is not None
+        ).casefold()
+        score = sum(1 for term in clean_terms if term in searchable)
+        if not clean_terms or score:
+            record = {
+                key: value for key, value in item.items()
+                if not str(key).startswith("_")
+            }
+            ranked.append((score, int(item.get("_record_number", scanned - 1)), record))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    selected = [row[2] for row in ranked[:limit]]
+    count_key = "source_record_count" if collection_name == "source_records" else "record_count"
+    write_company_audit_event(
+        company_id, f"dataset.{collection_name}_searched", "dataset", dataset_id,
+        {"scanned_count": scanned, "returned_count": len(selected), "collection": collection_name},
+    )
+    return {
+        "records": selected,
+        "scanned_count": scanned,
+        "total_count": int(metadata.get(count_key, 0) or 0),
+        "scan_limited": scanned >= scan_limit and int(metadata.get(count_key, 0) or 0) > scanned,
+    }
