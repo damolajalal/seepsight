@@ -11,12 +11,13 @@ import streamlit as st
 
 def _configured_hybrid_url():
     """Return only a configured HTTPS Hybrid AI origin."""
-    hybrid_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "https://seepsight-hybrid-ai.web.app/").strip()
+    default_url = "https://seepsight-hybrid-ai.web.app/"
+    hybrid_url = os.getenv("SEEPSIGHT_HYBRID_AI_URL", "").strip()
     if not hybrid_url:
         try:
-            hybrid_url = str(st.secrets.get("SEEPSIGHT_HYBRID_AI_URL", hybrid_url)).strip()
+            hybrid_url = str(st.secrets.get("SEEPSIGHT_HYBRID_AI_URL", default_url)).strip()
         except Exception:
-            hybrid_url = ""
+            hybrid_url = default_url
     parsed = urlparse(hybrid_url)
     if parsed.scheme != "https" or not parsed.netloc:
         return "", None
