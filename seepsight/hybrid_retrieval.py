@@ -168,7 +168,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
                 company_id, dataset_id, terms if not broad else [],
-                collection_name="records", limit=2 if broad else 4, scan_limit=1500,
+                collection_name="records", limit=2 if broad else 4, scan_limit=500 if broad else 1500,
             )
             sections.append(
                 f"{dataset_type} normalized rows (scanned {normalized['scanned_count']} of "
@@ -359,4 +359,10 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         "Do not invent identifiers or numeric facts. Distinguish observed records from recommendations."
     )
     result = "\n\n".join(sections)
-    return result[:_MAX_CONTEXT_CHARS]
+    if len(result) <= _MAX_CONTEXT_CHARS:
+        return result
+    suffix = (
+        "\n\nContext limit reached: some lower-priority records were omitted. "
+        "Ask a more specific question to retrieve a narrower set of evidence."
+    )
+    return result[:_MAX_CONTEXT_CHARS - len(suffix)] + suffix
