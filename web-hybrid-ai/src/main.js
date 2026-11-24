@@ -8,7 +8,7 @@ app.innerHTML = `
   <header class="topbar"><a class="brand" href="#"><span class="mark">S</span> Seepsight <small>HYBRID AI</small></a><span id="config" class="pill">Checking setup…</span></header>
   <section class="intro"><p class="eyebrow">EVIDENCE-LED PROCUREMENT INTELLIGENCE</p><h1 id="hero-title">Understand the finding.<br><em>Keep control of your data.</em></h1><p class="lead" id="hero-copy">Turn a verified Seepsight finding into a clear explanation. Your procurement figures remain grounded in the evidence you provide.</p></section>
   <section class="workspace"><div class="section-title"><div><p class="eyebrow" id="mode-label">FINDING EXPLAINER</p><h2 id="form-title">Explain a procurement finding</h2></div><span class="tag">Firebase AI Logic</span></div>
-    <form id="form">
+    <form id="form">\n      <p id="question-display" class="lead" hidden></p>
       <div class="fields"><label>Supplier or company <input id="supplier" maxlength="160" placeholder="Company or supplier name (optional)"></label><label>Finding type or context <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
       <label id="facts-label">Verified evidence summary <textarea id="facts" required maxlength="5000" rows="6" placeholder="A concise, verified summary from your Seepsight workspace."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
       <label id="action-label">What should the explanation focus on? <input id="action" maxlength="300" placeholder="e.g. What should the reviewer verify next?"></label>
@@ -212,7 +212,7 @@ window.addEventListener('message', (event) => {
     facts: data.verifiedFacts,
     action: data.requestedAction,
   };
-  const limits = { supplier: 160, type: 160, facts: 5000, action: 300 };
+  const limits = { supplier: 160, type: 160, facts: 12000, action: 500 };
   for (const key of Object.keys(fields)) {
     if (typeof values[key] !== 'string' || values[key].length > limits[key]) return;
   }
@@ -222,19 +222,24 @@ window.addEventListener('message', (event) => {
   fields.facts.value = values.facts;
   fields.action.value = values.action;
   if (assistantMode) {
+    document.querySelector('.fields').hidden = true;
+    document.querySelector('#facts-label').hidden = true;
+    document.querySelector('#action-label').hidden = true;
+    document.querySelector('#question-display').hidden = false;
+    document.querySelector('#question-display').textContent = `Question: ${values.action}`;
     document.querySelector('#hero-title').innerHTML = 'Ask better questions.<br><em>Stay grounded in evidence.</em>';
-    document.querySelector('#hero-copy').textContent = 'Explore your authenticated company procurement summary with privacy-aware Hybrid AI.';
+    document.querySelector('#hero-copy').textContent = 'Hybrid AI has retrieved relevant saved records for this question from your authenticated company workspace.';
     document.querySelector('#mode-label').textContent = 'COMPANY AI ASSISTANT';
     document.querySelector('#form-title').textContent = 'Ask Hybrid AI';
-    document.querySelector('#facts-label').firstChild.textContent = 'Verified company procurement summary';
-    document.querySelector('#action-label').firstChild.textContent = 'What would you like to ask?';
-    actionInput.placeholder = 'e.g. Which findings need attention and what evidence should we review?';
+    document.querySelector('#facts-label').firstChild.textContent = 'Retrieved company procurement evidence';
+    document.querySelector('#action-label').firstChild.textContent = 'Question supplied by the company workspace';
+    actionInput.placeholder = 'Your question is supplied by the company workspace.';
     submit.textContent = 'Ask Hybrid AI →';
     document.querySelector('#result-title').textContent = 'Hybrid AI response';
   }
   show(
     assistantMode
-      ? 'Your authenticated company summary is ready. Enter a question, choose your privacy setting, then select Ask Hybrid AI.'
+      ? 'Your question-specific company evidence is ready. Choose your privacy setting, then select Ask Hybrid AI.'
       : 'A verified finding summary was received from your Seepsight workspace. Review the summary, choose your inference privacy setting, then select Explain finding.',
     assistantMode ? 'WORKSPACE LOADED' : 'FINDING LOADED'
   );
