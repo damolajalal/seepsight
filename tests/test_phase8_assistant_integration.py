@@ -58,6 +58,13 @@ class Phase8AssistantIntegrationTests(unittest.TestCase):
         self.assertIn("target_origin", source)
         self.assertIn("[:40000]", source)
 
+    def test_hybrid_bridge_accepts_the_full_bounded_workspace_context(self):
+        source = (ROOT / "web-hybrid-ai/src/main.js").read_text(encoding="utf-8")
+        self.assertIn("facts: 40000", source)
+        self.assertNotIn("facts: 12000", source)
+        bridge = (ROOT / "seepsight/hybrid_ai.py").read_text(encoding="utf-8")
+        self.assertIn("[:40000]", bridge)
+
 
 if __name__ == "__main__":
     unittest.main()
