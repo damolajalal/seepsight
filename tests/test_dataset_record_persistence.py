@@ -258,6 +258,20 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
                 )
         self.client.batch.assert_not_called()
 
+    def test_cross_company_record_search_is_denied_before_dataset_reads(self):
+        self.company.collection.reset_mock()
+        with patch.object(
+            firestore_db, "_company_ref",
+            side_effect=PermissionError("cross-company access denied"),
+        ):
+            with self.assertRaises(PermissionError):
+                firestore_db.search_dataset_records(
+                    "company-b", "dataset-a", ["PO-1"]
+                )
+
+        self.company.collection.assert_not_called()
+        self.dataset_ref.get.assert_not_called()
+
     def test_oversized_record_is_rejected_before_writes(self):
         with self.assertRaisesRegex(ValueError, "too large"):
             firestore_db.save_dataset_records(
