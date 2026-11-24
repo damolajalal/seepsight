@@ -480,11 +480,18 @@ if not core_files:
 for dataset_kind in CORE_DATASETS:
     matches = [filename for filename, kind in core_files.items() if kind == dataset_kind]
     if len(matches) > 1:
-        st.error(
-            f"You uploaded {len(matches)} files classified as {CORE_DATASETS[dataset_kind]}. "
-            "This version accepts one file per dataset type. Combine files with the same "
-            "structure before uploading, or classify the files correctly."
-        )
+        if target_group_id:
+            st.error(
+                f"The selected dataset already contains {CORE_DATASETS[dataset_kind]} data. "
+                "This extension workflow currently accepts complementary dataset types only. "
+                "To add more rows of the same type, combine and deduplicate that export before uploading."
+            )
+        else:
+            st.error(
+                f"You uploaded {len(matches)} files classified as {CORE_DATASETS[dataset_kind]}. "
+                "This version accepts one file per dataset type. Combine files with the same "
+                "structure before uploading, or classify the files correctly."
+            )
         st.stop()
 
 if "orders" not in core_files.values():
