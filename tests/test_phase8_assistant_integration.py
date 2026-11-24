@@ -48,6 +48,7 @@ class Phase8AssistantIntegrationTests(unittest.TestCase):
         self.assertIn("hybrid_ai.render_workspace_assistant(", source)
         self.assertIn('"context": retrieved_context', source)
         self.assertIn("ask_hybrid_pending_{workspace_key}", source)
+        self.assertIn('company_id = w.get("company_id")', source)
 
     def test_hybrid_handoff_uses_existing_secure_bridge(self):
         source = (ROOT / "seepsight/hybrid_ai.py").read_text(encoding="utf-8")
