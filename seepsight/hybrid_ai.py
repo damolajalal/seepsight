@@ -110,13 +110,21 @@ def render_finding_explainer(finding, evidence, currency):
     )
 
 
-def render_answer_explainer(question, answer, company_name=""):
-    """Pass a deterministic Ask Seepsight answer for AI-assisted explanation."""
+def render_answer_explainer(question, answer, company_name="", table=None):
+    """Pass the deterministic answer and its displayed result table for AI explanation."""
+    facts = str(answer or "").strip()
+    if table is not None:
+        try:
+            table_text = table.to_string(index=False, max_rows=25, max_cols=12)
+        except (AttributeError, TypeError, ValueError):
+            table_text = ""
+        if table_text:
+            facts += "\\n\\nSupporting result table (displayed by Seepsight):\\n" + table_text[:12000]
     render_verified_context(
-        company_name,
-        "Grounded Ask Seepsight answer",
-        answer,
-        question or "Explain the verified answer and suggest the next review step.",
+        "",
+        f"Grounded Ask Seepsight answer for {company_name or 'the active company'}",
+        facts,
+        question or "Explain what the verified answer and its supporting table establish, what they do not establish, and the next evidence checks.",
     )
 
 
