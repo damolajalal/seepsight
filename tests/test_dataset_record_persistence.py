@@ -259,6 +259,7 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.client.batch.assert_not_called()
 
     def test_cross_company_record_search_is_denied_before_dataset_reads(self):
+        self.company.collection.reset_mock()
         with patch.object(
             firestore_db, "_company_ref",
             side_effect=PermissionError("cross-company access denied"),
