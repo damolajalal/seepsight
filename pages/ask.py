@@ -148,6 +148,7 @@ if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") ==
             chat[-2].get("content", ""),
             chat[-1].get("content", ""),
             w.get("name", "Your company"),
+            table=chat[-1].get("table"),
         )
 
 if chat:
