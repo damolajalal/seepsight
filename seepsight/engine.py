@@ -1060,9 +1060,8 @@ def combine_dataset_frames(dataset_name, frames):
                     "choose one version automatically."
                 )
             before_key_dedup = len(combined)
-            combined = combined.loc[
-                ~keys.duplicated(keep="first")
-            ].reset_index(drop=True)
+            keep_rows = keys.isna() | ~keys.duplicated(keep="first")
+            combined = combined.loc[keep_rows].reset_index(drop=True)
             duplicate_order_ids_removed = before_key_dedup - len(combined)
 
     return combined, {
