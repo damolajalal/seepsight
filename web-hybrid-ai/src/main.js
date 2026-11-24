@@ -194,7 +194,7 @@ form.addEventListener('submit', async (event) => {
  */
 window.addEventListener('message', (event) => {
   const trustedStreamlitOrigins = new Set(['https://seepsight.streamlit.app', 'https://traceiq.streamlit.app']);
-  const fromParent = event.source === window.parent;
+  const fromParent = event.source === window.parent && trustedStreamlitOrigins.has(event.origin);
   const fromTrustedOpener = event.source === window.opener && trustedStreamlitOrigins.has(event.origin);
   if (!fromParent && !fromTrustedOpener) return;
   const data = event.data;
