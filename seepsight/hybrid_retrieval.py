@@ -132,6 +132,15 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
     if not selected_types:
         selected_types = {str(item.get("dataset_type") or "") for item in datasets[:3]}
 
+    if any(word in q for word in ("supplier", "vendor", "exposure", "concentration", "spend")):
+        terms.extend(["supplier", "vendor", "po_id", "payment_amount"])
+    if any(word in q for word in ("late", "delivery", "deliver", "short", "receipt")):
+        terms.extend(["supplier", "promised_date", "received_date", "ordered_qty", "received_qty", "po_id"])
+    if any(word in q for word in ("invoice", "bill", "price", "discrepancy")):
+        terms.extend(["supplier", "invoice", "invoice_unit_price", "po_unit_price", "invoice_qty", "po_id"])
+    if any(word in q for word in ("approval", "approver")):
+        terms.extend(["approval", "approval_requested_at", "approval_completed_at", "po_id"])
+    terms = list(dict.fromkeys(terms))
     include_source = any(word in q for word in ("source row", "source data", "original row", "raw row", "raw data", "uploaded columns"))
     if include_source:
         sections.append("Source-row retrieval was explicitly requested. Original file bytes are never sent to Hybrid AI.")
@@ -263,10 +272,16 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
     if not question:
         raise ValueError("Enter a question before asking Hybrid AI.")
 
-    terms = [
+    raw_terms = [
         term for term in re.findall(r"[a-z0-9₦$%_-]{3,}", question.casefold())
         if term not in {"the", "and", "for", "with", "from", "what", "which", "does", "about", "this", "that", "are", "how", "can", "our", "your"}
     ]
+    terms = list(raw_terms)
+    for term in raw_terms:
+        if term.endswith("ies") and len(term) > 4:
+            terms.append(term[:-3] + "y")
+        elif term.endswith("s") and len(term) > 4:
+            terms.append(term[:-1])
     q = question.casefold()
     selected_names = []
     for key, (pack_key, triggers) in _TABLES.items():
