@@ -55,7 +55,7 @@ def _select_rows(frame, terms, limit=_MAX_ROWS_PER_TABLE):
         if score:
             scored.append((score, -index, row))
     scored.sort(reverse=True, key=lambda item: (item[0], item[1]))
-    return [item[2] for item in scored[:limit]]
+    return [item[2] for item in scored[:limit]] if scored else records[:limit]
 
 
 def _format_rows(label, rows):
