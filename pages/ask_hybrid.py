@@ -47,7 +47,7 @@ if submitted:
                 "question": question.strip(),
                 "context": context,
             }
-        except (PermissionError, ValueError, RuntimeError) as exc:
+        except Exception as exc:
             st.error(f"Could not prepare company evidence for this question: {exc}")
 
 pending = st.session_state.get("hybrid_ai_pending_request")
