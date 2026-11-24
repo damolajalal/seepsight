@@ -32,6 +32,7 @@ with st.form("hybrid_ai_question_form", clear_on_submit=False):
     submitted = st.form_submit_button("Continue to Hybrid AI", type="primary", use_container_width=True)
 
 if submitted:
+    st.session_state.pop("hybrid_ai_pending_request", None)
     if not question.strip():
         st.warning("Enter a question first.")
     else:
