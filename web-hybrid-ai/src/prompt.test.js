@@ -9,7 +9,7 @@ test('builds an evidence-first procurement prompt', () => {
 });
 test('rejects empty or oversized evidence', () => {
   assert.throws(() => buildFindingPrompt({ verifiedFacts:' ' }), /Add the verified facts/);
-  assert.throws(() => buildFindingPrompt({ verifiedFacts:'x'.repeat(5001) }), /5,000 characters/);
+  assert.throws(() => buildFindingPrompt({ verifiedFacts:'x'.repeat(12001) }), /12,000 characters/);
 });
 test('allows the same evidence numbers with or without units but blocks new numbers', () => {
   const prompt = 'Ordered 100; received 85; shortage 15 units.';
