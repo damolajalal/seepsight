@@ -112,7 +112,7 @@ def render_finding_explainer(finding, evidence, currency):
         except (AttributeError, TypeError, ValueError):
             rows = ""
         if rows:
-            facts += "\\n\\nSupporting evidence rows from the selected finding:\\n" + rows[:12000]
+            facts += "\n\nSupporting evidence rows from the selected finding:\n" + rows[:12000]
 
     form_key = f"finding_hybrid_form_{safe_id}"
     with st.form(form_key, clear_on_submit=False):
