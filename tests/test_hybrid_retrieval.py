@@ -132,6 +132,55 @@ class HybridRetrievalTests(unittest.TestCase):
         collections = [call.kwargs.get("collection_name") for call in search.call_args_list]
         self.assertIn("source_records", collections)
 
+    def test_specific_purchase_order_id_reaches_saved_company_records(self):
+        from unittest.mock import patch
+
+        dataset = {
+            "id": "orders-1", "dataset_type": "orders",
+            "filename": "orders.csv", "record_count": 120,
+        }
+        rows = {
+            "records": [{
+                "po_id": "PO-002", "supplier": "Greenfield Supplies",
+                "ordered_qty": 100, "received_qty": 80,
+            }],
+            "scanned_count": 120, "total_count": 120,
+            "match_count": 1, "coverage_complete": True, "scan_limited": False,
+        }
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+             patch("seepsight.firestore_db.search_dataset_records", return_value=rows) as search:
+            result = retrieve_workspace_context(
+                self.workspace, "Find PO-002", company_id="company-1"
+            )
+
+        self.assertIn("PO-002", result)
+        self.assertIn("Greenfield Supplies", result)
+        search.assert_called_once()
+        args, kwargs = search.call_args
+        self.assertEqual(args[:2], ("company-1", "orders-1"))
+        self.assertIn("po-002", args[2])
+        self.assertEqual(kwargs.get("collection_name", "records"), "records")
+
+    def test_ordinary_saved_record_question_does_not_read_original_source_rows(self):
+        from unittest.mock import patch
+
+        dataset = {"id": "orders-1", "dataset_type": "orders", "filename": "orders.csv"}
+        rows = {
+            "records": [{"po_id": "PO-10", "supplier": "Apex"}],
+            "scanned_count": 1, "total_count": 1,
+            "match_count": 1, "coverage_complete": True, "scan_limited": False,
+        }
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+             patch("seepsight.firestore_db.search_dataset_records", return_value=rows) as search:
+            retrieve_workspace_context(
+                self.workspace, "Find PO-10", company_id="company-1"
+            )
+
+        collections = [call.kwargs.get("collection_name", "records") for call in search.call_args_list]
+        self.assertEqual(collections, ["records"])
+
     def test_empty_question_is_rejected(self):
         with self.assertRaises(ValueError):
             retrieve_workspace_context(self.workspace, "  ")
