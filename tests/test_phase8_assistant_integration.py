@@ -51,6 +51,14 @@ class Phase8AssistantIntegrationTests(unittest.TestCase):
         self.assertIn("ask_hybrid_review_{workspace_key}", source)
         self.assertIn('company_id = w.get("company_id")', source)
 
+    def test_ask_session_state_is_scoped_to_active_dataset(self):
+        source = (ROOT / "pages/ask.py").read_text(encoding="utf-8")
+        self.assertIn("w.get('dataset_group_id') or w.get('analysis_id')", source)
+        workspace_source = (ROOT / "seepsight/workspace.py").read_text(encoding="utf-8")
+        self.assertIn("ask_hybrid_pending_{company_id}", workspace_source)
+        self.assertIn("ask_hybrid_review_{company_id}", workspace_source)
+        self.assertIn("ask_hybrid_response_{company_id}", workspace_source)
+
     def test_hybrid_handoff_uses_existing_secure_bridge(self):
         source = (ROOT / "seepsight/hybrid_ai.py").read_text(encoding="utf-8")
         self.assertIn("def render_workspace_assistant(", source)
