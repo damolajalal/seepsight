@@ -1,14 +1,13 @@
-"""Company-scoped conversational entry point for Seepsight Hybrid AI."""
+"""Company-scoped, question-aware entry point for Seepsight Hybrid AI."""
 
-import pandas as pd
 import streamlit as st
 
-from seepsight import hybrid_ai, plain, ui, workspace
+from seepsight import hybrid_ai, hybrid_retrieval, ui, workspace
 
 w = workspace.current(allow_empty=True)
 ui.page_header(
     "Ask Hybrid AI",
-    "Ask evidence-grounded questions about your company's procurement findings, risks and next checks.",
+    "Ask one question. Hybrid AI retrieves the relevant saved records from your company's workspace.",
 )
 
 if w is None:
@@ -20,74 +19,53 @@ if w is None:
     )
     st.stop()
 
-findings = w.get("findings")
-evidence = w.get("evidence")
-findings = findings if isinstance(findings, pd.DataFrame) else pd.DataFrame()
-evidence = evidence if isinstance(evidence, pd.DataFrame) else pd.DataFrame()
-currency = str(w.get("cur") or "NGN")
 company_name = str(w.get("name") or "Your company")
-
-# Build a compact deterministic summary. Never pass raw source tables or full files.
-summary_lines = [
-    f"Company workspace: {company_name}",
-    f"Reporting currency: {currency}",
-    f"Findings in the latest saved analysis: {len(findings)}",
-]
-if findings.empty:
-    summary_lines.append(
-        "No procurement findings are present in the latest saved analysis. "
-        "Do not infer that all procurement activity is risk-free."
+question_key = "hybrid_ai_question"
+with st.form("hybrid_ai_question_form", clear_on_submit=False):
+    question = st.text_area(
+        "Ask a question",
+        key=question_key,
+        height=100,
+        max_chars=500,
+        placeholder="e.g. Which suppliers have the highest exposure, and what evidence supports that?",
     )
-else:
-    summary_lines.append("Selected finding summaries from the latest saved analysis:")
-    for index, (_, finding) in enumerate(findings.head(12).iterrows(), start=1):
-        finding_id = finding.get("finding_id")
-        if "finding_id" in evidence.columns and finding_id is not None:
-            related = evidence[evidence["finding_id"].astype(str) == str(finding_id)]
-        else:
-            related = evidence.iloc[0:0]
+    submitted = st.form_submit_button("Continue to Hybrid AI", type="primary", use_container_width=True)
+
+if submitted:
+    if not question.strip():
+        st.warning("Enter a question first.")
+    else:
         try:
-            description = plain.what_we_found(finding, related, currency)
-            heading = plain.title(finding)
-        except (KeyError, TypeError, ValueError):
-            heading = str(finding.get("finding_type", "Procurement finding"))
-            description = str(finding.get("evidence", "Verified summary unavailable"))
-        severity = str(finding.get("severity", "Not recorded"))
-        summary_lines.append(f"{index}. {heading} | Priority: {severity} | {description}")
+            company_cases = workspace.cases()
+            context = hybrid_retrieval.retrieve_workspace_context(
+                w, question.strip(), cases=company_cases
+            )
+            st.session_state["hybrid_ai_pending_request"] = {
+                "company_name": company_name,
+                "question": question.strip(),
+                "context": context,
+            }
+        except (PermissionError, ValueError, RuntimeError) as exc:
+            st.error(f"Could not prepare company evidence for this question: {exc}")
 
-run_log = w.get("log") or {}
-detectors = run_log.get("detectors") or {}
-incomplete = [
-    str(name) for name, status in detectors.items()
-    if str(status).casefold() != "ready"
-]
-if incomplete:
-    summary_lines.append(
-        "Detector coverage is incomplete for: " + ", ".join(incomplete)
-        + ". Do not treat missing checks as clean results."
+pending = st.session_state.get("hybrid_ai_pending_request")
+if isinstance(pending, dict):
+    st.caption("The question-specific evidence has been prepared from the active company's saved workspace.")
+    with st.expander("See which evidence context will be used", expanded=False):
+        st.text(pending.get("context", ""))
+    st.info(
+        "Choose your privacy setting in the Hybrid AI panel below. "
+        "Unchecked means on-device inference only. Checked allows Google cloud fallback "
+        "for this request if on-device inference is unavailable."
     )
-
-verified_summary = "\n".join(summary_lines)[:5000]
-
-st.markdown(
-    """
-    <div class="sp-card">
-      <h4>Company evidence context</h4>
-      <p>Hybrid AI receives a compact summary of this authenticated company's saved findings.
-      It does not receive the original procurement files or full source tables.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-with st.expander("Review the verified summary sent to Hybrid AI", expanded=False):
-    st.text(verified_summary)
-
-if incomplete:
-    st.warning(
-        "Some procurement checks did not complete. Hybrid AI will be instructed "
-        "to identify this limitation rather than treating missing checks as clear."
+    hybrid_ai.render_workspace_assistant(
+        pending["company_name"],
+        pending["context"],
+        question=pending["question"],
     )
 else:
-    st.caption("The summary is built from the active company's latest saved analysis.")
-
-hybrid_ai.render_workspace_assistant(company_name, verified_summary)
+    st.caption(
+        "Ask a question to retrieve matching findings, evidence, supplier exposure, "
+        "delivery and order risks, explanations, scorecards, and case activity. "
+        "Only relevant saved records are sent to the Hybrid AI panel."
+    )
