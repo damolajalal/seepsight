@@ -226,49 +226,53 @@ if saved_groups:
         if files_label:
             st.caption(files_label)
     if account.get("role") == "owner":
-        group_options = {
-            item["dataset_group_id"]: (
-                f"{item.get('company_name') or 'Dataset'} · "
-                f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
-            )
-            for item in saved_groups
-        }
-        with st.expander("Delete a saved dataset", expanded=False):
-            delete_group_id = st.selectbox(
-                "Choose the dataset to delete",
-                list(group_options),
-                format_func=lambda value: group_options[value],
-                key="delete_dataset_group_choice",
-            )
-            st.warning(
-                "This permanently deletes the selected dataset's uploaded files, "
-                "source and normalized records, saved analysis, findings and cases."
-            )
-            confirm_delete = st.checkbox(
-                "I understand this deletion cannot be undone.",
-                key="confirm_delete_dataset_group",
-            )
-            if st.button(
-                "Delete selected dataset",
-                type="secondary",
-                disabled=not confirm_delete,
-                key="delete_selected_dataset_group",
-            ):
-                try:
-                    deleted = firestore_db.delete_company_dataset_group(company_id, delete_group_id)
-                    if deleted:
-                        mine = st.session_state.get("mine")
-                        if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
-                            st.session_state.pop("mine", None)
-                        st.session_state.pop("cases", None)
-                        st.success("Dataset and its associated records were deleted.")
-                        st.rerun()
-                    else:
-                        st.info("That dataset no longer exists.")
-                except PermissionError:
-                    st.error("Only the company owner can delete a dataset.")
-                except Exception:
-                    st.error("The dataset could not be fully deleted. No success was reported; contact support before retrying.")
+        safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
+        if safe_groups:
+            group_options = {
+                item["dataset_group_id"]: (
+                    f"{item.get('company_name') or 'Dataset'} · "
+                    f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+                )
+                for item in safe_groups
+            }
+            with st.expander("Delete a saved dataset", expanded=False):
+                delete_group_id = st.selectbox(
+                    "Choose the dataset to delete",
+                    list(group_options),
+                    format_func=lambda value: group_options[value],
+                    key="delete_dataset_group_choice",
+                )
+                st.warning(
+                    "This permanently deletes the selected dataset's uploaded files, "
+                    "source and normalized records, saved analysis, findings and cases."
+                )
+                confirm_delete = st.checkbox(
+                    "I understand this deletion cannot be undone.",
+                    key="confirm_delete_dataset_group",
+                )
+                if st.button(
+                    "Delete selected dataset",
+                    type="secondary",
+                    disabled=not confirm_delete,
+                    key="delete_selected_dataset_group",
+                ):
+                    try:
+                        deleted = firestore_db.delete_company_dataset_group(company_id, delete_group_id)
+                        if deleted:
+                            mine = st.session_state.get("mine")
+                            if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
+                                st.session_state.pop("mine", None)
+                            st.session_state.pop("cases", None)
+                            st.success("Dataset and its associated records were deleted.")
+                            st.rerun()
+                        else:
+                            st.info("That dataset no longer exists.")
+                    except PermissionError:
+                        st.error("Only the company owner can delete a dataset.")
+                    except Exception:
+                        st.error("The dataset could not be fully deleted. Contact support before retrying.")
+        elif saved_groups:
+            st.caption("Deletion is unavailable for older datasets that do not yet have complete file-to-analysis links. They are protected from partial deletion.")
 else:
     st.caption("No saved procurement datasets yet.")
 
