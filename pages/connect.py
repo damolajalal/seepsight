@@ -529,6 +529,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             "status": "saving",
                             "record_count": int(len(source_frame)),
                             "source_sha256": source_sha256,
+                            "dataset_group_id": check_signature,
                         }
                         normalized_tables = result.get("normalized_tables", {})
                         source_tables = result.get("source_tables", {})
@@ -569,6 +570,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = check_signature
+                    pack["dataset_group_id"] = analysis_id
                     workspace.persist(pack, analysis_id)
                     pack["analysis_id"] = analysis_id
                     st.session_state["mine"] = pack
