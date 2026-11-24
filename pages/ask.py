@@ -1,5 +1,6 @@
 """Evidence-grounded procurement question and Gemini Hybrid AI workspace."""
 import os
+import uuid
 
 import streamlit as st
 
@@ -73,85 +74,156 @@ if question:
 
 
 # ---------------------------------------------------------
-# Integrated Firebase Hybrid AI assistant
+# Native Firebase Hybrid AI assistant (no iframe / no nested app)
 # ---------------------------------------------------------
 st.divider()
 st.markdown("### Ask Seepsight with Gemini Hybrid AI")
 st.caption(
-    "Use the same Ask Seepsight workspace to ask evidence-based questions. "
-    "Relevant saved records are retrieved from the active company before they are sent "
-    "to Firebase AI Logic. Cloud fallback remains subject to the consent choice in the panel."
+    "Ask a follow-up using evidence retrieved from the active company workspace. "
+    "Gemini explains the evidence; Seepsight remains the source of verified figures."
 )
 
-hybrid_request_key = f"ask_hybrid_pending_{workspace_key}"
-with st.form(f"ask_hybrid_form_{workspace_key}", clear_on_submit=False):
+latest_question = ""
+latest_answer = ""
+latest_table = None
+if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
+    latest_question = str(chat[-2].get("content") or "")
+    latest_answer = str(chat[-1].get("content") or "")
+    latest_table = chat[-1].get("table")
+
+hybrid_form_key = f"ask_hybrid_form_{workspace_key}_{len(chat)}"
+hybrid_question_key = f"ask_hybrid_question_{workspace_key}_{len(chat)}"
+hybrid_consent_key = f"ask_hybrid_consent_{workspace_key}_{len(chat)}"
+hybrid_pending_key = f"ask_hybrid_pending_{workspace_key}"
+hybrid_response_key = f"ask_hybrid_response_{workspace_key}"
+
+with st.form(hybrid_form_key, clear_on_submit=False):
     hybrid_question = st.text_area(
-        "Question for the Hybrid AI assistant",
-        key=f"ask_hybrid_question_{workspace_key}",
+        "Question for Gemini Hybrid AI",
+        value=latest_question,
+        key=hybrid_question_key,
         max_chars=500,
         height=90,
-        placeholder="e.g. Compare Cedarline Traders and Northstar Supplies using all available evidence.",
+        placeholder="e.g. Why does this supplier rank highest, and what evidence should finance review?",
+    )
+    allow_cloud = st.checkbox(
+        "I consent to cloud fallback for this request if on-device inference cannot run.",
+        value=False,
+        key=hybrid_consent_key,
+    )
+    st.caption(
+        "On-device inference requires a supported desktop Chrome environment. "
+        "Cloud processing is disabled unless you explicitly give consent above."
     )
     hybrid_submitted = st.form_submit_button(
-        "Prepare evidence for Gemini",
+        "Ask Gemini Hybrid AI",
         type="primary",
         use_container_width=True,
     )
 
 if hybrid_submitted:
-    st.session_state.pop(hybrid_request_key, None)
-    if not hybrid_question.strip():
-        st.warning("Enter a question first.")
+    question_text = str(hybrid_question or "").strip()
+    if not question_text:
+        st.warning("Enter a question for Gemini Hybrid AI first.")
     else:
         try:
-            company_cases = workspace.cases()
-            # workspace.current() has already verified this workspace belongs to the signed-in company.
-            company_id = w.get("company_id")
             retrieved_context = hybrid_retrieval.retrieve_workspace_context(
                 w,
-                hybrid_question.strip(),
-                cases=company_cases,
-                company_id=company_id,
+                question_text,
+                cases=workspace.cases(),
+                company_id=w.get("company_id"),
             )
-            if not str(retrieved_context or "").strip():
-                st.warning("No relevant saved company evidence was retrieved. Connect or refresh your data before asking Hybrid AI.")
+            evidence = str(retrieved_context or "").strip()
+            if not evidence:
+                st.warning(
+                    "No relevant saved company evidence was retrieved. "
+                    "Connect or refresh your data before asking Gemini Hybrid AI."
+                )
             else:
-                st.session_state[hybrid_request_key] = {
-                    "question": hybrid_question.strip(),
-                    "context": retrieved_context,
-                    "company_name": str(w.get("name") or "Your company"),
+                # Include the deterministic answer and its displayed table only
+                # when this AI request explains the same latest Ask Seepsight question.
+                if latest_question and question_text.casefold() == latest_question.casefold():
+                    evidence += "\n\nDeterministic Ask Seepsight answer:\n" + latest_answer
+                    if latest_table is not None:
+                        try:
+                            table_text = latest_table.to_string(
+                                index=False, max_rows=25, max_cols=12
+                            )
+                        except (AttributeError, TypeError, ValueError):
+                            table_text = ""
+                        if table_text:
+                            evidence += "\n\nSupporting result table displayed by Seepsight:\n"
+                            evidence += table_text[:12000]
+
+                prompt = hybrid_ai.build_native_prompt(question_text, evidence)
+                request = {
+                    "request_id": uuid.uuid4().hex,
+                    "prompt": prompt,
+                    "allow_cloud": bool(allow_cloud),
                 }
+                st.session_state[hybrid_pending_key] = request
+                st.session_state.pop(hybrid_response_key, None)
+        except ValueError as exc:
+            st.warning(str(exc))
         except Exception:
             st.error(
-                "Could not prepare evidence from the active company workspace. "
+                "Could not retrieve evidence from the active company workspace. "
                 "Refresh the workspace and try again."
             )
 
-hybrid_pending = st.session_state.get(hybrid_request_key)
+hybrid_pending = st.session_state.get(hybrid_pending_key)
 if isinstance(hybrid_pending, dict):
-    st.caption("Evidence retrieved from the active company's saved workspace:")
-    with st.expander("Review retrieved evidence before sending", expanded=False):
-        st.text(hybrid_pending.get("context", ""))
-    hybrid_ai.render_workspace_assistant(
-        hybrid_pending["company_name"],
-        hybrid_pending["context"],
-        question=hybrid_pending["question"],
+    component_result = hybrid_ai.render_native_ai_request(
+        hybrid_pending,
+        key=f"native_hybrid_engine_{workspace_key}",
     )
+    component_response = (
+        getattr(component_result, "response", None)
+        if component_result is not None
+        else None
+    )
+    if (
+        isinstance(component_response, dict)
+        and component_response.get("requestId") == hybrid_pending.get("request_id")
+    ):
+        st.session_state[hybrid_response_key] = component_response
 
-if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
-    with st.expander("Explain the latest answer with Hybrid AI", expanded=False):
-        st.caption(
-            "Hybrid AI receives the latest question and Seepsight's deterministic, "
-            "company-scoped answer—not the full conversation or source dataset."
-        )
-        hybrid_ai.render_answer_explainer(
-            chat[-2].get("content", ""),
-            chat[-1].get("content", ""),
-            w.get("name", "Your company"),
-            table=chat[-1].get("table"),
-        )
+    hybrid_response = st.session_state.get(hybrid_response_key)
+    if (
+        isinstance(hybrid_response, dict)
+        and hybrid_response.get("requestId") == hybrid_pending.get("request_id")
+    ):
+        st.markdown("#### Gemini Hybrid AI response")
+        if hybrid_response.get("status") == "success":
+            st.markdown(hybrid_response.get("text", ""))
+            route = hybrid_response.get("inferenceSource")
+            if route == "on_device":
+                st.caption("Processed on this device. Firebase AI Logic confirmed the on-device route.")
+            elif route == "in_cloud":
+                st.caption("Processed in the cloud through Firebase AI Logic after your consent.")
+        else:
+            st.warning(
+                "Gemini Hybrid AI could not complete this request. "
+                "Your original Seepsight answer and evidence have not been changed."
+            )
+            if hybrid_response.get("message"):
+                st.caption(hybrid_response["message"])
+    elif component_result is not None:
+        st.info("Gemini Hybrid AI is preparing an evidence-based response. This may take a moment.")
+
+with st.expander("Standalone Hybrid AI testing"):
+    st.caption(
+        "The standalone studio remains available for separate browser testing. "
+        "The main Ask Seepsight experience above no longer embeds it."
+    )
+    st.link_button(
+        "Open standalone Hybrid AI Studio",
+        os.getenv("SEEPSIGHT_HYBRID_AI_URL", "https://seepsight-hybrid-ai.web.app/"),
+    )
 
 if chat:
     if st.button("Clear conversation", key=f"clear_{workspace_key}"):
         st.session_state[chat_key] = []
+        st.session_state.pop(hybrid_pending_key, None)
+        st.session_state.pop(hybrid_response_key, None)
         st.rerun()
