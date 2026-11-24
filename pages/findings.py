@@ -63,6 +63,35 @@ else:
             st.bar_chart(supplier_chart.set_index("supplier"), height=280, horizontal=True)
             st.caption("Leading suppliers by recorded potential exposure; these amounts require review.")
 
+    supplier_month = w.get("supplier_month")
+    required_trend_columns = {"supplier", "po_month", "avg_days_late", "fill_rate"}
+    if isinstance(supplier_month, pd.DataFrame) and required_trend_columns.issubset(supplier_month.columns):
+        supplier_names = sorted(supplier_month["supplier"].dropna().astype(str).unique())
+        if supplier_names:
+            st.markdown("**Supplier delivery performance signals**")
+            selected_supplier = st.selectbox(
+                "Supplier delivery trend",
+                supplier_names,
+                key="findings_supplier_trend",
+            )
+            trend = supplier_month[supplier_month["supplier"].astype(str) == selected_supplier].copy()
+            trend["avg_days_late"] = pd.to_numeric(trend["avg_days_late"], errors="coerce")
+            trend["fill_rate"] = pd.to_numeric(trend["fill_rate"], errors="coerce")
+            trend = trend.sort_values("po_month").set_index("po_month")
+            trend_left, trend_right = st.columns(2, gap="large")
+            with trend_left:
+                st.markdown("Average days late")
+                if trend["avg_days_late"].notna().any():
+                    st.line_chart(trend[["avg_days_late"]], height=220)
+                else:
+                    st.caption("Average delivery delay is unavailable.")
+            with trend_right:
+                st.markdown("Share of ordered goods received")
+                if trend["fill_rate"].notna().any():
+                    st.line_chart(trend[["fill_rate"]], height=220)
+                else:
+                    st.caption("Delivery fill-rate data is unavailable.")
+
 st.divider()
 if len(f) == 0:
     # A zero-row findings table does not necessarily mean every detector ran.
