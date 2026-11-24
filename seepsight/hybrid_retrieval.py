@@ -184,16 +184,22 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
                 company_id, dataset_id, terms if not broad else [],
-                collection_name="records", limit=2 if broad else 4, scan_limit=500 if broad else 1500,
+                collection_name="records", limit=2 if broad else 4,
             )
             sections.append(
-                f"{dataset_type} normalized rows (scanned {normalized['scanned_count']} of "
-                f"{normalized['total_count']}):"
+                f"{dataset_type} normalized rows: scanned {normalized['scanned_count']} records; "
+                f"{normalized.get('match_count', len(normalized['records']))} matched; "
+                f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}."
             )
             sections.append(_format_rows(f"{dataset_type} normalized records", normalized["records"]))
-            if normalized.get("scan_limited"):
+            if not normalized.get("coverage_complete", not normalized.get("scan_limited", False)):
                 sections.append(
-                    f"{dataset_type}: retrieval scanned a bounded prefix only; later records may not be represented."
+                    f"{dataset_type}: retrieval reached its read budget; later records may not be represented. "
+                    "Do not conclude that no matching risk exists."
+                )
+            elif not normalized.get("match_count", len(normalized["records"])):
+                sections.append(
+                    f"{dataset_type}: no records matched the search terms in the complete normalized dataset scan."
                 )
             if include_source:
                 source_terms = [
@@ -205,7 +211,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                     limit=2, scan_limit=250,
                 )
                 sections.append(_format_rows(f"{dataset_type} source rows", source["records"]))
-                if source.get("scan_limited"):
+                if not source.get("coverage_complete", not source.get("scan_limited", False)):
                     sections.append(f"{dataset_type}: source-row search was bounded and may not cover later records.")
         except (FileNotFoundError, RuntimeError, ValueError, PermissionError) as exc:
             sections.append(f"{dataset_type}: saved rows could not be retrieved because the data source was unavailable or incomplete.")
