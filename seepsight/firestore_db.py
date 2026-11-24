@@ -1419,6 +1419,103 @@ def get_latest_analysis_workspace(company_id, analysis_id=None):
     )
     return {"analysis_id": analysis_id, "summary": summary, "tables": tables}
 
+def get_company_dataset_groups(company_id):
+    """Return logical dataset groups and their saved files for the company."""
+    company = _company_ref(company_id)
+    groups = {}
+    for snapshot in _stream_query_pages(company.collection("datasets").order_by("__name__"), page_size=200):
+        data = _denormalise_workspace_value(snapshot.to_dict() or {})
+        group_id = data.get("dataset_group_id") or snapshot.id
+        item = groups.setdefault(group_id, {
+            "dataset_group_id": group_id,
+            "files": [],
+            "file_count": 0,
+            "record_count": 0,
+            "source_record_count": 0,
+            "company_name": data.get("company_name") or "Procurement dataset",
+        })
+        item["files"].append(data.get("filename") or snapshot.id)
+        item["file_count"] += 1
+        item["record_count"] += int(data.get("record_count", data.get("normalized_record_count", 0)) or 0)
+        item["source_record_count"] += int(data.get("source_record_count", 0) or 0)
+
+    for snapshot in _stream_query_pages(company.collection("analyses").order_by("updated_at", direction="DESCENDING"), page_size=200):
+        data = _denormalise_workspace_value(snapshot.to_dict() or {})
+        group_id = data.get("dataset_group_id")
+        if not group_id:
+            continue
+        item = groups.setdefault(group_id, {
+            "dataset_group_id": group_id,
+            "files": [],
+            "file_count": 0,
+            "record_count": 0,
+            "source_record_count": 0,
+            "company_name": data.get("company_name") or "Procurement dataset",
+        })
+        if "analysis_id" not in item:
+            item["analysis_id"] = snapshot.id
+            item["updated_at"] = data.get("updated_at")
+    return sorted(groups.values(), key=lambda item: item.get("updated_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+
+def delete_company_dataset_group(company_id, dataset_group_id):
+    """Owner-only cascade deletion of one logical dataset and all dependent records."""
+    company = _company_owner_ref(company_id)
+    dataset_group_id = _validate_id(dataset_group_id, "dataset_group_id")
+    datasets = []
+    analyses = []
+    cases = []
+
+    for snapshot in _stream_query_pages(company.collection("datasets").order_by("__name__"), page_size=200):
+        data = snapshot.to_dict() or {}
+        if (data.get("dataset_group_id") or snapshot.id) == dataset_group_id:
+            datasets.append(snapshot.reference)
+    for snapshot in _stream_query_pages(company.collection("analyses").order_by("__name__"), page_size=200):
+        data = snapshot.to_dict() or {}
+        if data.get("dataset_group_id") == dataset_group_id:
+            analyses.append(snapshot.reference)
+    for snapshot in _stream_query_pages(company.collection("cases").order_by("__name__"), page_size=200):
+        data = snapshot.to_dict() or {}
+        if data.get("dataset_group_id") == dataset_group_id:
+            cases.append(snapshot.reference)
+
+    if not datasets and not analyses and not cases:
+        return False
+
+    company_snapshot = company.get()
+    company_data = company_snapshot.to_dict() or {}
+    active_analysis_id = company_data.get("latest_analysis_id")
+    deleting_active = any(ref.id == active_analysis_id for ref in analyses)
+
+    client = get_firestore_client()
+    for reference in datasets + analyses + cases:
+        client.recursive_delete(reference)
+
+    if deleting_active:
+        remaining = list(_stream_query_pages(
+            company.collection("analyses")
+            .where("workspace_status", "==", "complete")
+            .order_by("updated_at", direction="DESCENDING"),
+            page_size=200,
+        ))
+        if remaining:
+            company.set({
+                "latest_analysis_id": remaining[0].id,
+                "latest_analysis_updated_at": (remaining[0].to_dict() or {}).get("updated_at"),
+            }, merge=True)
+        else:
+            company.set({
+                "latest_analysis_id": firestore.DELETE_FIELD,
+                "latest_analysis_updated_at": firestore.DELETE_FIELD,
+            }, merge=True)
+
+    write_company_audit_event(
+        company_id, "dataset_group.deleted", "dataset_group", dataset_group_id,
+        {"files_deleted": len(datasets), "analyses_deleted": len(analyses), "cases_deleted": len(cases)},
+    )
+    return True
+
+
 def get_company_analysis_workspaces(company_id):
     """List completed analysis workspaces for this authenticated company."""
     company = _company_ref(company_id)
