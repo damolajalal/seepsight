@@ -1417,17 +1417,22 @@ def get_latest_analysis_workspace(company_id):
 
 def search_dataset_records(
     company_id, dataset_id, terms, collection_name="records",
-    limit=10, scan_limit=1500,
+    limit=10, scan_limit=None,
 ):
-    """Search bounded beginning/end slices of a tenant-owned dataset."""
-    from google.cloud.firestore_v1 import Query
+    """Search a tenant-owned dataset in record order using paginated reads.
 
+    Returned AI context remains bounded by limit. By default every stored row
+    is scanned so a matching record in the middle cannot be silently missed.
+    An explicit scan_limit is a read budget and reports incomplete coverage.
+    """
     if collection_name not in {"records", "source_records"}:
         raise ValueError("collection_name must be 'records' or 'source_records'.")
     if not isinstance(limit, int) or limit < 1 or limit > 25:
         raise ValueError("limit must be between 1 and 25.")
-    if not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 5000:
-        raise ValueError("scan_limit must be between 1 and 5000.")
+    if scan_limit is not None and (
+        not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 250000
+    ):
+        raise ValueError("scan_limit must be between 1 and 250000, or None.")
     if not isinstance(terms, (list, tuple)) or not all(isinstance(x, str) for x in terms):
         raise TypeError("terms must be a list of strings.")
 
@@ -1446,19 +1451,7 @@ def search_dataset_records(
 
     count_key = "source_record_count" if collection_name == "source_records" else "record_count"
     total_count = int(metadata.get(count_key, 0) or 0)
-    base_query = dataset_ref.collection(collection_name)
-    if total_count > scan_limit:
-        half = max(1, scan_limit // 2)
-        first = list(base_query.order_by("_record_number").limit(half).stream())
-        last = list(
-            base_query.order_by("_record_number", direction=Query.DESCENDING)
-            .limit(scan_limit - half).stream()
-        )
-        snapshots = first + list(reversed(last))
-    else:
-        snapshots = list(
-            base_query.order_by("_record_number").limit(scan_limit).stream()
-        )
+    base_query = dataset_ref.collection(collection_name).order_by("_record_number")
 
     clean_terms = []
     for term in terms:
@@ -1473,35 +1466,50 @@ def search_dataset_records(
     clean_terms = list(dict.fromkeys(clean_terms))
 
     ranked = []
-    seen = set()
+    match_count = 0
     scanned = 0
-    for snapshot in snapshots:
+    budget_reached = False
+    page_size = min(500, scan_limit) if scan_limit is not None else 500
+    for snapshot in _stream_query_pages(base_query, page_size=page_size):
+        if scan_limit is not None and scanned >= scan_limit:
+            budget_reached = True
+            break
         item = _denormalise_workspace_value(snapshot.to_dict() or {})
         record_number = int(item.get("_record_number", scanned))
-        if record_number in seen:
-            continue
-        seen.add(record_number)
-        scanned += 1
         searchable = " ".join(
             f"{key} {value}" for key, value in item.items()
             if not str(key).startswith("_") and value is not None
         ).casefold()
         score = sum(1 for term in clean_terms if term in searchable)
+        scanned += 1
         if not clean_terms or score:
+            match_count += 1
             record = {
                 key: value for key, value in item.items()
                 if not str(key).startswith("_")
             }
             ranked.append((score, record_number, record))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-    selected = [row[2] for row in ranked[:limit]]
+            ranked.sort(key=lambda row: (-row[0], row[1]))
+            if len(ranked) > limit:
+                ranked.pop()
+
+    coverage_complete = not budget_reached
+    selected = [row[2] for row in ranked]
     write_company_audit_event(
         company_id, f"dataset.{collection_name}_searched", "dataset", dataset_id,
-        {"scanned_count": scanned, "returned_count": len(selected), "collection": collection_name},
+        {
+            "scanned_count": scanned,
+            "match_count": match_count,
+            "returned_count": len(selected),
+            "coverage_complete": coverage_complete,
+            "collection": collection_name,
+        },
     )
     return {
         "records": selected,
         "scanned_count": scanned,
         "total_count": total_count,
-        "scan_limited": total_count > scanned,
+        "match_count": match_count,
+        "coverage_complete": coverage_complete,
+        "scan_limited": not coverage_complete,
     }
