@@ -106,6 +106,22 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
     for dataset_type, triggers in _DATASET_HINTS.items():
         if any(trigger in q for trigger in triggers):
             selected_types.add(dataset_type)
+    if any(word in q for word in ("supplier", "vendor", "exposure", "concentration", "spend")):
+        selected_types.update({"suppliers", "orders", "invoices", "payments"})
+    if any(word in q for word in ("late", "delivery", "deliver", "short", "receipt")):
+        selected_types.update({"orders", "receipts"})
+    if any(word in q for word in ("invoice", "bill", "price", "discrepancy")):
+        selected_types.update({"orders", "invoices"})
+    if any(word in q for word in ("approval", "approver")):
+        selected_types.update({"orders", "approvals"})
+    if any(word in q for word in ("payment", "paid", "remittance")):
+        selected_types.update({"payments", "invoices"})
+    if any(word in q for word in ("product", "item", "stock", "inventory")):
+        selected_types.update({"products", "inventory", "orders"})
+    if any(word in q for word in ("contract", "agreement", "quotation", "quote", "bid", "tender")):
+        selected_types.update({"contracts", "quotations"})
+    if any(word in q for word in ("return", "dispute", "claim", "rejected")):
+        selected_types.update({"returns", "invoices"})
     if broad:
         selected_types = {str(item.get("dataset_type") or "") for item in datasets}
     if not selected_types:
@@ -152,7 +168,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
                 company_id, dataset_id, terms if not broad else [],
-                collection_name="records", limit=7, scan_limit=1500,
+                collection_name="records", limit=2 if broad else 4, scan_limit=1500,
             )
             sections.append(
                 f"{dataset_type} normalized rows (scanned {normalized['scanned_count']} of "
@@ -166,7 +182,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
             if include_source:
                 source = firestore_db.search_dataset_records(
                     company_id, dataset_id, terms, collection_name="source_records",
-                    limit=4, scan_limit=500,
+                    limit=2, scan_limit=500,
                 )
                 sections.append(_format_rows(f"{dataset_type} source rows", source["records"]))
                 if source.get("scan_limited"):
@@ -176,7 +192,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
 
 
 _MAX_ROWS_PER_TABLE = 18
-_MAX_ROW_CHARS = 900
+_MAX_ROW_CHARS = 500
 _MAX_CONTEXT_CHARS = 12000
 
 
@@ -293,7 +309,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         frame = workspace.get(pack_key)
         if isinstance(frame, pd.DataFrame) and not frame.empty:
             available.add(key)
-        rows = _select_rows(frame, terms)
+        rows = _select_rows(frame, terms, limit=3 if broad else 10)
         sections.append(_format_rows(key.replace("_", " ").title(), rows))
 
     if "findings" in available:
@@ -304,7 +320,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
             ids = set(finding_frame["finding_id"].dropna().astype(str))
         if isinstance(evidence_frame, pd.DataFrame) and "finding_id" in evidence_frame.columns and ids:
             linked = evidence_frame[evidence_frame["finding_id"].astype(str).isin(ids)]
-            evidence_rows = _select_rows(linked, terms, limit=12)
+            evidence_rows = _select_rows(linked, terms, limit=6)
             sections.append(_format_rows("Linked evidence", evidence_rows))
 
     if cases is not None:
