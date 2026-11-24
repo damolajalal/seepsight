@@ -9,7 +9,7 @@ test('builds an evidence-first procurement prompt', () => {
 });
 test('rejects empty or oversized evidence', () => {
   assert.throws(() => buildFindingPrompt({ verifiedFacts:' ' }), /Add the verified facts/);
-  assert.throws(() => buildFindingPrompt({ verifiedFacts:'x'.repeat(12001) }), /12,000 characters/);
+  assert.throws(() => buildFindingPrompt({ verifiedFacts:'x'.repeat(40001) }), /too large to send safely/);
 });
 test('allows the same evidence numbers with or without units but blocks new numbers', () => {
   const prompt = 'Ordered 100; received 85; shortage 15 units.';
@@ -39,7 +39,19 @@ test('builds a structured evidence-grounded assistant prompt', () => {
     requestedAction: 'Which issue should we review first?',
   });
   assert.match(prompt, /Answer the procurement user question/);
-  assert.match(prompt, /## Observed facts/);
+  assert.match(prompt, /## What the records show/);
   assert.match(prompt, /Findings in the latest analysis: 2/);
   assert.match(prompt, /Which issue should we review first/);
+});
+
+
+test('assistant prompt requires plain language, provenance and honest coverage disclosure', () => {
+  const prompt = buildAssistantPrompt({
+    verifiedFacts: 'Persistent Findings: F-1. Session-only QA: Q-1. Coverage incomplete.',
+    requestedAction: 'Compare suppliers across the workspace.',
+  });
+  assert.match(prompt, /plain, natural, respectful English/);
+  assert.match(prompt, /Clearly separate persistent company records from session-only or QA records/);
+  assert.match(prompt, /If the context says records or fields were omitted, state that limitation/);
+  assert.match(prompt, /Recommended next steps/);
 });

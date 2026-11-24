@@ -11,7 +11,7 @@ app.innerHTML = `
     <form id="form">
       <p id="question-display" class="lead" hidden></p>
       <div class="fields"><label>Supplier or company <input id="supplier" maxlength="160" placeholder="Company or supplier name (optional)"></label><label>Finding type or context <input id="type" maxlength="160" placeholder="e.g. Short delivery"></label></div>
-      <label id="facts-label">Verified evidence summary <textarea id="facts" required maxlength="12000" rows="6" placeholder="A concise, verified summary from your Seepsight workspace."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
+      <label id="facts-label">Verified evidence summary <textarea id="facts" required maxlength="40000" rows="8" placeholder="A concise, verified summary from your Seepsight workspace."></textarea><span class="hint">Use anonymised or synthetic evidence. Do not paste personal, financial or confidential supplier records.</span></label>
       <label id="action-label">What should the explanation focus on? <input id="action" maxlength="500" placeholder="e.g. What should the reviewer verify next?"></label>
       <div class="consent"><strong>Choose where inference may run</strong><p>On-device only keeps the prompt in Chrome. Hybrid mode prefers the local Chrome model and may send the prompt to Google's cloud model only when you consent.</p><span id="device-status" class="pill">Checking local model availability…</span><small id="device-note">On-device AI requires supported desktop Chrome and may be blocked inside embedded frames.</small><label class="check"><input id="consent" type="checkbox"> I consent to cloud fallback for this request if on-device inference cannot run.</label></div>
       <div class="actions"><button id="submit" type="submit" disabled>Explain finding →</button><span>Cloud fallback is off unless you consent above.</span></div>
@@ -121,7 +121,7 @@ function normaliseInferenceSource(value) {
   const sourceValue = String(value || '').toLowerCase();
   if (sourceValue === 'on_device') return 'ON_DEVICE';
   if (sourceValue === 'in_cloud') return 'IN_CLOUD';
-  return 'SOURCE NOT REPORTED';
+  return null;
 }
 
 form.addEventListener('submit', async (event) => {
@@ -163,10 +163,13 @@ form.addEventListener('submit', async (event) => {
 
     const generatedText = response.response.text();
     const reportedRoute = normaliseInferenceSource(response.response.inferenceSource);
-    if (!allowCloud && reportedRoute === 'IN_CLOUD') {
-      throw new Error('Privacy protection stopped an unexpected cloud response.');
+    if (!reportedRoute) {
+      throw new Error('Firebase AI Logic did not report whether this response ran on your device or in the cloud. The answer has been withheld.');
     }
-    const route = allowCloud ? reportedRoute : 'ON_DEVICE';
+    if (!allowCloud && reportedRoute !== 'ON_DEVICE') {
+      throw new Error('Privacy protection stopped this response because it was not confirmed as on-device. No cloud answer will be shown.');
+    }
+    const route = reportedRoute;
     if (!generatedText?.trim()) throw new Error('The model returned an empty response.');
     if (hasUnsupportedNumbers(generatedText, prompt)) {
       show('## Response withheld\nThe response introduced a numeric value not present in the supplied verified facts. The original finding is unchanged.', route, 'Numeric consistency guardrail triggered.');
@@ -179,9 +182,9 @@ form.addEventListener('submit', async (event) => {
     }
   } catch (error) {
     show(allowCloud
-      ? '## Request failed\nHybrid AI could not complete this request. Check Firebase AI Logic, App Check, network access and model availability.'
-      : '## On-device inference unavailable\nThis request was not sent to the cloud because cloud consent was not given.',
-      'REQUEST FAILED', error?.message || 'No further error details.');
+      ? '## I could not complete that request\nYour question was not answered. Please check your connection and try again. If the problem continues, ask your administrator to check Firebase AI Logic and App Check.'
+      : '## On-device AI is unavailable\nI could not answer this using your device, and you have not allowed cloud processing. Your request was not retried in the cloud. You can try again on a supported device or choose to allow cloud fallback.',
+      'REQUEST FAILED', error?.message || 'The inference request failed.');
   } finally {
     consent.disabled = false;
     submit.disabled = false;

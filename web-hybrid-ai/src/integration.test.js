@@ -12,8 +12,10 @@ test('cloud fallback is explicitly consent-gated', async () => {
   assert.match(main, /const allowCloud = consent\.checked === true/);
   assert.match(main, /if \(!allowCloud\) throw localError/);
   assert.match(main, /createCloudOnlyModel\(\)\.generateContent\(prompt\)/);
-  assert.match(main, /!allowCloud && reportedRoute === 'IN_CLOUD'/);
-  assert.match(main, /const route = allowCloud \? reportedRoute : 'ON_DEVICE'/);
+  assert.match(main, /if \(!allowCloud\) throw localError/);
+  assert.match(main, /if \(!reportedRoute\)/);
+  assert.match(main, /!allowCloud && reportedRoute !== 'ON_DEVICE'/);
+  assert.match(main, /const route = reportedRoute/);
 });
 
 test('inference source values from Firebase are normalised for display', async () => {
@@ -22,6 +24,8 @@ test('inference source values from Firebase are normalised for display', async (
   assert.match(main, /sourceValue === 'in_cloud'/);
   assert.match(main, /return 'ON_DEVICE'/);
   assert.match(main, /return 'IN_CLOUD'/);
+  assert.match(main, /return null/);
+  assert.match(main, /Firebase AI Logic did not report whether this response ran on your device or in the cloud/);
   assert.match(main, /LanguageModel\.availability/);
   assert.match(main, /trustedStreamlitOrigins/);
 });

@@ -44,6 +44,23 @@ class HybridRetrievalTests(unittest.TestCase):
         self.assertIn("Cases and actions", result)
         self.assertIn("F-101", result)
 
+    def test_comparison_includes_all_matching_workspace_rows_and_all_fields(self):
+        workspace = dict(self.workspace)
+        workspace["supplier_month"] = pd.DataFrame([
+            {"supplier": "Cedarline Traders", "fill_rate": 0.8, "custom_field_a": "alpha"},
+            {"supplier": "Northstar Supplies Ltd", "fill_rate": 1.0, "custom_field_b": "beta"},
+            {"supplier": "Maple Industrial", "fill_rate": 1.0, "custom_field_c": "gamma"},
+        ])
+        result = retrieve_workspace_context(
+            workspace, "Compare Cedarline Traders and Northstar Supplies"
+        )
+        self.assertIn("Cedarline Traders", result)
+        self.assertIn("Northstar Supplies Ltd", result)
+        self.assertIn("Maple Industrial", result)
+        self.assertIn("custom_field_a=alpha", result)
+        self.assertIn("custom_field_b=beta", result)
+        self.assertIn("custom_field_c=gamma", result)
+
     def test_case_question_includes_case_records_even_without_keyword_match(self):
         cases = {"F-101": {"status": "Open", "owner": "Reviewer", "note": "", "history": []}}
         result = retrieve_workspace_context(self.workspace, "Which cases are still open?", cases)

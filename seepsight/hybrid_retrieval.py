@@ -92,8 +92,8 @@ _DATASET_HINTS = {
 }
 
 
-def _append_saved_dataset_context(sections, company_id, question, terms, broad):
-    """Retrieve bounded normalized rows and mappings from this company's saved datasets."""
+def _append_saved_dataset_context(sections, company_id, question, terms, comprehensive):
+    """Retrieve all matching normalized rows and mapped fields from saved company datasets."""
     from seepsight import firestore_db
 
     datasets = firestore_db.get_company_datasets(company_id)
@@ -129,7 +129,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
         selected_types.update({"contracts", "quotations"})
     if any(word in q for word in ("return", "dispute", "claim", "rejected")):
         selected_types.update({"returns", "invoices"})
-    if broad:
+    if comprehensive:
         selected_types = {str(item.get("dataset_type") or "") for item in datasets}
     if not selected_types:
         for item in datasets:
@@ -179,16 +179,17 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
             if isinstance(mapping, dict) and mapping:
                 mapping_lines = [
                     f"{field} -> {str(details)[:160]}"
-                    for field, details in list(mapping.items())[:24]
+                    for field, details in mapping.items()
                 ]
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
-                company_id, dataset_id, terms if not broad else [],
-                collection_name="records", limit=2 if broad else 4,
+                company_id, dataset_id, terms if not comprehensive else [],
+                collection_name="records", limit=250000,
             )
             sections.append(
                 f"{dataset_type} normalized rows: scanned {normalized['scanned_count']} records; "
                 f"{normalized.get('match_count', len(normalized['records']))} matched; "
+                f"{len(normalized['records'])} included in context; "
                 f"coverage {'complete' if normalized.get('coverage_complete', not normalized.get('scan_limited', False)) else 'incomplete'}."
             )
             sections.append(_format_rows(f"{dataset_type} normalized records", normalized["records"]))
@@ -196,6 +197,12 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 sections.append(
                     f"{dataset_type}: retrieval reached its read budget; later records may not be represented. "
                     "Do not conclude that no matching risk exists."
+                )
+            elif len(normalized["records"]) < normalized.get("match_count", len(normalized["records"])):
+                sections.append(
+                    f"{dataset_type}: only {len(normalized['records'])} of "
+                    f"{normalized.get('match_count')} matching rows were included. "
+                    "The answer must disclose this limitation."
                 )
             elif not normalized.get("match_count", len(normalized["records"])):
                 sections.append(
@@ -219,7 +226,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
 
 _MAX_ROWS_PER_TABLE = 18
 _MAX_ROW_CHARS = 500
-_MAX_CONTEXT_CHARS = 12000
+_MAX_CONTEXT_CHARS = 40000
 
 
 def _normalise_text(value):
@@ -262,18 +269,16 @@ def _select_rows(frame, terms, limit=_MAX_ROWS_PER_TABLE):
 def _format_rows(label, rows):
     if not rows:
         return f"{label}: no saved records available."
-    lines = [f"{label} ({len(rows)} selected record(s)):"]
+    lines = [f"{label} ({len(rows)} retrieved record(s)):"]
     for row in rows:
         parts = []
         for key, value in row.items():
             text = _normalise_text(value)
-            if not text:
-                continue
-            text = re.sub(r"\s+", " ", text)[:240]
+            text = re.sub(r"\s+", " ", text) if text else "(blank)"
             parts.append(f"{key}={text}")
         line = "; ".join(parts)
         if line:
-            lines.append("- " + line[:_MAX_ROW_CHARS])
+            lines.append("- " + line)
     return "\n".join(lines)
 
 
@@ -306,6 +311,13 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
     # Broad questions receive a compact cross-workspace view; specific questions
     # receive only tables whose subject matches the question.
     broad = any(word in q for word in ("overview", "summarise", "summary", "all risks", "overall", "across", "workspace"))
+    comprehensive = broad or any(
+        phrase in q for phrase in (
+            "compare", "versus", " vs ", "entire dataset", "whole dataset",
+            "all records", "all data", "all suppliers", "supplier risk",
+            "supplier with risk", "suppliers at risk",
+        )
+    )
     if broad:
         selected_names = [(key, value[0]) for key, value in _TABLES.items()]
 
@@ -315,7 +327,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         f"Authenticated company workspace: {company}",
         f"Reporting currency: {currency}",
         f"User question: {question}",
-        "Retrieval scope: current active company workspace; selected rows only. This is not a complete export.",
+        "Retrieval scope: current active company workspace. Relevant workspace tables and matching normalized dataset records are retrieved across available rows and fields; the context-size limit may still omit lower-priority content, which is reported below.",
     ]
     run_log = workspace.get("log") or {}
     detectors = run_log.get("detectors") or {}
@@ -341,7 +353,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         frame = workspace.get(pack_key)
         if isinstance(frame, pd.DataFrame) and not frame.empty:
             available.add(key)
-        rows = _select_rows(frame, terms, limit=3 if broad else 10)
+        rows = _select_rows(frame, [] if comprehensive else terms, limit=(len(frame) if comprehensive and isinstance(frame, pd.DataFrame) else (3 if broad else 10)))
         sections.append(_format_rows(key.replace("_", " ").title(), rows))
 
     if "findings" in available:
@@ -352,7 +364,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
             ids = set(finding_frame["finding_id"].dropna().astype(str))
         if isinstance(evidence_frame, pd.DataFrame) and "finding_id" in evidence_frame.columns and ids:
             linked = evidence_frame[evidence_frame["finding_id"].astype(str).isin(ids)]
-            evidence_rows = _select_rows(linked, terms, limit=6)
+            evidence_rows = _select_rows(linked, [] if comprehensive else terms, limit=(len(linked) if comprehensive else 6))
             sections.append(_format_rows("Linked evidence", evidence_rows))
 
     if cases is not None:
@@ -367,7 +379,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
                     " ".join(str(x) for x in case.get("history", [])[-3:]),
                 ])
                 case_question = any(word in q for word in ("case", "action", "investigation", "owner", "assigned"))
-                if broad or case_question or not terms or any(term in blob.casefold() for term in terms):
+                if broad or comprehensive or case_question or not terms or any(term in blob.casefold() for term in terms):
                     case_lines.append(
                         f"- Case {finding_id}: status={case.get('status', 'Unknown')}; "
                         f"owner={case.get('owner', '')}; note={str(case.get('note', ''))[:300]}; "
@@ -378,7 +390,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         sections.append("Cases and actions:\n" + ("\n".join(case_lines) if case_lines else "No matching saved case records."))
 
     if company_id:
-        _append_saved_dataset_context(sections, company_id, question, terms, broad)
+        _append_saved_dataset_context(sections, company_id, question, terms, comprehensive)
 
     missing = [
         key.replace("_", " ") for key, pack_key in selected_names
