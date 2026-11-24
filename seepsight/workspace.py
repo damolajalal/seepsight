@@ -214,7 +214,7 @@ def workspace_picker():
             ids,
             index=ids.index(current_id),
             format_func=lambda value: labels.get(value, value),
-            key="company_dataset_selector",
+            key=f"company_dataset_selector_{company_id}_{current_id}",
         )
         if selected != current_id:
             restored = restore_latest(company_id, selected)
