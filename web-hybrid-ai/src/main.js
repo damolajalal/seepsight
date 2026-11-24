@@ -216,7 +216,7 @@ window.addEventListener('message', (event) => {
     facts: data.verifiedFacts,
     action: data.requestedAction,
   };
-  const limits = { supplier: 160, type: 160, facts: 12000, action: 500 };
+  const limits = { supplier: 160, type: 160, facts: 40000, action: 500 };
   for (const key of Object.keys(fields)) {
     if (typeof values[key] !== 'string' || values[key].length > limits[key]) return;
   }
