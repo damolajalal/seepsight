@@ -48,7 +48,7 @@ if submitted:
                 "context": context,
             }
         except Exception as exc:
-            st.error(f"Could not prepare company evidence for this question: {exc}")
+            st.error("Could not prepare company evidence for this question. Check that your company workspace is available, then refresh and try again.")
 
 pending = st.session_state.get("hybrid_ai_pending_request")
 if isinstance(pending, dict):
