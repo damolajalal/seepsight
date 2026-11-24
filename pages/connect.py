@@ -620,6 +620,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                     f"{details.get('files_combined', 0)} files · "
                     f"{details.get('rows_before_deduplication', 0):,} input rows · "
                     f"{details.get('exact_duplicate_rows_removed', 0):,} exact duplicate rows removed · "
+                    f"{details.get('duplicate_order_ids_removed', 0):,} equivalent PO IDs consolidated · "
                     f"{details.get('rows_after_deduplication', 0):,} rows retained"
                 )
     st.markdown("### Step 5. Review validation results")
