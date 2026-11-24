@@ -1438,7 +1438,14 @@ def get_company_dataset_groups(company_id):
         })
         if not data.get("dataset_group_id"):
             item["all_files_linked"] = False
-        item["files"].append(data.get("filename") or snapshot.id)
+        filename = data.get("filename") or snapshot.id
+        item["files"].append(filename)
+        item.setdefault("file_items", []).append({
+            "dataset_id": snapshot.id,
+            "filename": filename,
+            "dataset_type": data.get("dataset_type"),
+            "source_sha256": data.get("source_sha256"),
+        })
         item["file_count"] += 1
         item["record_count"] += int(data.get("record_count", data.get("normalized_record_count", 0)) or 0)
         item["source_record_count"] += int(data.get("source_record_count", 0) or 0)
