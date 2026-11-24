@@ -58,11 +58,6 @@ def authenticated_pages():
                 icon=":material/task_alt:",
             ),
             st.Page(
-                "pages/ask_hybrid.py",
-                title="Ask Hybrid AI",
-                icon=":material/psychology:",
-            ),
-            st.Page(
                 "pages/ask.py",
                 title="Ask Seepsight",
                 icon=":material/chat:",
