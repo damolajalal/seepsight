@@ -52,7 +52,15 @@ function getAIService() {
 // Cloud fallback is enabled only for the individual request whose user explicitly consented.
 export function createHybridModel(cloudFallbackAllowed) {
   const mode = cloudFallbackAllowed ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_ON_DEVICE;
-  return getGenerativeModel(getAIService(), { mode });
+  return getGenerativeModel(getAIService(), {
+    mode,
+    onDeviceParams: {
+      createOptions: {
+        expectedInputs: [{ type: 'text', languages: ['en'] }],
+        expectedOutputs: [{ type: 'text', languages: ['en'] }],
+      },
+    },
+  });
 }
 
 // Use this only after a local-only attempt failed and the user consented to cloud processing.
