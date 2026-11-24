@@ -39,7 +39,8 @@ if submitted:
         try:
             company_cases = workspace.cases()
             context = hybrid_retrieval.retrieve_workspace_context(
-                w, question.strip(), cases=company_cases
+                w, question.strip(), cases=company_cases,
+                company_id=(st.session_state.get("seepsight_auth") or {}).get("company_id"),
             )
             st.session_state["hybrid_ai_pending_request"] = {
                 "company_name": company_name,
