@@ -147,8 +147,8 @@ class HybridRetrievalTests(unittest.TestCase):
             "scanned_count": 120, "total_count": 120,
             "match_count": 1, "coverage_complete": True, "scan_limited": False,
         }
-        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
-             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \
              patch("seepsight.firestore_db.search_dataset_records", return_value=rows) as search:
             result = retrieve_workspace_context(
                 self.workspace, "Find PO-002", company_id="company-1"
@@ -171,8 +171,8 @@ class HybridRetrievalTests(unittest.TestCase):
             "scanned_count": 1, "total_count": 1,
             "match_count": 1, "coverage_complete": True, "scan_limited": False,
         }
-        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \\
-             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \\
+        with patch("seepsight.firestore_db.get_company_datasets", return_value=[dataset]), \
+             patch("seepsight.firestore_db.get_company_mapping", return_value={}), \
              patch("seepsight.firestore_db.search_dataset_records", return_value=rows) as search:
             retrieve_workspace_context(
                 self.workspace, "Find PO-10", company_id="company-1"
