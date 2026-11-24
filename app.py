@@ -6,7 +6,7 @@ st.set_page_config(
     layout="wide",
 )
 
-from seepsight import auth, ui  # noqa: E402
+from seepsight import auth, ui, workspace  # noqa: E402
 
 
 # Apply the application-wide design system.
@@ -111,6 +111,7 @@ else:
     # Display authenticated account information and branding.
     auth.require_auth()
     ui.sidebar_header()
+    workspace.workspace_picker()
 
     # Render the selected workspace page.
     page.run()
