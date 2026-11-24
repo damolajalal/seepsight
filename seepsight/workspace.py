@@ -309,12 +309,15 @@ def cases():
             "A company login is required to access these cases."
         )
 
+    mine = current()
+    dataset_group_id = mine.get("dataset_group_id") or mine.get("analysis_id")
+    cache_key = f"{company_id}:{dataset_group_id}"
     all_cases = st.session_state.setdefault("cases", {})
 
-    if company_id not in all_cases:
-        all_cases[company_id] = case_store.get_company_cases(company_id)
+    if cache_key not in all_cases:
+        all_cases[cache_key] = case_store.get_company_cases(company_id, dataset_group_id=dataset_group_id)
 
-    return all_cases[company_id]
+    return all_cases[cache_key]
 
 
 def save_case(finding_id, case):
@@ -324,8 +327,11 @@ def save_case(finding_id, case):
         raise PermissionError(
             "A company login is required to update cases."
         )
-    case_store.save_company_case(company_id, finding_id, case)
+    mine = current()
+    dataset_group_id = mine.get("dataset_group_id") or mine.get("analysis_id")
+    case_store.save_company_case(company_id, finding_id, case, dataset_group_id=dataset_group_id)
+    cache_key = f"{company_id}:{dataset_group_id}"
     st.session_state.setdefault("cases", {}).setdefault(
-        company_id, {}
+        cache_key, {}
     )[finding_id] = case
     return True
