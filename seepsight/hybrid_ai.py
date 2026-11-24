@@ -146,6 +146,54 @@ def render_workspace_assistant(company_name, verified_facts, question=""):
 # controls and answer remain native Streamlit elements; this component is a
 # hidden Firebase AI Logic bridge only.
 _NATIVE_AI_JS = r"""
+function hasUnsupportedNumbers(answer, prompt) {
+  const evidenceMatch = String(prompt).match(/VERIFIED EVIDENCE FROM THE ACTIVE SEEPSIGHT WORKSPACE:\s*([\s\S]*)$/);
+  const evidence = evidenceMatch ? evidenceMatch[1] : String(prompt);
+  const tokenPattern = /(?:₦|NGN|USD|EUR|GBP|\$|€|£)?\s*\b\d[\d,]*(?:\.\d+)?\s*%?/gi;
+  const parseToken = (token) => {
+    const currency = (token.match(/₦|NGN|USD|EUR|GBP|\$|€|£/i) || [""])[0].toUpperCase();
+    const percent = token.includes("%");
+    const value = Number(token.replace(/₦|NGN|USD|EUR|GBP|\$|€|£|,|%|\s/gi, ""));
+    return Number.isFinite(value) ? { value, currency, percent } : null;
+  };
+  const tokens = (value) => (String(value).match(tokenPattern) || []).map(parseToken).filter(Boolean);
+  const sameFigure = (a, b) => Math.abs(a.value - b.value) < 0.000001 && a.currency === b.currency && a.percent === b.percent;
+  const allowed = tokens(evidence);
+  const unit = "(?:\\s+(?:bags?|units?|items?|pieces?|pcs?|kg|kgs|tonnes?|tons?|cartons?|cases?|packs?|per\\s+[a-z]+))*";
+  const number = "(?:₦|NGN|USD|EUR|GBP|\\$|€|£)?\\s*\\d[\\d,]*(?:\\.\\d+)?%?";
+  const equation = new RegExp("(" + number + ")" + unit + "\\s*([+\\-−×xX*/÷]|plus|minus|times|multiplied by|divided by)\\s*(" + number + ")" + unit + "\\s*=\\s*(" + number + ")" + unit, "g");
+  const derived = [];
+  let match;
+  while ((match = equation.exec(String(answer))) !== null) {
+    const left = parseToken(match[1]);
+    const right = parseToken(match[3]);
+    const stated = parseToken(match[4]);
+    if (!left || !right || !stated) continue;
+    const leftKnown = [...allowed, ...derived].some((item) => sameFigure(item, left));
+    const rightKnown = [...allowed, ...derived].some((item) => sameFigure(item, right));
+    if (!leftKnown || !rightKnown) continue;
+    if (left.currency && right.currency && left.currency !== right.currency) continue;
+    if (left.percent !== right.percent && match[2] !== "*" && match[2] !== "/") continue;
+    let calculated;
+    switch (match[2]) {
+      case "+": case "plus": calculated = left.value + right.value; break;
+      case "-": case "−": case "minus": calculated = left.value - right.value; break;
+      case "*": case "×": case "x": case "X": case "times": case "multiplied by": calculated = left.value * right.value; break;
+      case "/": case "÷": case "divided by": calculated = right.value === 0 ? NaN : left.value / right.value; break;
+      default: continue;
+    }
+    const expectedCurrency = left.currency || right.currency;
+    if (Number.isFinite(calculated) && Math.abs(calculated - stated.value) <= Math.max(0.01, Math.abs(calculated) * 0.000001)
+      && stated.currency === expectedCurrency) {
+      derived.push({ value: stated.value, currency: stated.currency, percent: stated.percent });
+    }
+  }
+  return tokens(answer).some((candidate) => {
+    if (allowed.some((item) => sameFigure(item, candidate))) return false;
+    return !derived.some((item) => sameFigure(item, candidate));
+  });
+}
+
 export default async function (component) {
   const { data, setStateValue } = component;
   if (!data || !data.requestId || !data.prompt) return;
@@ -216,6 +264,9 @@ export default async function (component) {
     }
     if (!data.allowCloud && route !== "on_device") {
       throw new Error("Privacy protection withheld the response because on-device inference was not confirmed.");
+    }
+    if (hasUnsupportedNumbers(text, data.prompt)) {
+      throw new Error("The response introduced a numeric value not present in the verified evidence. The answer was withheld.");
     }
     publish({ status: "success", text, inferenceSource: route });
   } catch (error) {
