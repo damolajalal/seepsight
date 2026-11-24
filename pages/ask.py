@@ -32,7 +32,9 @@ if skipped:
 else:
     st.caption("Answers use your company's latest saved findings, evidence and analysis metrics.")
 
-workspace_key = str(w.get("company_id") or w.get("name") or "company")
+workspace_key = (
+    f"{company_id}:{w.get('dataset_group_id') or w.get('analysis_id') or 'legacy'}"
+)
 chat_key = f"ask_chat_{workspace_key}"
 chat = st.session_state.setdefault(chat_key, [])
 
