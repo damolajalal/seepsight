@@ -1,120 +1,17 @@
-"""Evidence-grounded procurement assistant with visual company analytics."""
+"""Evidence-grounded procurement question and Gemini Hybrid AI workspace."""
 import os
+import uuid
 
-import pandas as pd
 import streamlit as st
 
 from seepsight import ask_engine, hybrid_ai, hybrid_retrieval, ui, workspace
 
 w = workspace.current()
+company_id = w.get("company_id")
 ui.page_header(
     "Ask Seepsight",
-    "Explore your procurement performance, inspect visual trends and ask questions grounded in your company's saved analysis.",
+    "Ask questions grounded in your company's saved procurement analysis and evidence.",
 )
-
-# ---------------------------------------------------------
-# Visual analytics: use only the active company's saved tables.
-# ---------------------------------------------------------
-findings = w.get("findings")
-monthly = w.get("monthly")
-exposure = w.get("exposure")
-
-findings = findings if isinstance(findings, pd.DataFrame) else pd.DataFrame()
-monthly = monthly if isinstance(monthly, pd.DataFrame) else pd.DataFrame()
-exposure = exposure if isinstance(exposure, pd.DataFrame) else pd.DataFrame()
-currency = w.get("cur", "NGN")
-
-st.markdown("### Visual procurement insights")
-st.caption("Charts below are generated from this company's latest saved analysis. A chart is withheld when its required data is unavailable.")
-
-# Time-series charts
-if not monthly.empty and "po_month" in monthly.columns:
-    trend = monthly.copy()
-    trend["po_month"] = trend["po_month"].astype(str)
-    trend = trend.sort_values("po_month").set_index("po_month")
-    trend_cols = st.columns(2)
-
-    with trend_cols[0]:
-        st.markdown("**Monthly purchasing spend**")
-        if "spend" in trend.columns and pd.to_numeric(trend["spend"], errors="coerce").notna().any():
-            spend_series = pd.to_numeric(trend["spend"], errors="coerce").dropna()
-            st.line_chart(spend_series, height=260, y_label=f"Spend ({currency})")
-            st.caption(f"{len(spend_series)} month(s) of purchasing spend.")
-        else:
-            st.info("Monthly spend is not available in the saved analysis.")
-
-    with trend_cols[1]:
-        st.markdown("**Monthly order volume**")
-        if "orders" in trend.columns and pd.to_numeric(trend["orders"], errors="coerce").notna().any():
-            st.bar_chart(pd.to_numeric(trend["orders"], errors="coerce").dropna(), height=260, y_label="Orders")
-            st.caption("Number of purchase orders analysed in each month.")
-        else:
-            st.info("Monthly order counts are not available.")
-
-    performance_cols = st.columns(2)
-    with performance_cols[0]:
-        st.markdown("**Average delivery delay by month**")
-        if "avg_days_late" in trend.columns and pd.to_numeric(trend["avg_days_late"], errors="coerce").notna().any():
-            st.line_chart(pd.to_numeric(trend["avg_days_late"], errors="coerce").dropna(), height=230, y_label="Days")
-        else:
-            st.info("Delivery dates are insufficient for a monthly delay trend.")
-
-    with performance_cols[1]:
-        st.markdown("**Average approval turnaround by month**")
-        if "avg_approval_days" in trend.columns and pd.to_numeric(trend["avg_approval_days"], errors="coerce").notna().any():
-            st.line_chart(pd.to_numeric(trend["avg_approval_days"], errors="coerce").dropna(), height=230, y_label="Days")
-        else:
-            st.info("Approval timestamps are insufficient for this trend.")
-else:
-    st.info("A monthly time series cannot be displayed because the saved analysis has no monthly trend records. Reanalyse the connected procurement data after confirming that purchase dates are mapped.")
-
-# Supplier exposure and finding composition
-chart_cols = st.columns(2)
-with chart_cols[0]:
-    st.markdown("**Potential exposure by supplier**")
-    if not exposure.empty and {"supplier", "total"}.issubset(exposure.columns):
-        supplier_chart = exposure[["supplier", "total"]].copy()
-        supplier_chart["total"] = pd.to_numeric(supplier_chart["total"], errors="coerce")
-        supplier_chart = supplier_chart.dropna(subset=["total"]).sort_values("total", ascending=False).head(10)
-        if not supplier_chart.empty:
-            st.bar_chart(supplier_chart.set_index("supplier"), height=300, y_label=f"Potential exposure ({currency})")
-            st.caption("Top 10 suppliers by recorded potential exposure; these are amounts to investigate, not confirmed losses.")
-        else:
-            st.info("No supplier exposure values are available.")
-    else:
-        st.info("Supplier-level exposure is not available in this analysis.")
-
-with chart_cols[1]:
-    st.markdown("**Findings by issue type**")
-    if not findings.empty and "finding_type" in findings.columns:
-        type_counts = findings["finding_type"].fillna("Unclassified").value_counts().rename("Findings")
-        st.bar_chart(type_counts, height=300, y_label="Number of findings")
-    else:
-        st.info("No finding categories are available to chart.")
-
-severity_cols = st.columns(2)
-with severity_cols[0]:
-    st.markdown("**Findings by priority**")
-    if not findings.empty and "severity" in findings.columns:
-        severity_counts = findings["severity"].fillna("Unclassified").value_counts().rename("Findings")
-        st.bar_chart(severity_counts, height=240, y_label="Number of findings")
-    else:
-        st.info("Finding priority data is not available.")
-
-with severity_cols[1]:
-    st.markdown("**Potential exposure by issue type**")
-    if not findings.empty and {"finding_type", "identified_exposure"}.issubset(findings.columns):
-        issue_exposure = findings[["finding_type", "identified_exposure"]].copy()
-        issue_exposure["identified_exposure"] = pd.to_numeric(issue_exposure["identified_exposure"], errors="coerce").fillna(0)
-        issue_exposure = issue_exposure.groupby("finding_type")["identified_exposure"].sum().sort_values(ascending=False)
-        if issue_exposure.abs().sum() > 0:
-            st.bar_chart(issue_exposure, height=240, y_label=f"Potential exposure ({currency})")
-        else:
-            st.info("The saved findings do not contain a positive exposure amount.")
-    else:
-        st.info("Exposure by issue type cannot be calculated from the saved fields.")
-
-st.divider()
 
 # ---------------------------------------------------------
 # Grounded question answering
@@ -135,7 +32,9 @@ if skipped:
 else:
     st.caption("Answers use your company's latest saved findings, evidence and analysis metrics.")
 
-workspace_key = str(w.get("company_id") or w.get("name") or "company")
+workspace_key = (
+    f"{company_id}:{w.get('dataset_group_id') or w.get('analysis_id') or 'legacy'}"
+)
 chat_key = f"ask_chat_{workspace_key}"
 chat = st.session_state.setdefault(chat_key, [])
 
@@ -178,84 +77,182 @@ if question:
 
 
 # ---------------------------------------------------------
-# Integrated Firebase Hybrid AI assistant
+# Native Firebase Hybrid AI assistant (no iframe / no nested app)
 # ---------------------------------------------------------
 st.divider()
 st.markdown("### Ask Seepsight with Gemini Hybrid AI")
 st.caption(
-    "Use the same Ask Seepsight workspace to ask evidence-based questions. "
-    "Relevant saved records are retrieved from the active company before they are sent "
-    "to Firebase AI Logic. Cloud fallback remains subject to the consent choice in the panel."
+    "Ask a follow-up using evidence retrieved from the active company workspace. "
+    "Gemini explains the evidence; Seepsight remains the source of verified figures."
 )
 
-hybrid_request_key = f"ask_hybrid_pending_{workspace_key}"
-with st.form(f"ask_hybrid_form_{workspace_key}", clear_on_submit=False):
+latest_question = ""
+latest_answer = ""
+latest_table = None
+if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
+    latest_question = str(chat[-2].get("content") or "")
+    latest_answer = str(chat[-1].get("content") or "")
+    latest_table = chat[-1].get("table")
+
+hybrid_form_key = f"ask_hybrid_form_{workspace_key}_{len(chat)}"
+hybrid_question_key = f"ask_hybrid_question_{workspace_key}_{len(chat)}"
+hybrid_consent_key = f"ask_hybrid_consent_{workspace_key}_{len(chat)}"
+hybrid_pending_key = f"ask_hybrid_pending_{workspace_key}"
+hybrid_response_key = f"ask_hybrid_response_{workspace_key}"
+hybrid_review_key = f"ask_hybrid_review_{workspace_key}"
+
+with st.form(hybrid_form_key, clear_on_submit=False):
     hybrid_question = st.text_area(
-        "Question for the Hybrid AI assistant",
-        key=f"ask_hybrid_question_{workspace_key}",
+        "Question for Gemini Hybrid AI",
+        value=latest_question,
+        key=hybrid_question_key,
         max_chars=500,
         height=90,
-        placeholder="e.g. Compare Cedarline Traders and Northstar Supplies using all available evidence.",
+        placeholder="e.g. Why does this supplier rank highest, and what evidence should finance review?",
+    )
+    allow_cloud = st.checkbox(
+        "I consent to cloud fallback for this request if on-device inference cannot run.",
+        value=False,
+        key=hybrid_consent_key,
+    )
+    st.caption(
+        "On-device inference requires a supported desktop Chrome environment. "
+        "Cloud processing is disabled unless you explicitly give consent above."
     )
     hybrid_submitted = st.form_submit_button(
-        "Prepare evidence for Gemini",
+        "Ask Gemini Hybrid AI",
         type="primary",
         use_container_width=True,
     )
 
 if hybrid_submitted:
-    st.session_state.pop(hybrid_request_key, None)
-    if not hybrid_question.strip():
-        st.warning("Enter a question first.")
+    question_text = str(hybrid_question or "").strip()
+    if not question_text:
+        st.warning("Enter a question for Gemini Hybrid AI first.")
     else:
         try:
-            company_cases = workspace.cases()
-            # workspace.current() has already verified this workspace belongs to the signed-in company.
-            company_id = w.get("company_id")
             retrieved_context = hybrid_retrieval.retrieve_workspace_context(
                 w,
-                hybrid_question.strip(),
-                cases=company_cases,
+                question_text,
+                cases=workspace.cases(),
                 company_id=company_id,
             )
-            if not str(retrieved_context or "").strip():
-                st.warning("No relevant saved company evidence was retrieved. Connect or refresh your data before asking Hybrid AI.")
+            evidence = str(retrieved_context or "").strip()
+            if not evidence:
+                st.warning(
+                    "No relevant saved company evidence was retrieved. "
+                    "Connect or refresh your data before asking Gemini Hybrid AI."
+                )
             else:
-                st.session_state[hybrid_request_key] = {
-                    "question": hybrid_question.strip(),
-                    "context": retrieved_context,
-                    "company_name": str(w.get("name") or "Your company"),
+                # Include the deterministic answer and its displayed table only
+                # when this AI request explains the same latest Ask Seepsight question.
+                if latest_question and question_text.casefold() == latest_question.casefold():
+                    evidence += "\n\nDeterministic Ask Seepsight answer:\n" + latest_answer
+                    if latest_table is not None:
+                        try:
+                            table_text = latest_table.to_string(
+                                index=False, max_rows=25, max_cols=12
+                            )
+                        except (AttributeError, TypeError, ValueError):
+                            table_text = ""
+                        if table_text:
+                            evidence += "\n\nSupporting result table displayed by Seepsight:\n"
+                            evidence += table_text[:12000]
+
+                st.session_state[hybrid_review_key] = {
+                    "question": question_text,
+                    "context": evidence[:40000],
+                    "allow_cloud": bool(allow_cloud),
                 }
+                st.session_state.pop(hybrid_pending_key, None)
+                st.session_state.pop(hybrid_response_key, None)
+        except ValueError as exc:
+            st.warning(str(exc))
         except Exception:
             st.error(
-                "Could not prepare evidence from the active company workspace. "
+                "Could not retrieve evidence from the active company workspace. "
                 "Refresh the workspace and try again."
             )
 
-hybrid_pending = st.session_state.get(hybrid_request_key)
-if isinstance(hybrid_pending, dict):
-    st.caption("Evidence retrieved from the active company's saved workspace:")
-    with st.expander("Review retrieved evidence before sending", expanded=False):
-        st.text(hybrid_pending.get("context", ""))
-    hybrid_ai.render_workspace_assistant(
-        hybrid_pending["company_name"],
-        hybrid_pending["context"],
-        question=hybrid_pending["question"],
-    )
+review_payload = st.session_state.get(hybrid_review_key)
+if isinstance(review_payload, dict):
+    with st.expander("Review retrieved evidence before sending", expanded=True):
+        st.caption("Check the company evidence below. Only this retrieved context will be sent to Gemini.")
+        st.text_area(
+            "Retrieved evidence",
+            value=review_payload.get("context", ""),
+            height=260,
+            disabled=True,
+            key=f"ask_hybrid_review_context_{workspace_key}_{len(chat)}",
+        )
+        if st.button("Send reviewed evidence to Gemini", type="primary", key=f"send_reviewed_hybrid_evidence_{workspace_key}"):
+            try:
+                prompt = hybrid_ai.build_native_prompt(review_payload.get("question", ""), review_payload.get("context", ""))
+                st.session_state[hybrid_pending_key] = {
+                    "request_id": uuid.uuid4().hex,
+                    "prompt": prompt,
+                    "allow_cloud": bool(review_payload.get("allow_cloud")),
+                }
+                st.session_state.pop(hybrid_review_key, None)
+                st.session_state.pop(hybrid_response_key, None)
+                st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
 
-if len(chat) >= 2 and chat[-2].get("role") == "user" and chat[-1].get("role") == "assistant":
-    with st.expander("Explain the latest answer with Hybrid AI", expanded=False):
-        st.caption(
-            "Hybrid AI receives the latest question and Seepsight's deterministic, "
-            "company-scoped answer—not the full conversation or source dataset."
-        )
-        hybrid_ai.render_answer_explainer(
-            chat[-2].get("content", ""),
-            chat[-1].get("content", ""),
-            w.get("name", "Your company"),
-        )
+hybrid_pending = st.session_state.get(hybrid_pending_key)
+if isinstance(hybrid_pending, dict):
+    component_result = hybrid_ai.render_native_ai_request(
+        hybrid_pending,
+        key=f"native_hybrid_engine_{workspace_key}",
+    )
+    component_response = (
+        getattr(component_result, "response", None)
+        if component_result is not None
+        else None
+    )
+    if (
+        isinstance(component_response, dict)
+        and component_response.get("requestId") == hybrid_pending.get("request_id")
+    ):
+        st.session_state[hybrid_response_key] = component_response
+
+    hybrid_response = st.session_state.get(hybrid_response_key)
+    if (
+        isinstance(hybrid_response, dict)
+        and hybrid_response.get("requestId") == hybrid_pending.get("request_id")
+    ):
+        st.markdown("#### Gemini Hybrid AI response")
+        if hybrid_response.get("status") == "success":
+            st.markdown(hybrid_response.get("text", ""))
+            route = hybrid_response.get("inferenceSource")
+            if route == "on_device":
+                st.caption("Processed on this device. Firebase AI Logic confirmed the on-device route.")
+            elif route == "in_cloud":
+                st.caption("Processed in the cloud through Firebase AI Logic after your consent.")
+        else:
+            st.warning(
+                "Gemini Hybrid AI could not complete this request. "
+                "Your original Seepsight answer and evidence have not been changed."
+            )
+            if hybrid_response.get("message"):
+                st.caption(hybrid_response["message"])
+    elif component_result is not None:
+        st.info("Gemini Hybrid AI is preparing an evidence-based response. This may take a moment.")
+
+with st.expander("Standalone Hybrid AI testing"):
+    st.caption(
+        "The standalone studio remains available for separate browser testing. "
+        "The main Ask Seepsight experience above no longer embeds it."
+    )
+    st.link_button(
+        "Open standalone Hybrid AI Studio",
+        os.getenv("SEEPSIGHT_HYBRID_AI_URL", "https://seepsight-hybrid-ai.web.app/"),
+    )
 
 if chat:
     if st.button("Clear conversation", key=f"clear_{workspace_key}"):
         st.session_state[chat_key] = []
+        st.session_state.pop(hybrid_pending_key, None)
+        st.session_state.pop(hybrid_review_key, None)
+        st.session_state.pop(hybrid_response_key, None)
         st.rerun()
