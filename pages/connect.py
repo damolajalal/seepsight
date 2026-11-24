@@ -388,6 +388,10 @@ if st.button("Clear uploaded files and start again", key="clear_connect_uploads"
 for message in st.session_state.get("connect_load_errors", []):
     st.error(message)
 
+if target_group_id and not st.session_state.get("connect_raw"):
+    st.info("Upload at least one new complementary file before extending this saved dataset.")
+    st.stop()
+
 raw = dict(st.session_state.get("connect_raw", {}))
 source_file_bytes = dict(st.session_state.get("connect_source_file_bytes", {}))
 saved_file_kinds = {}
