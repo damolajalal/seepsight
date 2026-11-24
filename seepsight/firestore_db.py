@@ -1420,8 +1420,6 @@ def search_dataset_records(
     limit=10, scan_limit=1500,
 ):
     """Search a bounded prefix of a tenant-owned dataset without loading all rows."""
-    from google.cloud.firestore_v1 import Query
-
     if collection_name not in {"records", "source_records"}:
         raise ValueError("collection_name must be 'records' or 'source_records'.")
     if not isinstance(limit, int) or limit < 1 or limit > 25:
