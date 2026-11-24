@@ -12,7 +12,8 @@ from seepsight import hybrid_ai
 
 class HybridAIHandoffTests(unittest.TestCase):
     @patch("seepsight.hybrid_ai.st.components.v1.html")
-    def test_only_bounded_verified_context_is_embedded(self, render):
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_only_bounded_verified_context_is_embedded(self, link_button, render):
         with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
             hybrid_ai.render_verified_context(
                 "Northstar Supplies",
@@ -28,10 +29,13 @@ class HybridAIHandoffTests(unittest.TestCase):
         self.assertEqual(payload["findingType"], "Invoice price above PO price")
         self.assertEqual(payload["verifiedFacts"], "Potential extra cost to review: NGN 120,000.00.")
         self.assertIn("postMessage(payload, 'https://example.web.app')", html)
+        self.assertIn('allow="language-model"', html)
+        link_button.assert_called_once_with("Open Hybrid AI separately for on-device testing", "https://example.web.app/")
 
     @patch("seepsight.hybrid_ai.st.info")
     @patch("seepsight.hybrid_ai.st.components.v1.html")
-    def test_non_https_companion_is_not_embedded(self, render, info):
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_non_https_companion_is_not_embedded(self, link_button, render, info):
         with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "http://example.web.app/"}):
             hybrid_ai.render_verified_context("Supplier", "Finding", "Verified facts", "Explain")
         render.assert_not_called()
@@ -39,7 +43,8 @@ class HybridAIHandoffTests(unittest.TestCase):
 
     @patch("seepsight.hybrid_ai.st.warning")
     @patch("seepsight.hybrid_ai.st.components.v1.html")
-    def test_empty_evidence_is_not_sent(self, render, warning):
+    @patch("seepsight.hybrid_ai.st.link_button")
+    def test_empty_evidence_is_not_sent(self, link_button, render, warning):
         with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
             hybrid_ai.render_verified_context("Supplier", "Finding", " ", "Explain")
         render.assert_not_called()
