@@ -155,6 +155,28 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertFalse(result["coverage_complete"])
         self.assertTrue(result["scan_limited"])
 
+    def test_search_complete_no_match_is_distinguished_from_partial_scan(self):
+        metadata = MagicMock(exists=True)
+        metadata.to_dict.return_value = {"records_status": "complete", "record_count": 2}
+        self.dataset_ref.get.return_value = metadata
+        snapshots = []
+        for number in range(2):
+            row = MagicMock()
+            row.to_dict.return_value = {
+                "po_id": f"PO-{number}", "supplier": "Other Supplier",
+                "_record_number": number,
+            }
+            snapshots.append(row)
+
+        with patch.object(firestore_db, "_stream_query_pages", return_value=iter(snapshots)):
+            result = firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["Missing Supplier"], limit=5
+            )
+
+        self.assertEqual(result["match_count"], 0)
+        self.assertTrue(result["coverage_complete"])
+        self.assertFalse(result["scan_limited"])
+
     def test_dataset_deletion_recursively_removes_company_records(self):
         snapshot = MagicMock(exists=True)
         snapshot.to_dict.return_value = {"storage": None}
