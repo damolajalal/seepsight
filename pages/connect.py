@@ -285,6 +285,37 @@ if saved_groups:
 else:
     st.caption("No saved procurement datasets yet.")
 
+extendable_groups = [
+    item for item in saved_groups
+    if item.get("deletion_safe") and item.get("file_items")
+]
+upload_mode = st.radio(
+    "How should this upload be handled?",
+    ["Create a separate dataset", "Add complementary files to an existing dataset"],
+    horizontal=True,
+    key="connect_upload_mode",
+    disabled=not bool(extendable_groups),
+    help="Combining currently supports adding a new procurement dataset type to an existing group. Duplicate dataset types remain blocked to prevent accidental double-counting.",
+)
+target_group_id = None
+if upload_mode == "Add complementary files to an existing dataset" and extendable_groups:
+    group_labels = {
+        item["dataset_group_id"]: (
+            f"{item.get('company_name') or 'Dataset'} · "
+            f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+        )
+        for item in extendable_groups
+    }
+    target_group_id = st.selectbox(
+        "Choose the dataset to extend",
+        list(group_labels),
+        format_func=lambda value: group_labels[value],
+        key="connect_extend_dataset_group",
+    )
+    st.info("Seepsight will reload the saved original files, add your new complementary file types, and rebuild one combined analysis. Existing files are retained.")
+elif not extendable_groups:
+    st.caption("Create a separate dataset for now. No saved dataset with complete source-file links is available to extend.")
+
 st.divider()
 
 st.markdown("### Step 1. Choose your data")
