@@ -70,6 +70,30 @@ class HybridAIHandoffTests(unittest.TestCase):
     @patch("seepsight.hybrid_ai.st.warning")
     @patch("seepsight.hybrid_ai.st.components.v1.html")
     @patch("seepsight.hybrid_ai.st.link_button")
+    def test_native_prompt_includes_evidence_and_anti_invention_rules(self):
+        prompt = hybrid_ai.build_native_prompt(
+            "Which supplier has the highest potential exposure?",
+            "Northstar Supplies: NGN 220,000.00. This is not a confirmed loss.",
+        )
+        self.assertIn("Northstar Supplies: NGN 220,000.00.", prompt)
+        self.assertIn("Which supplier has the highest potential exposure?", prompt)
+        self.assertIn("Do not invent suppliers", prompt)
+        self.assertIn("transaction-level evidence was not included", prompt)
+
+    def test_native_prompt_rejects_empty_evidence(self):
+        with self.assertRaises(ValueError):
+            hybrid_ai.build_native_prompt("What is the risk?", " ")
+
+    def test_native_prompt_rejects_oversized_evidence(self):
+        with self.assertRaises(ValueError):
+            hybrid_ai.build_native_prompt("What is the risk?", "x" * 40001)
+
+    def test_native_bridge_is_not_an_iframe(self):
+        self.assertIsNotNone(hybrid_ai._NATIVE_AI_COMPONENT)
+        self.assertIn("firebase-ai.js", hybrid_ai._NATIVE_AI_JS)
+        self.assertIn("setStateValue", hybrid_ai._NATIVE_AI_JS)
+        self.assertNotIn("<iframe", hybrid_ai._NATIVE_AI_JS)
+
     def test_workspace_assistant_does_not_send_empty_summary(self, link_button, render, warning):
         with patch.dict(os.environ, {"SEEPSIGHT_HYBRID_AI_URL": "https://example.web.app/"}):
             hybrid_ai.render_workspace_assistant("Northstar Supplies", "")
