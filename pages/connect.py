@@ -450,7 +450,7 @@ for filename, frame in raw.items():
                 "Saved procurement information type",
                 labels,
                 index=labels.index(DATASET_LABELS[saved_kind]),
-                key=f"dataset_type_{hashlib.sha1(filename.encode()).hexdigest()[:10]}",
+                key=f"dataset_type_{target_group_id or 'new'}_{hashlib.sha1(filename.encode()).hexdigest()[:10]}",
                 disabled=True,
             )
         else:
@@ -510,7 +510,7 @@ if single_file:
     fields = engine.FLAT_FIELDS
     with st.expander(f"Map columns in {filename}", expanded=True):
         one_overrides, one_selected = _mapping_editor(
-            frame, fields, "connect_single_map", engine.REQUIRED,
+            frame, fields, f"connect_single_map_{target_group_id or 'new'}", engine.REQUIRED,
             saved_file_mappings.get(filename),
         )
     mapping_overrides = one_overrides
@@ -522,7 +522,7 @@ else:
         with st.expander(f"{CORE_DATASETS[kind]} · {filename}", expanded=(kind == "orders")):
             required_fields = engine.REQUIRED if kind == "orders" else engine.DATASET_REGISTRY[kind].get("required", [])
             overrides, selected = _mapping_editor(
-                frame, fields, f"map_{kind}", required_fields,
+                frame, fields, f"map_{kind}_{target_group_id or 'new'}", required_fields,
                 saved_file_mappings.get(filename),
             )
         mapping_overrides[kind] = overrides
