@@ -4,13 +4,12 @@ from seepsight import plain, ui, workspace
 
 w = workspace.current()
 cur = w["cur"]
-ui.page_header("Suppliers", "Which suppliers may need your attention, and how their deliveries are changing.")
+ui.page_header("Suppliers", "Review supplier exposure, performance records and suppliers that may need attention.")
 ex = w["exposure"]
 if ex is not None and len(ex):
     st.markdown("### Potential extra cost to review, by supplier")
     show = ex.rename(columns={**plain.CHECK_LABELS, "supplier": "Supplier", "total": "Total to review"})
     st.dataframe(show.style.format({c: "{:,.0f}" for c in show.columns if c != "Supplier"}), hide_index=True, width="stretch")
-    st.bar_chart(ex.set_index("supplier")["total"], height=240, color="#0f8b7d")
     st.caption(f"Amounts are in {cur}. They are amounts to review, not confirmed losses.")
 else:
     st.info("No supplier had a potential extra cost to review in these records.")
@@ -22,11 +21,26 @@ if len(watch):
         st.warning(plain.what_we_found(r, None, cur))
 
 sm = w["supplier_month"]
-st.markdown("### How a supplier's deliveries are changing")
-sup = st.selectbox("Choose a supplier", sorted(sm["supplier"].unique()))
-d = sm[sm["supplier"] == sup].set_index("po_month")
-a, b = st.columns(2)
-a.markdown("**Average days late**")
-a.line_chart(d["avg_days_late"], height=200, color="#1d6fb8")
-b.markdown("**Share of ordered goods that arrived**")
-b.line_chart(d["fill_rate"], height=200, color="#15803d")
+st.markdown("### Monthly delivery performance records")
+if sm is not None and len(sm):
+    suppliers = sorted(sm["supplier"].dropna().astype(str).unique())
+    if suppliers:
+        sup = st.selectbox("Choose a supplier", suppliers)
+        monthly = sm[sm["supplier"].astype(str) == sup].sort_values("po_month").copy()
+        display_columns = [
+            column for column in ["po_month", "avg_days_late", "fill_rate"]
+            if column in monthly.columns
+        ]
+        labels = {
+            "po_month": "Month",
+            "avg_days_late": "Average days late",
+            "fill_rate": "Share of ordered goods received",
+        }
+        st.dataframe(
+            monthly[display_columns].rename(columns=labels),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption("Trend charts are available on the Findings page; this page keeps the supplier-level records.")
+else:
+    st.info("Monthly delivery performance records are not available for this workspace.")
