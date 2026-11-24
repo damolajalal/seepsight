@@ -1039,14 +1039,16 @@ def combine_dataset_frames(dataset_name, frames):
     input_rows = len(combined)
     combined = combined.drop_duplicates(keep="first").reset_index(drop=True)
     exact_duplicates_removed = input_rows - len(combined)
+    duplicate_order_ids_removed = 0
 
     if dataset_name == "orders" and "po_id" in combined.columns:
         keys = _id_key(combined["po_id"])
         duplicate_mask = keys.notna() & keys.duplicated(keep=False)
         if duplicate_mask.any():
             conflicts = []
+            compare_columns = [column for column in combined.columns if column != "po_id"]
             for key, rows in combined.loc[duplicate_mask].groupby(keys[duplicate_mask], sort=False):
-                if len(rows.drop_duplicates()) > 1:
+                if len(rows[compare_columns].drop_duplicates()) > 1:
                     conflicts.append(str(rows["po_id"].iloc[0]))
                 if len(conflicts) >= 5:
                     break
@@ -1057,11 +1059,17 @@ def combine_dataset_frames(dataset_name, frames):
                     f"({examples}). Resolve those records before combining; Seepsight will not "
                     "choose one version automatically."
                 )
+            before_key_dedup = len(combined)
+            combined = combined.loc[
+                ~keys.duplicated(keep="first")
+            ].reset_index(drop=True)
+            duplicate_order_ids_removed = before_key_dedup - len(combined)
 
     return combined, {
         "files_combined": len(frames),
         "rows_before_deduplication": input_rows,
         "exact_duplicate_rows_removed": exact_duplicates_removed,
+        "duplicate_order_ids_removed": duplicate_order_ids_removed,
         "rows_after_deduplication": len(combined),
     }
 
