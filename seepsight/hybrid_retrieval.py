@@ -191,7 +191,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
             if include_source:
                 source_terms = [
                     term for term in terms
-                    if term not in {"source", "data", "raw", "original", "row", "rows", "uploaded", "columns"}
+                    if term not in {"source", "data", "raw", "original", "row", "rows", "uploaded", "columns", "orders", "order", "purchase", "po"}
                 ]
                 source = firestore_db.search_dataset_records(
                     company_id, dataset_id, source_terms, collection_name="source_records",
