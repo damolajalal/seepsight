@@ -192,7 +192,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, broad):
                 if source.get("scan_limited"):
                     sections.append(f"{dataset_type}: source-row search was bounded and may not cover later records.")
         except (FileNotFoundError, RuntimeError, ValueError, PermissionError) as exc:
-            sections.append(f"{dataset_type}: saved rows could not be retrieved ({str(exc)[:180]}).")
+            sections.append(f"{dataset_type}: saved rows could not be retrieved because the data source was unavailable or incomplete.")
 
 
 _MAX_ROWS_PER_TABLE = 18
