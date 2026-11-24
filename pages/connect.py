@@ -340,7 +340,7 @@ if uploaded:
         st.session_state["connect_load_errors"] = errors
 
 if st.button("Clear uploaded files and start again", key="clear_connect_uploads"):
-    for key in ("connect_raw", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors"):
+    for key in ("connect_raw", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
         st.session_state.pop(key, None)
     st.session_state.pop("_done", None)
     st.rerun()
@@ -448,6 +448,12 @@ check_signature = hashlib.sha256(repr(signature_payload).encode("utf-8")).hexdig
 if st.session_state.get("connect_check_signature") != check_signature:
     st.session_state.pop("connect_check", None)
     st.session_state.pop("_done", None)
+
+if st.session_state.get("connect_dataset_group_signature") != check_signature:
+    st.session_state["connect_dataset_group_signature"] = check_signature
+    st.session_state["connect_dataset_group_id"] = uuid.uuid4().hex
+
+dataset_group_id = st.session_state["connect_dataset_group_id"]
 
 st.markdown("### Step 4. Validate your procurement records")
 st.caption("The check uses the mappings shown above. Review uncertain matches before proceeding.")
@@ -591,7 +597,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         source_bytes = st.session_state["connect_source_file_bytes"][source_filename]
                         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
                         upload_id = hashlib.sha256(
-                            (check_signature + ":" + source_filename + ":" + source_sha256).encode("utf-8")
+                            (dataset_group_id + ":" + source_filename + ":" + source_sha256).encode("utf-8")
                         ).hexdigest()[:32]
                         dataset_kind = kinds[source_filename]
                         dataset_metadata = {
@@ -600,7 +606,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             "status": "saving",
                             "record_count": int(len(source_frame)),
                             "source_sha256": source_sha256,
-                            "dataset_group_id": check_signature,
+                            "dataset_group_id": dataset_group_id,
                             "company_name": company_name,
                         }
                         normalized_tables = result.get("normalized_tables", {})
@@ -641,8 +647,8 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                     st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
                     st.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
-                    analysis_id = check_signature
-                    pack["dataset_group_id"] = analysis_id
+                    analysis_id = dataset_group_id
+                    pack["dataset_group_id"] = dataset_group_id
                     workspace.persist(pack, analysis_id)
                     pack["analysis_id"] = analysis_id
                     st.session_state["mine"] = pack
