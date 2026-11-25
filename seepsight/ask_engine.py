@@ -118,6 +118,39 @@ def answer_question(workspace, question):
             )
         return finish("Supplier-level exposure is not available in the saved analysis.")
 
+    # Monthly purchasing-spend trend from the saved analysis table.
+    if _contains(text, [r"spend.*(?:over time|trend|month|change)", r"how.*spend.*change", r"purchas(?:ing|e).*spend.*(?:trend|change|over time)", r"monthly spend"]):
+        if monthly.empty:
+            return finish("The saved analysis does not contain a monthly purchasing-spend table, so I can't establish a spend trend. Re-run the analysis with dated purchase-order records.")
+        month_col = next((col for col in ("po_month", "month", "period", "month_start", "date") if col in monthly.columns), None)
+        spend_col = next((col for col in ("spend", "total_spend", "purchasing_spend", "amount") if col in monthly.columns), None)
+        if not month_col or not spend_col:
+            return finish("The saved monthly table is missing a recognized month or spend field. I can't safely calculate a purchasing-spend trend from it.")
+        trend = monthly[[month_col, spend_col]].copy()
+        trend[spend_col] = pd.to_numeric(trend[spend_col], errors="coerce")
+        trend["_period"] = pd.to_datetime(trend[month_col], errors="coerce")
+        trend = trend.dropna(subset=["_period", spend_col]).sort_values("_period")
+        if trend.empty:
+            return finish("The saved monthly table contains no valid month-and-spend values, so I can't establish a trend.")
+        trend = trend.groupby("_period", as_index=False)[spend_col].sum().sort_values("_period")
+        trend[month_col] = trend["_period"].dt.strftime("%Y-%m")
+        trend = trend[[month_col, spend_col]].rename(columns={month_col: "Month", spend_col: "Purchasing spend"})
+        first = float(trend.iloc[0]["Purchasing spend"])
+        latest = float(trend.iloc[-1]["Purchasing spend"])
+        first_month = str(trend.iloc[0]["Month"])
+        latest_month = str(trend.iloc[-1]["Month"])
+        if len(trend) == 1:
+            message = f"The saved analysis contains purchasing spend for {latest_month} only: {_money(currency, latest)}. One month is not enough to establish whether spend increased or decreased over time."
+        else:
+            change = latest - first
+            if first != 0:
+                pct = (change / abs(first)) * 100
+                direction = "increased" if change > 0 else "decreased" if change < 0 else "remained unchanged"
+                message = f"Purchasing spend {direction} by {_money(currency, abs(change))} ({abs(pct):.1f}%) between {first_month} and {latest_month}, from {_money(currency, first)} to {_money(currency, latest)}. This compares the first and latest months in the saved analysis; it does not by itself explain why spend changed."
+            else:
+                message = f"Purchasing spend changed by {_money(currency, change)} between {first_month} and {latest_month}, from {_money(currency, first)} to {_money(currency, latest)}. The first month's spend is zero, so a percentage change is not meaningful."
+        return finish(message, trend)
+
     # Total financial exposure and spend.
     if _contains(text, [r"how much", r"total.*(?:exposure|overpay|saving|spend|cost)", r"(?:exposure|overpayment).*(?:total|amount)", r"financial impact"]):
         amount = pd.to_numeric(findings.get("identified_exposure", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
