@@ -122,16 +122,17 @@ def persist(pack, analysis_id):
         else:
             raise TypeError(f"Workspace table '{name}' is not a DataFrame.")
     summary = {"company_name": pack.get("name", ""), "currency": pack.get("cur", "NGN"), "run_log": pack.get("log", {}), "kind": pack.get("kind", "company")}
-    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables)
+    dataset_group_id = pack.get("dataset_group_id")
+    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_group_id=dataset_group_id)
 
 
-def restore_latest(company_id):
+def restore_latest(company_id, analysis_id=None):
     """Rebuild a dashboard workspace from the authenticated company's latest run."""
-    saved = firestore_db.get_latest_analysis_workspace(company_id)
+    saved = firestore_db.get_latest_analysis_workspace(company_id, analysis_id=analysis_id)
     if not saved:
         return None
     summary, tables = saved["summary"], saved["tables"]
-    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"]}
+    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"], "dataset_group_id": summary.get("dataset_group_id")}
     for name in ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard"):
         pack[name] = pd.DataFrame(tables.get(name, []))
     return pack
@@ -193,16 +194,48 @@ def workspace_picker():
         return
 
     mine = st.session_state.get("mine")
+    try:
+        saved_workspaces = firestore_db.get_company_analysis_workspaces(company_id)
+    except Exception:
+        saved_workspaces = []
 
-    if (
-        isinstance(mine, dict)
-        and mine.get("company_id") == company_id
-    ):
-        workspace_name = mine.get("name", company_name or "Your company")
-
+    if saved_workspaces:
+        labels = {}
+        for item in saved_workspaces:
+            updated = item.get("updated_at")
+            stamp = updated.strftime("%Y-%m-%d %H:%M") if hasattr(updated, "strftime") else item["analysis_id"][:8]
+            labels[item["analysis_id"]] = f'{item.get("company_name") or company_name or "Dataset"} · {stamp}'
+        ids = [item["analysis_id"] for item in saved_workspaces]
+        active_id = mine.get("analysis_id") if isinstance(mine, dict) and mine.get("company_id") == company_id else None
+        selected_default = active_id if active_id in ids else ids[0]
+        selected = st.selectbox(
+            "Active dataset",
+            ids,
+            index=ids.index(selected_default),
+            format_func=lambda value: labels.get(value, value),
+            key=f"company_dataset_selector_{company_id}_{selected_default}",
+        )
+        if selected != active_id:
+            # A reviewed or pending Gemini request is tied to the dataset that
+            # produced its evidence. Never carry it across an active-dataset switch.
+            for key in list(st.session_state.keys()):
+                if not isinstance(key, str):
+                    continue
+                if key.startswith((
+                    f"ask_hybrid_pending_{company_id}",
+                    f"ask_hybrid_review_{company_id}",
+                    f"ask_hybrid_response_{company_id}",
+                )):
+                    st.session_state.pop(key, None)
+            restored = restore_latest(company_id, selected)
+            if restored is not None:
+                st.session_state["mine"] = restored
+                st.session_state.pop("cases", None)
+                st.rerun()
+        st.caption("Switching changes the active procurement analysis for this company.")
+    elif isinstance(mine, dict) and mine.get("company_id") == company_id:
         st.caption("ACTIVE COMPANY")
-        st.write(workspace_name)
-
+        st.write(mine.get("name", company_name or "Your company"))
     else:
         st.caption("COMPANY WORKSPACE")
         st.write(company_name or "Your company")
@@ -286,12 +319,15 @@ def cases():
             "A company login is required to access these cases."
         )
 
+    mine = current()
+    dataset_group_id = mine.get("dataset_group_id") or mine.get("analysis_id")
+    cache_key = f"{company_id}:{dataset_group_id}"
     all_cases = st.session_state.setdefault("cases", {})
 
-    if company_id not in all_cases:
-        all_cases[company_id] = case_store.get_company_cases(company_id)
+    if cache_key not in all_cases:
+        all_cases[cache_key] = case_store.get_company_cases(company_id, dataset_group_id=dataset_group_id)
 
-    return all_cases[company_id]
+    return all_cases[cache_key]
 
 
 def save_case(finding_id, case):
@@ -301,8 +337,11 @@ def save_case(finding_id, case):
         raise PermissionError(
             "A company login is required to update cases."
         )
-    case_store.save_company_case(company_id, finding_id, case)
+    mine = current()
+    dataset_group_id = mine.get("dataset_group_id") or mine.get("analysis_id")
+    case_store.save_company_case(company_id, finding_id, case, dataset_group_id=dataset_group_id)
+    cache_key = f"{company_id}:{dataset_group_id}"
     st.session_state.setdefault("cases", {}).setdefault(
-        company_id, {}
+        cache_key, {}
     )[finding_id] = case
     return True

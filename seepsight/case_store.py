@@ -7,13 +7,15 @@ from firebase_admin import firestore
 from seepsight import firestore_db
 
 
-def get_company_cases(company_id):
+def get_company_cases(company_id, dataset_group_id=None):
     """Return case state and ordered history for the verified company."""
     company = firestore_db._company_ref(company_id)
     cases = {}
     query = company.collection("cases").order_by("__name__")
     for snapshot in firestore_db._stream_query_pages(query, page_size=200):
         data = snapshot.to_dict() or {}
+        if dataset_group_id is not None and data.get("dataset_group_id") != dataset_group_id:
+            continue
         history_query = (
             snapshot.reference.collection("history")
             .order_by("event_number")
@@ -27,7 +29,7 @@ def get_company_cases(company_id):
         expected_count = data.get("history_count")
         if expected_count is not None and len(history) != int(expected_count):
             raise RuntimeError("Case activity history is incomplete; refresh or contact support.")
-        cases[snapshot.id] = {
+        cases[data.get("finding_id", snapshot.id)] = {
             "status": data.get("status", "Open"),
             "owner": data.get("owner", ""),
             "note": data.get("note", ""),
@@ -40,7 +42,7 @@ def get_company_cases(company_id):
     return cases
 
 
-def save_company_case(company_id, case_id, case):
+def save_company_case(company_id, case_id, case, dataset_group_id=None):
     """Transactionally save case state and append-only activity events."""
     case_id = firestore_db._validate_id(case_id, "case_id")
     if not isinstance(case, dict):
@@ -64,7 +66,12 @@ def save_company_case(company_id, case_id, case):
         raise ValueError("A case history event exceeds the safe length limit.")
 
     company = firestore_db._company_ref(company_id)
-    case_ref = company.collection("cases").document(case_id)
+    if dataset_group_id is not None:
+        dataset_group_id = firestore_db._validate_id(dataset_group_id, "dataset_group_id")
+        storage_id = f"{dataset_group_id}__{case_id}"
+    else:
+        storage_id = case_id
+    case_ref = company.collection("cases").document(storage_id)
     transaction = firestore_db.get_firestore_client().transaction()
 
     @firestore.transactional
@@ -90,6 +97,8 @@ def save_company_case(company_id, case_id, case):
             })
 
         transaction.set(case_ref, {
+            "finding_id": case_id,
+            "dataset_group_id": dataset_group_id,
             "status": status,
             "owner": owner,
             "note": note,

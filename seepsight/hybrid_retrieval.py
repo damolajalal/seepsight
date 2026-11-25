@@ -92,11 +92,16 @@ _DATASET_HINTS = {
 }
 
 
-def _append_saved_dataset_context(sections, company_id, question, terms, comprehensive):
+def _append_saved_dataset_context(sections, company_id, question, terms, comprehensive, dataset_group_id=None):
     """Retrieve all matching normalized rows and mapped fields from saved company datasets."""
     from seepsight import firestore_db
 
     datasets = firestore_db.get_company_datasets(company_id)
+    if dataset_group_id:
+        datasets = [item for item in datasets if item.get("dataset_group_id") == dataset_group_id]
+    elif len(datasets) != 1:
+        sections.append("Saved ingestion datasets were not queried because this older analysis has no dataset-group link and the company has multiple datasets. This prevents unrelated data from being mixed into the answer.")
+        return
     if not datasets:
         sections.append("Ingested datasets: no saved dataset metadata is available.")
         return
@@ -390,7 +395,7 @@ def retrieve_workspace_context(workspace, question, cases=None, company_id=None)
         sections.append("Cases and actions:\n" + ("\n".join(case_lines) if case_lines else "No matching saved case records."))
 
     if company_id:
-        _append_saved_dataset_context(sections, company_id, question, terms, comprehensive)
+        _append_saved_dataset_context(sections, company_id, question, terms, comprehensive, workspace.get("dataset_group_id"))
 
     missing = [
         key.replace("_", " ") for key, pack_key in selected_names

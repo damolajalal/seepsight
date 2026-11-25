@@ -1012,6 +1012,67 @@ def _id_key(series):
     return series.map(k)
 
 
+def combine_dataset_frames(dataset_name, frames):
+    """Combine same-type canonical tables without silently losing conflicting records.
+
+    Exact duplicate rows are removed. Purchase orders additionally require one
+    unambiguous row per normalised PO ID; conflicting rows for the same PO stop
+    the merge. Other entity/transaction tables retain repeated business keys
+    because invoice, receipt and payment identifiers may legitimately have
+    multiple line-level records.
+    """
+    if dataset_name not in TABLE_FIELDS:
+        raise ValueError(f"Unsupported procurement dataset: {dataset_name}")
+    if not isinstance(frames, (list, tuple)) or not frames:
+        raise ValueError("At least one mapped dataset file is required.")
+    if any(not isinstance(frame, pd.DataFrame) for frame in frames):
+        raise TypeError("Every mapped dataset file must be a DataFrame.")
+
+    columns = list(dict.fromkeys(
+        column for frame in frames for column in frame.columns
+    ))
+    combined = pd.concat(
+        [frame.reindex(columns=columns) for frame in frames],
+        ignore_index=True,
+        sort=False,
+    )
+    input_rows = len(combined)
+    combined = combined.drop_duplicates(keep="first").reset_index(drop=True)
+    exact_duplicates_removed = input_rows - len(combined)
+    duplicate_order_ids_removed = 0
+
+    if dataset_name == "orders" and "po_id" in combined.columns:
+        keys = _id_key(combined["po_id"])
+        duplicate_mask = keys.notna() & keys.duplicated(keep=False)
+        if duplicate_mask.any():
+            conflicts = []
+            compare_columns = [column for column in combined.columns if column != "po_id"]
+            for key, rows in combined.loc[duplicate_mask].groupby(keys[duplicate_mask], sort=False):
+                if len(rows[compare_columns].drop_duplicates()) > 1:
+                    conflicts.append(str(rows["po_id"].iloc[0]))
+                if len(conflicts) >= 5:
+                    break
+            if conflicts:
+                examples = ", ".join(conflicts)
+                raise ValueError(
+                    "The purchase-order files contain conflicting rows for the same PO number "
+                    f"({examples}). Resolve those records before combining; Seepsight will not "
+                    "choose one version automatically."
+                )
+            before_key_dedup = len(combined)
+            keep_rows = keys.isna() | ~keys.duplicated(keep="first")
+            combined = combined.loc[keep_rows].reset_index(drop=True)
+            duplicate_order_ids_removed = before_key_dedup - len(combined)
+
+    return combined, {
+        "files_combined": len(frames),
+        "rows_before_deduplication": input_rows,
+        "exact_duplicate_rows_removed": exact_duplicates_removed,
+        "duplicate_order_ids_removed": duplicate_order_ids_removed,
+        "rows_after_deduplication": len(combined),
+    }
+
+
 def _ambiguous_date_warnings(raw, mapping, dataset_name):
     """Flag slash dates whose day/month interpretation cannot be inferred safely."""
     warnings = []

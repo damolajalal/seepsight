@@ -6,11 +6,13 @@ on:
     branches:
       - feature/company-auth
       - feature/phase8-unified-hybrid-assistant
+      - feature/dataset-management-and-connectors
   pull_request:
     branches:
       - main
       - feature/company-auth
       - fix/ask-hybrid-ai-reliability
+      - feature/hybrid-ai-native-ask
   workflow_dispatch:
 
 jobs:

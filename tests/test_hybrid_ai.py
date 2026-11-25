@@ -67,6 +67,30 @@ class HybridAIHandoffTests(unittest.TestCase):
         self.assertEqual(payload["supplier"], "Northstar Supplies")
         self.assertIn("Findings: 2", payload["verifiedFacts"])
 
+    def test_native_prompt_includes_evidence_and_anti_invention_rules(self):
+        prompt = hybrid_ai.build_native_prompt(
+            "Which supplier has the highest potential exposure?",
+            "Northstar Supplies: NGN 220,000.00. This is not a confirmed loss.",
+        )
+        self.assertIn("Northstar Supplies: NGN 220,000.00.", prompt)
+        self.assertIn("Which supplier has the highest potential exposure?", prompt)
+        self.assertIn("Do not invent suppliers", prompt)
+        self.assertIn("transaction-level evidence was not included", prompt)
+
+    def test_native_prompt_rejects_empty_evidence(self):
+        with self.assertRaises(ValueError):
+            hybrid_ai.build_native_prompt("What is the risk?", " ")
+
+    def test_native_prompt_rejects_oversized_evidence(self):
+        with self.assertRaises(ValueError):
+            hybrid_ai.build_native_prompt("What is the risk?", "x" * 40001)
+
+    def test_native_bridge_is_not_an_iframe(self):
+        self.assertIsNotNone(hybrid_ai._NATIVE_AI_COMPONENT)
+        self.assertIn("firebase-ai.js", hybrid_ai._NATIVE_AI_JS)
+        self.assertIn("setStateValue", hybrid_ai._NATIVE_AI_JS)
+        self.assertNotIn("<iframe", hybrid_ai._NATIVE_AI_JS)
+
     @patch("seepsight.hybrid_ai.st.warning")
     @patch("seepsight.hybrid_ai.st.components.v1.html")
     @patch("seepsight.hybrid_ai.st.link_button")
@@ -77,8 +101,7 @@ class HybridAIHandoffTests(unittest.TestCase):
         warning.assert_called_once()
 
 
-if __name__ == "__main__":
-    unittest.main()
+
 
     @patch("seepsight.hybrid_ai.st.components.v1.html")
     @patch("seepsight.hybrid_ai.st.link_button")
@@ -91,3 +114,7 @@ if __name__ == "__main__":
             "Open Hybrid AI separately for on-device testing",
             "https://seepsight-hybrid-ai.web.app/",
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
