@@ -12,6 +12,13 @@ test('rejects empty or oversized evidence', () => {
   assert.throws(() => buildFindingPrompt({ verifiedFacts:' ' }), /Add the verified facts/);
   assert.throws(() => buildFindingPrompt({ verifiedFacts:'x'.repeat(40001) }), /too large to send safely/);
 });
+test('does not mistake numbered Markdown list markers for unsupported procurement figures', () => {
+  const prompt = 'Verified facts from Seepsight: Purchase orders and delivery notes were reviewed.';
+  const answer = '1. Compare the ordered quantities with the quantities recorded as delivered.\n2. Check the delivery notes for discrepancies.\n3. Request clarification where the records do not agree.';
+  assert.equal(hasUnsupportedNumbers(answer, prompt), false);
+  assert.equal(hasUnsupportedNumbers('The supplier delivered 2 units fewer than ordered.', prompt), true);
+});
+
 test('allows source figures and blocks unsupported new figures', () => {
   const prompt = 'Ordered 100; received 85; shortage 15 units.';
   assert.equal(hasUnsupportedNumbers('The order was 100 units and receipt was 85.', prompt), false);

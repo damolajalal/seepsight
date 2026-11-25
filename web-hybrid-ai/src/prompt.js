@@ -81,7 +81,11 @@ export function hasUnsupportedNumbers(answer, prompt) {
       derived.push({ value: stated.value, currency: stated.currency, percent: stated.percent });
     }
   }
-  return tokens(answer).some((candidate) => {
+  // Numbered Markdown list markers are formatting, not procurement figures.
+  // Strip only a line-leading ordinal followed by whitespace; numbers inside
+  // sentences, dates, amounts, percentages, IDs, and equations remain guarded.
+  const answerWithoutListMarkers = String(answer).replace(/^\s*\d+[.)]\s+/gm, '');
+  return tokens(answerWithoutListMarkers).some((candidate) => {
     if (allowed.some((item) => sameFigure(item, candidate))) return false;
     return !derived.some((item) => sameFigure(item, candidate));
   });
