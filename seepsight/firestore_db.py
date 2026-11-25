@@ -1434,10 +1434,13 @@ def get_company_dataset_groups(company_id):
             "source_record_count": 0,
             "company_name": data.get("company_name") or "Procurement dataset",
             "all_files_linked": True,
+            "all_original_files_restorable": True,
             "has_analysis": False,
         })
         if not data.get("dataset_group_id"):
             item["all_files_linked"] = False
+        if data.get("original_file_status") != "complete":
+            item["all_original_files_restorable"] = False
         filename = data.get("filename") or snapshot.id
         item["files"].append(filename)
         item.setdefault("file_items", []).append({
@@ -1463,6 +1466,7 @@ def get_company_dataset_groups(company_id):
             "source_record_count": 0,
             "company_name": data.get("company_name") or "Procurement dataset",
             "all_files_linked": True,
+            "all_original_files_restorable": True,
             "has_analysis": False,
         })
         item["has_analysis"] = True
@@ -1470,8 +1474,19 @@ def get_company_dataset_groups(company_id):
             item["analysis_id"] = snapshot.id
             item["updated_at"] = data.get("updated_at")
     for item in groups.values():
-        item["deletion_safe"] = bool(item["all_files_linked"] and item["has_analysis"])
+        # Deletion needs complete logical links and a saved analysis. Extension
+        # additionally needs every original upload to be present and verifiable.
+        item["deletion_safe"] = bool(
+            item["all_files_linked"] and item["has_analysis"]
+        )
+        item["extendable"] = bool(
+            item["all_files_linked"]
+            and item["has_analysis"]
+            and item["all_original_files_restorable"]
+            and item["file_items"]
+        )
         item.pop("all_files_linked", None)
+        item.pop("all_original_files_restorable", None)
         item.pop("has_analysis", None)
     return sorted(groups.values(), key=lambda item: item.get("updated_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
