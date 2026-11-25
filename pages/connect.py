@@ -31,6 +31,26 @@ ui.page_header(
 
 st.info("Original uploaded files, source rows, normalized records, mappings and analysis results are saved in your company's Firestore workspace. Original files are stored as integrity-checked chunks.")
 
+with st.expander("Cloud storage diagnostics", expanded=False):
+    try:
+        firestore_status = firestore_db.get_firestore_status()
+        if firestore_status.get("connected"):
+            st.success("Firestore read access: available.")
+        else:
+            st.error("Firestore read access: unavailable. Check the Firebase Admin service account and Firestore permissions.")
+    except Exception:
+        st.error("Firestore read access could not be verified.")
+
+    if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
+        try:
+            with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
+                firestore_db.test_firestore_connection()
+            st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+        except Exception:
+            st.error("Firestore verification failed. Check the deployed Firebase Admin credentials and Firestore permissions. No credential details are displayed.")
+
+    st.caption("The full test creates a temporary document, reads it, and deletes it. Secret Manager and external database access are tested separately when a database connection is configured.")
+
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
 MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
@@ -287,15 +307,15 @@ else:
 
 extendable_groups = [
     item for item in saved_groups
-    if item.get("deletion_safe") and item.get("file_items")
+    if item.get("extendable") and item.get("file_items")
 ]
 upload_mode = st.radio(
     "How should this upload be handled?",
     ["Create a separate dataset", "Add complementary files to an existing dataset"],
     horizontal=True,
     key="connect_upload_mode",
-    disabled=not bool(extendable_groups),
-    help="Combining currently supports adding a new procurement dataset type to an existing group. Duplicate dataset types remain blocked to prevent accidental double-counting.",
+    disabled=False,
+    help="Creating a separate dataset is always available. Extension is offered only for datasets whose original files can all be restored and verified.",
 )
 target_group_id = None
 if upload_mode == "Add complementary files to an existing dataset" and extendable_groups:
@@ -314,7 +334,7 @@ if upload_mode == "Add complementary files to an existing dataset" and extendabl
     )
     st.info("Seepsight will reload the saved original files, add your new complementary file types, and rebuild one combined analysis. Existing files are retained.")
 elif not extendable_groups:
-    st.caption("Create a separate dataset for now. No saved dataset with complete source-file links is available to extend.")
+    st.caption("Create a separate dataset for now. Existing datasets can be extended once every original file is linked and verified.")
 
 st.divider()
 
