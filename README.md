@@ -1,30 +1,109 @@
 # Seepsight
 
-**See the gaps. Show the impact. Act with confidence.**
+**Evidence-driven procurement intelligence.**
 
-Seepsight reviews a company's purchasing records (orders, deliveries, invoices and approvals), points out issues that may need attention, shows the records behind each one, and helps the company track what happens next.
+See the gaps. Show the impact. Act with confidence.
 
-> Early preview. Demonstration companies use simulated data only. Use sample or simulated records until your deployment has passed its cloud and security checks.
+Seepsight helps organisations examine purchasing records, identify potential procurement leakage, investigate supplier performance and trace findings back to supporting evidence.
 
-## What it does
-- **Connect your data**: upload Excel or CSV files (one file, or several) with any column names; we match them and ask you to confirm.
-- **Overview, Findings, Suppliers**: plain-language results, supporting records, detector-readiness states and a transparent supplier scorecard.
-- **Cases and actions**: assign, add notes and track status.
-- **Ask Seepsight**: questions answered from the records in the workspace.
-- **Reports**: download an Excel or CSV summary.
+**Live applications:** [Seepsight](https://seepsight.streamlit.app/) · [Hybrid AI companion](https://seepsight-hybrid-ai.web.app/)  
+**Source code:** [GitHub repository](https://github.com/damolajalal/seepsight)  
+**License:** MIT
 
-## Run the Streamlit application
+> **Demo data:** The public demonstration uses simulated procurement records. Displayed exposure figures are illustrative amounts for review, not confirmed losses or recovered savings.
+
+## What Seepsight does
+
+- **Connect procurement data** — upload CSV and Excel files, including multiple files with different structures.
+- **Map and validate records** — map unfamiliar column names, normalise data and check whether the available fields support analysis.
+- **Detect potential leakage** — identify short deliveries, price discrepancies, delayed approvals and declining supplier performance.
+- **Trace findings to evidence** — inspect affected records and understand why an issue was flagged.
+- **Manage investigations** — organise cases, assign actions and track follow-up.
+- **Ask questions** — explore procurement information through the Ask Seepsight experience.
+- **Review and report** — examine supplier performance, findings and procurement summaries.
+
+## Application
+
+The Streamlit application contains nine work areas:
+
+1. Overview
+2. Connect Your Data
+3. Findings
+4. Suppliers
+5. Cases and Actions
+6. Ask Seepsight
+7. Reports
+8. Company Profile
+9. Settings
+
+## Firebase AI Logic
+
+The separate Hybrid AI companion uses the **Firebase AI Logic JavaScript SDK** to connect Gemini capabilities to Seepsight's procurement context.
+
+- **Hybrid inference:** prioritises on-device Gemini Nano inference on supported desktop Chrome environments.
+- **Consent-based cloud processing:** cloud inference is available only after the user explicitly consents.
+- **Evidence-bounded prompts:** the companion receives relevant procurement findings and context, not unrestricted access to raw company datasets.
+- **Numerical safeguards:** generated numerical claims are checked against supplied evidence; unsupported responses are retried once with stricter instructions and withheld if they still fail validation.
+- **Firebase protection:** Firebase App Check is initialized with reCAPTCHA Enterprise.
+
+The procurement engine remains responsible for detecting anomalies and calculating potential exposure. Firebase AI Logic powers the explanation and assistance layer; it does not replace the underlying analytical calculations.
+
+See the [Firebase AI Logic implementation guide](docs/FIREBASE_AI_LOGIC.md) for architecture, setup and verification details.
+
+## Technology
+
+**Application and data:** Python, Streamlit, BigQuery, Firestore  
+**AI:** Firebase AI Logic, Gemini, Gemini Nano, NVIDIA NIM  
+**Web companion and protection:** JavaScript, Firebase Hosting, Firebase App Check, reCAPTCHA Enterprise  
+**Supporting services:** Google Cloud Secret Manager
+
+## Run the Streamlit application locally
+
+Use Python 3.10 or later and install the project dependencies:
+
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Phase 7 — Firebase AI Logic Hybrid Web/Chrome companion
+Configure the required application secrets and cloud services for your environment before using authenticated workspaces, persistent storage or external database connections.
 
-The `web-hybrid-ai/` directory contains a separate browser companion. It uses Firebase AI Logic, prefers Chrome on-device inference, and offers cloud fallback only when the user explicitly consents for that request. It does not replace the Streamlit application or its deterministic procurement engine.
+## Run the Hybrid AI companion locally
 
-See [the Phase 7 implementation notes](docs/PHASE7_BUILDHYBRIDAI.md) and [the Web app setup guide](web-hybrid-ai/README.md). Configure the Firebase Web App and reCAPTCHA Enterprise values in `web-hybrid-ai/.env.local`; never commit that file or a debug token. Set `SEEPSIGHT_HYBRID_AI_URL` in the Streamlit environment to show a link from Ask Seepsight.
+Requirements include Node.js 20.19 or later, a configured Firebase Web App, Firebase AI Logic enabled for the project and a reCAPTCHA Enterprise site key.
 
-## Privacy and deployment
+```bash
+cd web-hybrid-ai
+cp .env.example .env.local
+# Add the Firebase Web App values and reCAPTCHA Enterprise site key.
+npm install
+npm test
+npm run build
+npm run dev
+```
 
-AI explains verified findings; the deterministic procurement engine remains the source of procurement calculations. Do not submit confidential supplier records, personal information, bank details, credentials, or complete raw datasets to the companion. A successful source build does not prove live Firebase configuration, App Check enforcement, or on-device/cloud inference.
+See the [Hybrid AI implementation guide](docs/FIREBASE_AI_LOGIC.md) for configuration and browser requirements. On-device Gemini Nano availability depends on supported desktop Chrome versions and hardware; Chrome on Android is not supported for this web on-device inference path.
+
+## Testing
+
+Python tests:
+
+```bash
+pytest
+```
+
+Hybrid AI companion:
+
+```bash
+cd web-hybrid-ai
+npm test
+npm run build
+```
+
+## Data handling
+
+Use synthetic or appropriately anonymised records when evaluating the public demo. Do not upload credentials, bank details, personal information or confidential supplier records without first reviewing the deployment's security, access controls and data-handling arrangements.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). Third-party libraries and services remain subject to their respective terms and licences.
