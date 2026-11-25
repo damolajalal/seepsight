@@ -213,8 +213,7 @@ function hasUnsupportedNumbers(answer, prompt) {
     return Number.isFinite(value) ? { value, currency, percent } : null;
   };
   const tokens = (value) => (String(value).match(tokenPattern) || []).map(parseToken).filter(Boolean);
-  const tokens = (value) => (String(value).match(tokenPattern) || []).map(parseToken).filter(Boolean);
-  const answerForNumericCheck = String(answer).replace(/^\\s*\\d+[.)]\\s+/gm, "");
+  const answerForNumericCheck = String(answer).replace(/^\s*\d+[.)]\s+/gm, "");
   const sameFigure = (a, b) => Math.abs(a.value - b.value) < 0.000001 && a.currency === b.currency && a.percent === b.percent;
   const allowed = tokens(evidence);
   const unit = "(?:\\s+(?:bags?|units?|items?|pieces?|pcs?|kg|kgs|tonnes?|tons?|cartons?|cases?|packs?|per\\s+[a-z]+))*";
@@ -319,7 +318,7 @@ export default async function (component) {
     // If the first draft adds unsupported numeric tokens, make one constrained
     // retry. The same strict validator still decides whether anything is shown.
     if (text && hasUnsupportedNumbers(text, data.prompt)) {
-      const retryPrompt = data.prompt + "\\n\\nSAFETY REVISION: Your previous draft contained numeric content not explicitly supported by the verified evidence. Rewrite the answer without introducing any new numbers, counts, dates, percentages, amounts, calculations, or numbered lists. Use only figures explicitly present in the evidence. If a numeric detail is unavailable, describe it qualitatively or say it is not provided. Do not guess.";
+      const retryPrompt = data.prompt + "\n\nSAFETY REVISION: Your previous draft contained numeric content not explicitly supported by the verified evidence. Rewrite the answer without introducing any new numbers, counts, dates, percentages, amounts, calculations, or numbered lists. Use only figures explicitly present in the evidence. If a numeric detail is unavailable, describe it qualitatively or say it is not provided. Do not guess.";
       generated = await model.generateContent(retryPrompt);
       response = generated.response;
       text = response.text();
