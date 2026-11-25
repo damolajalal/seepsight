@@ -50,6 +50,22 @@ class AskEngineTests(unittest.TestCase):
         self.assertIn("1 invoice-price finding", result["answer"])
         self.assertIn("20.0000%", result["answer"])
 
+    def test_monthly_spend_trend_uses_saved_monthly_values(self):
+        self.workspace["monthly"] = pd.DataFrame([
+            {"po_month": "2026-08", "spend": 1000000},
+            {"po_month": "2026-09", "spend": 1250000},
+            {"po_month": "2026-10", "spend": 1500000},
+        ])
+        result = answer_question(self.workspace, "How has purchasing spend changed over time?")
+        self.assertIn("increased", result["answer"])
+        self.assertIn("NGN 500,000.00", result["answer"])
+        self.assertIn("50.0%", result["answer"])
+        self.assertEqual(len(result["table"]), 3)
+
+    def test_one_month_does_not_claim_a_trend(self):
+        result = answer_question(self.workspace, "How has purchasing spend changed over time?")
+        self.assertIn("One month is not enough", result["answer"])
+
     def test_incomplete_detector_coverage_is_never_called_clean(self):
         self.workspace["log"]["detectors"]["Slow approvals"] = "skipped - missing approval dates"
         result = answer_question(self.workspace, "Were approvals slow?")
