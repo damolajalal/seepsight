@@ -93,6 +93,37 @@ def answer_question(workspace, question):
         message = f"I found {len(findings)} procurement finding(s) in this analysis."
         return finish(message, counts)
 
+    # Compare potential exposure by finding/issue type.
+    if _contains(text, [
+        r"(?:issue|finding)\\s+types?.*(?:most|highest|largest).*(?:exposure|impact)",
+        r"(?:most|highest|largest).*(?:exposure|impact).*(?:issue|finding)\\s+types?",
+        r"which.*(?:issue|finding)\\s+types?.*(?:contribute|account|responsible)",
+    ]):
+        if "finding_type" not in findings.columns or "identified_exposure" not in findings.columns:
+            return finish("Finding-type exposure is not available in the saved analysis.")
+        by_type = findings[["finding_type", "identified_exposure"]].copy()
+        by_type["identified_exposure"] = pd.to_numeric(
+            by_type["identified_exposure"], errors="coerce"
+        ).fillna(0)
+        by_type = (
+            by_type.groupby("finding_type", dropna=False)["identified_exposure"]
+            .sum().reset_index()
+            .sort_values("identified_exposure", ascending=False)
+        )
+        by_type = by_type.rename(columns={
+            "finding_type": "Issue type",
+            "identified_exposure": "Potential exposure",
+        })
+        if by_type.empty:
+            return finish("No finding-type exposure values are available in the saved analysis.")
+        top = by_type.iloc[0]
+        return finish(
+            f"{top['Issue type']} contributes the highest recorded potential exposure at "
+            f"{_money(currency, top['Potential exposure'])}. This ranks the issue types "
+            "by the saved finding exposure; it is an amount to investigate, not a confirmed loss.",
+            by_type,
+        )
+
     # Highest exposure / supplier comparison.
     if _contains(text, [r"which supplier", r"top supplier", r"supplier.*(?:highest|most|largest)", r"who.*(?:cost|exposure|overpay)"]):
         if matched_supplier:
