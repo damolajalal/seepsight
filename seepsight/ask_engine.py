@@ -95,9 +95,9 @@ def answer_question(workspace, question):
 
     # Compare potential exposure by finding/issue type.
     if _contains(text, [
-        r"(?:issue|finding)\\s+types?.*(?:most|highest|largest).*(?:exposure|impact)",
-        r"(?:most|highest|largest).*(?:exposure|impact).*(?:issue|finding)\\s+types?",
-        r"which.*(?:issue|finding)\\s+types?.*(?:contribute|account|responsible)",
+        r"(?:issue|finding)\s+types?.*(?:most|highest|largest).*(?:exposure|impact)",
+        r"(?:most|highest|largest).*(?:exposure|impact).*(?:issue|finding)\s+types?",
+        r"which.*(?:issue|finding)\s+types?.*(?:contribute|account|responsible)",
     ]):
         if "finding_type" not in findings.columns or "identified_exposure" not in findings.columns:
             return finish("Finding-type exposure is not available in the saved analysis.")
