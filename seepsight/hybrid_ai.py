@@ -406,10 +406,17 @@ def render_native_ai_request(request, key):
         return None
     config, site_key, missing = native_firebase_config()
     if missing:
+        required_secrets = {
+            "apiKey": "VITE_FIREBASE_API_KEY",
+            "projectId": "VITE_FIREBASE_PROJECT_ID",
+            "appId": "VITE_FIREBASE_APP_ID",
+            "App Check reCAPTCHA Enterprise site key": "VITE_FIREBASE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY",
+        }
+        missing_keys = [required_secrets.get(item, item) for item in missing]
         st.error(
-            "Firebase Hybrid AI is not fully configured in the Streamlit deployment: "
-            + ", ".join(missing)
-            + "."
+            "Firebase Hybrid AI is not fully configured in this Streamlit deployment. "
+            "Add the following public Firebase web settings to Streamlit app Secrets "
+            "(or deployment environment variables): " + ", ".join(missing_keys) + "."
         )
         return None
     return _NATIVE_AI_COMPONENT(
