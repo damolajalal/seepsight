@@ -189,7 +189,7 @@ def _append_saved_dataset_context(sections, company_id, question, terms, compreh
                 sections.append(f"{dataset_type} confirmed field mapping: " + "; ".join(mapping_lines))
             normalized = firestore_db.search_dataset_records(
                 company_id, dataset_id, terms if not comprehensive else [],
-                collection_name="records", limit=250000,
+                collection_name="records", limit=10, scan_limit=5000,
             )
             sections.append(
                 f"{dataset_type} normalized rows: scanned {normalized['scanned_count']} records; "

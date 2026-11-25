@@ -1576,7 +1576,7 @@ def get_company_analysis_workspaces(company_id):
 
 def search_dataset_records(
     company_id, dataset_id, terms, collection_name="records",
-    limit=10, scan_limit=None,
+    limit=10, scan_limit=5000,
 ):
     """Search a tenant-owned dataset in record order using paginated reads.
 
@@ -1586,12 +1586,12 @@ def search_dataset_records(
     """
     if collection_name not in {"records", "source_records"}:
         raise ValueError("collection_name must be 'records' or 'source_records'.")
-    if not isinstance(limit, int) or limit < 1 or limit > 250000:
-        raise ValueError("limit must be between 1 and 250000.")
-    if scan_limit is not None and (
-        not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 250000
-    ):
-        raise ValueError("scan_limit must be between 1 and 250000, or None.")
+    if not isinstance(limit, int) or limit < 1 or limit > 25:
+        raise ValueError("limit must be between 1 and 25.")
+    if scan_limit is None:
+        scan_limit = 5000
+    if not isinstance(scan_limit, int) or scan_limit < 1 or scan_limit > 5000:
+        raise ValueError("scan_limit must be between 1 and 5000.")
     if not isinstance(terms, (list, tuple)) or not all(isinstance(x, str) for x in terms):
         raise TypeError("terms must be a list of strings.")
 
@@ -1652,7 +1652,7 @@ def search_dataset_records(
     # Sort once after the full scan; repeated sorting per row becomes expensive
     # when Ask Hybrid AI requests comprehensive dataset coverage.
     ranked.sort(key=lambda row: (-row[0], row[1]))
-    coverage_complete = not budget_reached
+    coverage_complete = not budget_reached and scanned >= total_count
     selected = [row[2] for row in ranked[:limit]]
     write_company_audit_event(
         company_id, f"dataset.{collection_name}_searched", "dataset", dataset_id,

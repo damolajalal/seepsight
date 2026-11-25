@@ -177,6 +177,22 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertTrue(result["coverage_complete"])
         self.assertFalse(result["scan_limited"])
 
+    def test_search_rejects_unbounded_result_limits(self):
+        with self.assertRaisesRegex(ValueError, "between 1 and 25"):
+            firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["PO-1"], limit=26
+            )
+        with self.assertRaisesRegex(ValueError, "between 1 and 25"):
+            firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["PO-1"], limit=250000
+            )
+
+    def test_search_rejects_unbounded_scan_budgets(self):
+        with self.assertRaisesRegex(ValueError, "between 1 and 5000"):
+            firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["PO-1"], scan_limit=5001
+            )
+
     def test_dataset_deletion_recursively_removes_company_records(self):
         snapshot = MagicMock(exists=True)
         snapshot.to_dict.return_value = {"storage": None}
