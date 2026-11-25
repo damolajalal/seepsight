@@ -57,7 +57,7 @@ Acceptance:
 - Role tests verify allowed and denied operations.
 - A missing, expired, or invalid identity cannot access customer data.
 
-**Status:** Company-aware session workspace checks exist; durable backend authorization and full isolation tests need verification.
+**Status:** The company identity and workspace foundation is implemented on `feature/company-auth`: Firebase identity-token verification, company membership and role-aware access checks, company-scoped Firestore service boundaries, and authentication/session/membership/authorization regression tests are present. PR #18 consolidated the reviewed dataset-management, workspace-isolation, connection-placement, and Gemini evidence-review work into this branch. **Production acceptance remains pending:** live sign-in and verified-email behavior, membership/invitation lifecycle, the real-account role matrix, expired or revoked identity handling, and negative cross-company access tests against deployed Firestore resources. Code-level tests are not proof of live tenant isolation.
 
 ## Phase 3 — Database, durable storage, and security foundation
 
@@ -172,7 +172,7 @@ Acceptance:
 - On-device failure and cloud fallback are observable and safe.
 - Every answer remains evidence-grounded and tenant-scoped.
 
-**Status:** The Firebase AI Logic companion code includes explicit `ONLY_ON_DEVICE` behavior by default, per-request cloud-fallback consent, SDK-reported inference-route checks, App Check initialization, evidence-bounded prompts, and a numeric-consistency guardrail. The UI distinguishes an available local model from one that is downloadable/downloading; the browser manages the local model lifecycle, so a first download may be required and later reuse depends on browser retention. PR CI previously passed the companion tests/build. On 2026-11-25, the user reported a test displaying `On device: yes`; the answer was withheld because the numeric guard detected an unsupported number. Consent was not tested in that run. This is a useful manual signal, not proof of repeatable production inference. Still outstanding: verify the SDK-reported `ON_DEVICE` route from supported desktop Chrome, separately test consent denial and consented cloud fallback, verify App Check enforcement on the deployed domain, and complete the full Streamlit-to-companion journey. The documented web Prompt API path does not support Chrome on Android.
+**Status:** The Firebase AI Logic companion includes explicit `ONLY_ON_DEVICE` behavior by default, per-request cloud-fallback consent, SDK-reported inference-route checks, App Check initialization, evidence-bounded prompts, and a numeric-consistency guardrail. The user confirmed on 2026-11-25 that on-device inference succeeded on a compatible desktop laptop. The user also tested from Android with cloud fallback explicitly selected and received an `IN_CLOUD` response; Chrome on Android is not supported by the documented Prompt API local-inference path. The numbered-Markdown-list false positive in the numeric guard was fixed in PR #23 (`35109a3`) with regression tests; PR-head hybrid web tests/build, Python security tests, and detection/regression tests passed. A Firebase Hosting deployment workflow is present on this branch. **Still outstanding:** verify the post-merge Hosting deployment, App Check enforcement on the exact deployed domain, consent-denied behavior (no cloud request), repeatable inference on the supported laptop, and the complete authenticated Streamlit-to-companion journey. The standalone companion currently does not persist its prompts or generated answers to Firestore; do not treat its Firebase-ready indicator as proof of Firestore persistence.
 
 ## Product pages and workflows
 
@@ -259,3 +259,25 @@ For every task, record:
 - commit SHA on `feature/company-auth`.
 
 Do not label work “complete”, “secure”, “production-ready”, or “deployed” without the corresponding evidence. This document is the master plan; it does not itself mean the listed work has been implemented.
+
+
+## Branch consolidation record — 2026-11-25
+
+**Canonical working branch:** `feature/company-auth` (head at consolidation review: `35109a33b9d0c970c2d2572af22854943dc717a8`). **Protected branch:** `main` remains unchanged. There were no open pull requests at the time of this review.
+
+The following reviewed work is already represented in the canonical branch through merged pull requests:
+- PR #18 — dataset management, company/workspace isolation, connection placement, Gemini evidence-review workflow, and Ask workspace integration.
+- PR #19 — bounded company-dataset retrieval (10 returned records; 5,000-record scan budget) and incomplete-coverage disclosure.
+- PR #21 — enterprise interface styling refresh.
+- PR #22 — master implementation plan/status documentation.
+- PR #23 — numeric guard fix so numbered Markdown explanation lists are not mistaken for unsupported procurement figures; unsupported figures remain guarded.
+
+Branch review and disposition:
+- `integration/seepsight-unified-staging`: its dataset-management/company-isolation commit has the exact same Git tree as the PR #18 commit already on `feature/company-auth`; its two later retrieval-coverage/test commits also have unchanged trees. No missing application changes need to be merged from this branch.
+- `test/hybrid-retrieval-coverage-signals` and `test/ask-hybrid-workspace-e2e-coverage`: their retrieval tests are older snapshots. The canonical branch already contains the later tests, including partial-scan coverage warnings and tenant-scoped retrieval checks. Do not replace the canonical tests with the older branch copies.
+- `feature/dataset-management-and-connectors`, `feature/dataset-retrieval-coverage`, `feature/ask-hybrid-ai-workspace`, `feature/hybrid-ai-native-ask`, `feature/hybrid-ai-workspace-retrieval`, `feature/phase8-unified-hybrid-assistant`, `fix/ask-hybrid-ai-reliability`, and `fix/bounded-hybrid-retrieval`: these are historical/diverged work branches. Their relevant integrated work is represented by PRs #18 and #19; their branch snapshots predate later canonical fixes. Do not merge them wholesale over the canonical branch.
+- `design/enterprise-refresh`, `design/enterprise-refresh-company-auth`, and `design/enterprise-refresh-validated`: earlier UI/prompt snapshots; the current styling and numeric-guard fixes are already in the canonical branch through PRs #21 and #23.
+- `fix/hybrid-ai-list-number-guard`: pre-merge source branch for PR #23; its fix and regression tests are already in the canonical branch.
+- `fix/engine-detection`: matches the historical `main` line and is substantially behind the canonical branch; it is not a source for consolidation.
+
+**Consolidation outcome:** No additional application code was found that should be merged wholesale from the reviewed historical branches. The canonical branch contains the integrated feature work and subsequent fixes. Historical branches are intentionally left in place; this consolidation does not delete branches or change `main`. Future corrections should be made directly on `feature/company-auth`, with automated tests and the live acceptance evidence updated alongside the code.
