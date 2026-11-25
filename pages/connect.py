@@ -31,6 +31,26 @@ ui.page_header(
 
 st.info("Original uploaded files, source rows, normalized records, mappings and analysis results are saved in your company's Firestore workspace. Original files are stored as integrity-checked chunks.")
 
+with st.expander("Cloud storage diagnostics", expanded=False):
+    try:
+        firestore_status = firestore_db.get_firestore_status()
+        if firestore_status.get("connected"):
+            st.success("Firestore read access: available.")
+        else:
+            st.error("Firestore read access: unavailable. Check the Firebase Admin service account and Firestore permissions.")
+    except Exception:
+        st.error("Firestore read access could not be verified.")
+
+    if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
+        try:
+            with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
+                firestore_db.test_firestore_connection()
+            st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+        except Exception:
+            st.error("Firestore verification failed. Check the deployed Firebase Admin credentials and Firestore permissions. No credential details are displayed.")
+
+    st.caption("The full test creates a temporary document, reads it, and deletes it. Secret Manager and external database access are tested separately when a database connection is configured.")
+
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
 MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
