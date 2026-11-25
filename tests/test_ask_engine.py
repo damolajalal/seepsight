@@ -45,6 +45,15 @@ class AskEngineTests(unittest.TestCase):
         self.assertIn("NGN 120,000.00", result["answer"])
         self.assertIsNotNone(result["table"])
 
+    def test_issue_type_exposure_question_ranks_finding_types(self):
+        result = answer_question(
+            self.workspace, "Which issue type contributes the most exposure?"
+        )
+        self.assertIn("Invoice price above PO price", result["answer"])
+        self.assertIn("NGN 120,000.00", result["answer"])
+        self.assertIsNotNone(result["table"])
+        self.assertEqual(result["table"].iloc[0]["Issue type"], "Invoice price above PO price")
+
     def test_invoice_question_lists_invoice_findings(self):
         result = answer_question(self.workspace, "Show me invoice price discrepancies")
         self.assertIn("1 invoice-price finding", result["answer"])
