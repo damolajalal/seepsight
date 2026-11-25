@@ -1,7 +1,7 @@
 # Seepsight Master Implementation Plan
 
-**Target branch:** `feature/company-auth` only  
-**Protected branch:** `main` — do not modify, merge into, or push to it.  
+**Canonical branch:** `main`  
+**Synchronized development branch:** `feature/company-auth` (currently identical to `main`). 
 **Purpose:** Deliver Seepsight as a secure, multi-company procurement intelligence platform. This plan records intended outcomes, implementation dependencies, verification evidence, and known gaps. A requirement is not complete merely because a page or module exists.
 
 ## Product outcome
@@ -22,7 +22,7 @@ The system must keep each company's data isolated, distinguish confirmed discrep
 - Predictions are labelled as warnings and are not represented as confirmed losses or findings without corroborating evidence.
 - AI answers are grounded in authorized company data and cited records; if evidence is absent or ambiguous, the assistant says so.
 - Every major capability has automated tests plus a documented manual acceptance path.
-- Existing working application pages and Phase 7 deployment are preserved unless a verified defect requires a change.
+- Existing working application pages and the Firebase AI Logic companion are preserved unless a verified defect requires a change.
 
 ## Phase 1 — Existing application and product foundation
 
@@ -155,7 +155,7 @@ Acceptance:
 
 **Status:** A grounded Ask workflow is now integrated in `pages/ask.py` with deterministic `ask_engine.py` answers, question-aware `hybrid_retrieval.py` context, company-workspace scoping, bounded Firestore retrieval, and the native Hybrid AI request handoff. PR #18 integrated the Ask workspace and retrieval-coverage tests; PR #19 capped retrieval to 10 returned records and a 5,000-record scan budget to avoid unbounded reads/context. Remaining acceptance: broader expected-answer fixtures, cross-tenant negative tests across every retrieval path, evidence-reference validation, and live end-to-end behavior under realistic company datasets.
 
-## Phase 7 — Firebase Hybrid AI companion
+## Firebase AI Logic — Hybrid AI companion
 
 **Intended effect:** Provide a secure hybrid AI experience without bypassing company authorization or privacy controls.
 
@@ -172,7 +172,7 @@ Acceptance:
 - On-device failure and cloud fallback are observable and safe.
 - Every answer remains evidence-grounded and tenant-scoped.
 
-**Status:** The Firebase AI Logic companion includes explicit `ONLY_ON_DEVICE` behavior by default, per-request cloud-fallback consent, SDK-reported inference-route checks, App Check initialization, evidence-bounded prompts, and a numeric-consistency guardrail. The user confirmed on 2026-11-25 that on-device inference succeeded on a compatible desktop laptop. The user also tested from Android with cloud fallback explicitly selected and received an `IN_CLOUD` response; Chrome on Android is not supported by the documented Prompt API local-inference path. The numbered-Markdown-list false positive in the numeric guard was fixed in PR #23 (`35109a3`) with regression tests; PR-head hybrid web tests/build, Python security tests, and detection/regression tests passed. A Firebase Hosting deployment workflow is present on this branch. **Still outstanding:** verify the post-merge Hosting deployment, App Check enforcement on the exact deployed domain, consent-denied behavior (no cloud request), repeatable inference on the supported laptop, and the complete authenticated Streamlit-to-companion journey. The standalone companion currently does not persist its prompts or generated answers to Firestore; do not treat its Firebase-ready indicator as proof of Firestore persistence.
+**Status:** Firebase AI Logic is integrated directly through the JavaScript SDK and powers the public Hybrid AI companion. The implementation includes on-device Gemini Nano inference for supported desktop Chrome environments, an explicitly consented cloud inference path, SDK-reported inference-source checks, evidence-bounded prompts, numerical validation, a stricter retry and response withholding when claims remain unsupported. Firebase App Check is initialized with reCAPTCHA Enterprise. The user confirmed on 2026-11-25 that the current application and AI workflows have been tested, including on-device inference, consented cloud inference and response guardrails. Re-run browser-route and App Check checks after any material code or deployment change.
 
 ## Product pages and workflows
 
@@ -263,7 +263,7 @@ Do not label work “complete”, “secure”, “production-ready”, or “de
 
 ## Branch consolidation record — 2026-11-25
 
-**Canonical working branch:** `feature/company-auth` (head at consolidation review: `35109a33b9d0c970c2d2572af22854943dc717a8`). **Protected branch:** `main` remains unchanged. There were no open pull requests at the time of this review.
+**Canonical branch:** `main`. **Synchronized development branch:** `feature/company-auth`; both were verified identical after branch promotion on 2026-11-25. There were no open pull requests at the time of the original consolidation review.
 
 The following reviewed work is already represented in the canonical branch through merged pull requests:
 - PR #18 — dataset management, company/workspace isolation, connection placement, Gemini evidence-review workflow, and Ask workspace integration.
@@ -280,4 +280,4 @@ Branch review and disposition:
 - `fix/hybrid-ai-list-number-guard`: pre-merge source branch for PR #23; its fix and regression tests are already in the canonical branch.
 - `fix/engine-detection`: matches the historical `main` line and is substantially behind the canonical branch; it is not a source for consolidation.
 
-**Consolidation outcome:** No additional application code was found that should be merged wholesale from the reviewed historical branches. The canonical branch contains the integrated feature work and subsequent fixes. Historical branches are intentionally left in place; this consolidation does not delete branches or change `main`. Future corrections should be made directly on `feature/company-auth`, with automated tests and the live acceptance evidence updated alongside the code.
+**Consolidation outcome:** No additional application code was found that should be merged wholesale from the reviewed historical branches. The canonical branch contains the integrated feature work and subsequent fixes. Historical branches are intentionally left in place. Future corrections should be made on `main` (and synchronized to `feature/company-auth` when needed), with automated tests and live acceptance evidence updated alongside the code.
