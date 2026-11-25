@@ -100,7 +100,7 @@ Acceptance:
 - A partial or invalid dataset reports missing requirements and does not claim full coverage.
 - A database sync is repeatable, auditable, and bounded by safe limits.
 
-**Status:** Current Connect page and engine support file onboarding, mappings, quality checks, and a 12-dataset registry. The page states that uploads/results remain session-based; database persistence/synchronisation and production durability remain outstanding. The current findings engine documents four established detector families.
+**Status (code):** Dataset registry, file onboarding, schema mapping, dataset grouping/management, normalized-record persistence, Firestore-backed dataset services, and read-only PostgreSQL/MySQL/SQL Server/BigQuery adapter foundations are present on `feature/company-auth`. Dataset-management and ingestion tests were integrated through PR #18; database adapters and Firestore persistence have automated coverage. **Still unverified in production:** live database credentials/network/TLS, repeatable scheduled or incremental sync, restart/recovery under live Firebase/Firestore, and failure-injection behavior. Do not describe production sync or durable customer onboarding as fully accepted until those checks pass.
 
 ## Phase 5 — Procurement intelligence and leakage detection
 
@@ -130,7 +130,7 @@ Acceptance:
 - Amounts are described as potential exposure / amount to review unless confirmed by an authorized review process.
 - No detector claims coverage when required source fields are absent.
 
-**Status:** Existing engine and plain-language layer implement four established detector families. Full audit, detector expansion, end-to-end evidence checks, and reproduction of prior model metrics remain outstanding. A previously mentioned 42-test suite was not recovered and must not be assumed to exist.
+**Status:** The current engine and plain-language layer implement four established detector families: short delivery, price creep/overbilling, slow approvals, and supplier-performance decline. The codebase includes detector and regression tests, but the full nine-page audit, complete source-row reconciliation for every displayed exposure, expanded detector coverage, and independent reproduction of previously reported model metrics remain outstanding. Do not present predictive warnings as confirmed losses.
 
 ## Phase 6 — Ask Seepsight and AI explanations
 
@@ -153,7 +153,7 @@ Acceptance:
 - Numeric answers are traceable to authorized source records.
 - Provider outage, timeout, invalid response, and consent denial degrade safely.
 
-**Status:** Current Ask page has deterministic, limited question patterns and an optional link to the Phase 7 companion. A complete grounded assistant service was not found at the previously checked path; broader AI integration and security tests remain outstanding.
+**Status:** A grounded Ask workflow is now integrated in `pages/ask.py` with deterministic `ask_engine.py` answers, question-aware `hybrid_retrieval.py` context, company-workspace scoping, bounded Firestore retrieval, and the native Hybrid AI request handoff. PR #18 integrated the Ask workspace and retrieval-coverage tests; PR #19 capped retrieval to 10 returned records and a 5,000-record scan budget to avoid unbounded reads/context. Remaining acceptance: broader expected-answer fixtures, cross-tenant negative tests across every retrieval path, evidence-reference validation, and live end-to-end behavior under realistic company datasets.
 
 ## Phase 7 — Firebase Hybrid AI companion
 
@@ -172,7 +172,7 @@ Acceptance:
 - On-device failure and cloud fallback are observable and safe.
 - Every answer remains evidence-grounded and tenant-scoped.
 
-**Status:** Companion was previously deployed and its Vite tests/build passed; inference, consent, evidence-grounding, and end-to-end privacy verification remain to be completed.
+**Status:** The Firebase AI Logic companion code includes explicit `ONLY_ON_DEVICE` behavior by default, per-request cloud-fallback consent, SDK-reported inference-route checks, App Check initialization, evidence-bounded prompts, and a numeric-consistency guardrail. The UI distinguishes an available local model from one that is downloadable/downloading; the browser manages the local model lifecycle, so a first download may be required and later reuse depends on browser retention. PR CI previously passed the companion tests/build. On 2026-11-25, the user reported a test displaying `On device: yes`; the answer was withheld because the numeric guard detected an unsupported number. Consent was not tested in that run. This is a useful manual signal, not proof of repeatable production inference. Still outstanding: verify the SDK-reported `ON_DEVICE` route from supported desktop Chrome, separately test consent denial and consented cloud fallback, verify App Check enforcement on the deployed domain, and complete the full Streamlit-to-companion journey. The documented web Prompt API path does not support Chrome on Android.
 
 ## Product pages and workflows
 
@@ -239,15 +239,14 @@ Before declaring the platform complete:
 
 ## Immediate execution order
 
-1. Reconfirm current `feature/company-auth` head and audit authentication/company identity implementation.
-2. Define the storage/metadata interfaces and tenant authorization contract before wiring persistence into pages.
-3. Implement Phase 3 storage and metadata services with tests and a local/fake backend for deterministic testing.
-4. Add private cloud storage and Firestore adapters with configuration and failure handling.
-5. Add Secret Manager-backed database connection adapters.
-6. Integrate persistent upload/job state into Connect Your Data, then implement Phase 4 sync.
-7. Reconcile and expand Phase 5 detectors and evidence tests.
-8. Build the grounded Ask service and connect the Phase 7 companion.
-9. Complete page-level integration, security review, and end-to-end release gate.
+1. Keep all work on `feature/company-auth`; keep `main` untouched and do not merge divergent historical feature branches wholesale.
+2. Complete the production acceptance checks for Firebase/Firestore persistence, Secret Manager IAM, database credentials/network/TLS, and restart/recovery.
+3. Reconcile every detector's displayed exposure to its source rows and reproduce the model evaluation on the current code.
+4. Expand and run tenant-isolation and role-denial tests across datasets, findings, suppliers, cases, reports, exports, and AI retrieval.
+5. Complete expected-answer, prompt-injection, unsupported-number, consent-denial, provider-failure, and live on-device/cloud route tests.
+6. Exercise all nine pages with empty, valid, incomplete, and large workspaces; verify navigation, responsive states, and data freshness.
+7. Verify the Firebase companion deployment, App Check enforcement, and the complete Streamlit-to-companion handoff.
+8. Record exact test commands/results, live manual checks, limitations, and the final release/rollback decision.
 
 ## Evidence and status discipline
 
