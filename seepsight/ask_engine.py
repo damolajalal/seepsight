@@ -125,6 +125,20 @@ def answer_question(workspace, question):
         month_col = next((col for col in ("po_month", "month", "period", "month_start", "date") if col in monthly.columns), None)
         spend_col = next((col for col in ("spend", "total_spend", "purchasing_spend", "amount") if col in monthly.columns), None)
         if not month_col or not spend_col:
+            # A single saved spend row can support the limited conclusion that
+            # one period is present, but without a month field it cannot support
+            # a dated comparison or a trend.
+            if len(monthly) == 1 and spend_col:
+                single_spend = pd.to_numeric(
+                    pd.Series([monthly.iloc[0][spend_col]]), errors="coerce"
+                ).iloc[0]
+                if pd.notna(single_spend):
+                    return finish(
+                        f"The saved analysis contains one purchasing-spend value: "
+                        f"{_money(currency, single_spend)}. One month is not enough "
+                        "to establish whether spend increased or decreased over time, "
+                        "and the saved row does not identify its month."
+                    )
             return finish("The saved monthly table is missing a recognized month or spend field. I can't safely calculate a purchasing-spend trend from it.")
         trend = monthly[[month_col, spend_col]].copy()
         trend[spend_col] = pd.to_numeric(trend[spend_col], errors="coerce")
