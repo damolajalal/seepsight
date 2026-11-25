@@ -58,8 +58,22 @@ for message in chat:
         if message.get("table") is not None:
             st.dataframe(message["table"], hide_index=True, use_container_width=True)
 
-question = st.chat_input("Ask about suppliers, invoices, deliveries, approvals or costs")
-question = question or picked
+with st.container(border=True):
+    st.markdown("#### Your question")
+    with st.form(f"ask_question_form_{workspace_key}", clear_on_submit=True):
+        question = st.text_area(
+            "Ask Seepsight",
+            height=90,
+            max_chars=1000,
+            placeholder="e.g. Which supplier has the highest potential exposure, and what evidence supports it?",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button(
+            "Ask Seepsight",
+            type="primary",
+            use_container_width=True,
+        )
+question = (question or "").strip() if submitted else picked
 if question:
     result = ask_engine.answer_question(w, question)
     response = result["answer"]
