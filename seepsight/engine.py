@@ -778,7 +778,11 @@ def detect(led, config=None):
             delivery_due = pd.notna(promised) and pd.Timestamp(promised).normalize() < as_of
             # An unfulfilled order is not labelled a short delivery until its
             # promised date has passed. Invoice overbilling is actionable immediately.
-            short_vs_order = max(float(ordered) - float(received), 0.0) if delivery_due else 0.0
+            receipt_confirmed = float(received) > 0 or pd.notna(row.get("received_date"))
+            short_vs_order = (
+                max(float(ordered) - float(received), 0.0)
+                if delivery_due and receipt_confirmed else 0.0
+            )
             overbilled = max(float(invoice_qty) - float(received), 0.0) if pd.notna(invoice_qty) else 0.0
             short_units = max(short_vs_order, overbilled)
             if short_units <= 0:
