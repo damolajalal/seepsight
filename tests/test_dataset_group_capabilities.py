@@ -76,7 +76,8 @@ class DatasetGroupEligibilityTests(unittest.TestCase):
             [("analysis-a", {"dataset_group_id": "group-a"})],
         )
         self.assertFalse(groups[0]["extendable"])
-        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["deletion_safe"])
+        self.assertTrue(groups[0]["used"])
 
 
 if __name__ == "__main__":
