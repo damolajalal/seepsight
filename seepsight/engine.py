@@ -1062,23 +1062,76 @@ def combine_dataset_frames(dataset_name, frames):
         keys = _id_key(combined["po_id"])
         duplicate_mask = keys.notna() & keys.duplicated(keep=False)
         if duplicate_mask.any():
+            # Files exported from different procurement modules often contain
+            # overlapping PO headers with different column coverage. A blank
+            # value in one export is not a contradiction of a populated value
+            # in another. Coalesce those complementary rows, but never choose
+            # between two different non-empty values for the same PO field.
             conflicts = []
-            compare_columns = [column for column in combined.columns if column != "po_id"]
+            merged_rows = []
             for key, rows in combined.loc[duplicate_mask].groupby(keys[duplicate_mask], sort=False):
-                if len(rows[compare_columns].drop_duplicates()) > 1:
-                    conflicts.append(str(rows["po_id"].iloc[0]))
-                if len(conflicts) >= 5:
-                    break
+                conflict_fields = []
+                for column in combined.columns:
+                    if column == "po_id":
+                        continue
+                    values = rows[column].dropna()
+                    values = values[values.astype(str).str.strip().ne("")]
+                    if len(values.astype(str).drop_duplicates()) > 1:
+                        conflict_fields.append(column)
+                if conflict_fields:
+                    conflicts.append(
+                        f"{rows['po_id'].iloc[0]} [{', '.join(conflict_fields[:4])}]"
+                    )
+                    if len(conflicts) >= 5:
+                        break
+                else:
+                    merged = rows.iloc[0].copy()
+                    for column in combined.columns:
+                        if column == "po_id":
+                            continue
+                        values = rows[column].dropna()
+                        values = values[values.astype(str).str.strip().ne("")]
+                        if len(values):
+                            merged[column] = values.iloc[0]
+                    merged_rows.append((key, merged))
             if conflicts:
-                examples = ", ".join(conflicts)
+                examples = "; ".join(conflicts)
                 raise ValueError(
-                    "The purchase-order files contain conflicting rows for the same PO number "
-                    f"({examples}). Resolve those records before combining; Seepsight will not "
-                    "choose one version automatically."
+                    "The purchase-order files contain genuinely conflicting values for the same "
+                    f"PO number: {examples}. Check the named fields before combining. "
+                    "Seepsight will not overwrite a populated value automatically."
                 )
             before_key_dedup = len(combined)
-            keep_rows = keys.isna() | ~keys.duplicated(keep="first")
-            combined = combined.loc[keep_rows].reset_index(drop=True)
+            duplicate_keys = set(keys[duplicate_mask].dropna())
+            first_positions = {}
+            for position, key in enumerate(keys):
+                if pd.notna(key) and key in duplicate_keys and key not in first_positions:
+                    first_positions[key] = position
+            replacements = {key: row for key, row in merged_rows}
+            keep_positions = [
+                position for position, key in enumerate(keys)
+                if pd.isna(key) or key not in duplicate_keys or first_positions.get(key) == position
+            ]
+            combined = combined.iloc[keep_positions].copy()
+            # Rebuild the merged values by stable row order to avoid index
+            # assumptions after dropping duplicate positions.
+            if replacements:
+                output_rows = []
+                seen = set()
+                for _, row in pd.concat(
+                    [frame.reindex(columns=columns) for frame in frames],
+                    ignore_index=True, sort=False
+                ).iterrows():
+                    key = _id_key(pd.Series([row.get("po_id")])).iloc[0]
+                    if key in replacements:
+                        if key not in seen:
+                            output_rows.append(replacements[key])
+                            seen.add(key)
+                    else:
+                        output_rows.append(row)
+                combined = pd.DataFrame(output_rows, columns=columns).reset_index(drop=True)
+            else:
+                combined = combined.reset_index(drop=True)
             duplicate_order_ids_removed = before_key_dedup - len(combined)
 
     return combined, {
