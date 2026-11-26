@@ -107,3 +107,8 @@ Use synthetic or appropriately anonymised records when evaluating the public dem
 ## License
 
 This project is licensed under the [MIT License](LICENSE). Third-party libraries and services remain subject to their respective terms and licences.
+
+
+## Jira integration
+
+The authenticated Seepsight sidebar includes a short-lived, single-use Jira account pairing-code panel. See [Jira account linking](docs/JIRA_ACCOUNT_LINKING.md) for the security model and current integration status. The Jira API and Forge app are maintained in the separate [Seepsight Intelligence for Jira repository](https://github.com/damolajalal/Seepsight-Intelligence-for-Jira).
