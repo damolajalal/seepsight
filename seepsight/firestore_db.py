@@ -502,12 +502,27 @@ def save_company_dataset(
         "updated_at": datetime.now(timezone.utc),
     })
 
-    company.collection("datasets").document(
-        dataset_id
-    ).set(
-        document,
-        merge=True,
-    )
+    # Dataset metadata is the first durable write in the upload workflow.
+    # Bound the retry window so a transient Firestore outage does not leave the
+    # Streamlit request waiting through the SDK's much longer default retry
+    # period. The deterministic dataset_id makes this merge write safe to retry.
+    from google.api_core.retry import Retry
+
+    metadata_ref = company.collection("datasets").document(dataset_id)
+    try:
+        metadata_ref.set(
+            document,
+            merge=True,
+            retry=Retry(deadline=15),
+            timeout=20,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Firestore dataset metadata write failed for company-scoped dataset_id=%s",
+            dataset_id,
+        )
+        raise
+
     write_company_audit_event(
         company_id, "dataset.metadata_saved", "dataset", dataset_id,
         {"dataset_type": document.get("dataset_type"), "filename": document.get("filename"),
