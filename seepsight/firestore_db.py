@@ -20,6 +20,7 @@ import math
 import json
 import re
 import logging
+import zlib
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -670,7 +671,11 @@ def get_original_file(company_id, dataset_id):
 # ============================================================
 
 def save_dataset_records(company_id, dataset_id, records, collection_name="records"):
-    """Persist source or normalized procurement rows in idempotent bounded batches."""
+    """Persist procurement rows as bounded compressed chunks to reduce Firestore writes.
+
+    New uploads use one document per byte-bounded chunk, not one document per
+    row. Existing row-per-document datasets remain readable during migration.
+    """
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
     company = _company_ref(company_id)
@@ -679,22 +684,34 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
         raise ValueError("collection_name must be 'records' or 'source_records'.")
     if not isinstance(records, (list, tuple)):
         raise TypeError("records must be a list of dictionaries.")
-
-    # Bound total Firestore work per upload; batch sizes alone do not bound
-    # memory use when a caller supplies an unbounded in-memory list.
     if len(records) > 250_000:
         raise ValueError("A dataset upload cannot exceed 250,000 records.")
-    # Validate and serialise the complete payload before the first write.
-    prepared = []
+
+    # Keep the uncompressed JSON chunk below 450 KiB. This leaves ample room
+    # beneath Firestore's 1 MiB document limit even for poorly compressible data.
+    max_chunk_bytes = 450 * 1024
+    prepared_chunks = []
+    current_rows = []
+    current_size = 2
     for index, record in enumerate(records):
         if not isinstance(record, dict):
             raise TypeError("Each procurement record must be a dictionary.")
         cleaned = _normalise(record)
         cleaned["_record_number"] = index
-        size = len(__import__("json").dumps(cleaned, default=str).encode("utf-8"))
-        if size > 800_000:
+        encoded = json.dumps(cleaned, default=str, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > max_chunk_bytes:
             raise ValueError(f"Procurement record {index + 1} is too large to store safely.")
-        prepared.append(cleaned)
+        # Account for commas and the enclosing JSON array.
+        if current_rows and current_size + len(encoded) + 1 > max_chunk_bytes:
+            raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
+            prepared_chunks.append((len(prepared_chunks), len(current_rows), current_rows[0]["_record_number"], current_rows[-1]["_record_number"], zlib.compress(raw, 6)))
+            current_rows = []
+            current_size = 2
+        current_rows.append(cleaned)
+        current_size += len(encoded) + (1 if len(current_rows) > 1 else 0)
+    if current_rows:
+        raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
+        prepared_chunks.append((len(prepared_chunks), len(current_rows), current_rows[0]["_record_number"], current_rows[-1]["_record_number"], zlib.compress(raw, 6)))
 
     dataset_ref = company.collection("datasets").document(dataset_id)
     client = get_firestore_client()
@@ -702,28 +719,37 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     saved_key = f"{collection_name}_saved"
     expected_key = f"{collection_name}_expected_count"
     count_key = "record_count" if collection_name == "records" else "source_record_count"
+    format_key = f"{collection_name}_storage_format"
+    chunks_ref = dataset_ref.collection(f"{collection_name}_chunks")
     dataset_ref.set({
         status_key: "saving",
         saved_key: False,
-        expected_key: len(prepared),
+        expected_key: len(records),
         "updated_at": datetime.now(timezone.utc),
     }, merge=True)
 
     try:
-        for start in range(0, len(prepared), 400):
+        for offset in range(0, len(prepared_chunks), 200):
             batch = client.batch()
-            for record in prepared[start:start + 400]:
-                record_id = f"record_{record['_record_number']:012d}"
-                record_ref = dataset_ref.collection(collection_name).document(record_id)
-                batch.set(record_ref, {**record, "_saved_at": SERVER_TIMESTAMP})
+            for chunk_index, row_count, first_row, last_row, payload in prepared_chunks[offset:offset + 200]:
+                batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
+                    "chunk_index": chunk_index,
+                    "record_count": row_count,
+                    "first_record_number": first_row,
+                    "last_record_number": last_row,
+                    "payload_zlib_json": payload,
+                    "format_version": 1,
+                    "saved_at": SERVER_TIMESTAMP,
+                })
             batch.commit()
 
-        # Remove stale tail documents if this upload ID is retried with fewer rows.
-        records_query = dataset_ref.collection(collection_name).order_by("_record_number")
+        # Delete obsolete chunks only after every replacement chunk is durable.
         stale_batch = client.batch()
         stale_count = 0
-        for snapshot in _stream_query_pages(records_query, page_size=400):
-            if int((snapshot.to_dict() or {}).get("_record_number", -1)) >= len(prepared):
+        for snapshot in _stream_query_pages(
+            chunks_ref.order_by("chunk_index"), page_size=400
+        ):
+            if int((snapshot.to_dict() or {}).get("chunk_index", -1)) >= len(prepared_chunks):
                 stale_batch.delete(snapshot.reference)
                 stale_count += 1
                 if stale_count % 400 == 0:
@@ -733,9 +759,10 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
             stale_batch.commit()
 
         dataset_ref.set({
-            count_key: len(prepared),
+            count_key: len(records),
             saved_key: True,
             status_key: "complete",
+            format_key: "zlib-json-v1",
             "updated_at": datetime.now(timezone.utc),
         }, merge=True)
     except Exception as exc:
@@ -751,13 +778,13 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
 
     write_company_audit_event(
         company_id, f"dataset.{collection_name}_saved", "dataset", dataset_id,
-        {count_key: len(prepared), status_key: "complete"},
+        {count_key: len(records), "chunk_count": len(prepared_chunks), status_key: "complete"},
     )
-    return len(prepared)
+    return len(records)
 
 
 def get_dataset_records(company_id, dataset_id, collection_name="records"):
-    """Retrieve source or normalized company records in bounded pages."""
+    """Retrieve source or normalized records from chunked or legacy storage."""
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
     if collection_name not in {"records", "source_records"}:
@@ -767,22 +794,51 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
     status_key = f"{collection_name}_status"
     if not metadata.exists:
         raise FileNotFoundError("The requested company dataset does not exist.")
-    if metadata.exists:
-        metadata_data = metadata.to_dict() or {}
-        state = metadata_data.get(status_key)
-        if metadata_data.get("deletion_status") in {"deleting", "failed"}:
-            raise RuntimeError("This dataset is being deleted and is not available.")
-        if state in {"saving", "failed"}:
-            raise RuntimeError("This dataset's records are not in a complete saved state.")
+    metadata_data = metadata.to_dict() or {}
+    state = metadata_data.get(status_key)
+    if metadata_data.get("deletion_status") in {"deleting", "failed"}:
+        raise RuntimeError("This dataset is being deleted and is not available.")
+    if state in {"saving", "failed"}:
+        raise RuntimeError("This dataset's records are not in a complete saved state.")
 
-    query = dataset_ref.collection(collection_name).order_by("_record_number")
     records = []
-    for snapshot in _stream_query_pages(query, page_size=500):
-        item = _denormalise_workspace_value(snapshot.to_dict() or {})
-        records.append({
-            key: value for key, value in item.items()
-            if not key.startswith("_")
-        })
+    format_key = f"{collection_name}_storage_format"
+    if metadata_data.get(format_key) == "zlib-json-v1":
+        chunks_ref = dataset_ref.collection(f"{collection_name}_chunks")
+        for snapshot in _stream_query_pages(
+            chunks_ref.order_by("chunk_index"), page_size=200
+        ):
+            chunk = snapshot.to_dict() or {}
+            try:
+                payload = zlib.decompress(chunk["payload_zlib_json"])
+                decoded = json.loads(payload.decode("utf-8"))
+            except Exception as exc:
+                raise RuntimeError("A saved procurement data chunk could not be read or verified.") from exc
+            if not isinstance(decoded, list):
+                raise RuntimeError("A saved procurement data chunk has an invalid structure.")
+            for item in decoded:
+                restored = _denormalise_workspace_value(item)
+                records.append({
+                    key: value for key, value in restored.items()
+                    if not key.startswith("_")
+                })
+    else:
+        # Backward compatibility for datasets saved before chunked storage.
+        query = dataset_ref.collection(collection_name).order_by("_record_number")
+        for snapshot in _stream_query_pages(query, page_size=500):
+            item = _denormalise_workspace_value(snapshot.to_dict() or {})
+            records.append({
+                key: value for key, value in item.items()
+                if not key.startswith("_")
+            })
+
+    expected_count = int(metadata_data.get(
+        "source_record_count" if collection_name == "source_records" else "record_count", 0
+    ) or 0)
+    if len(records) != expected_count:
+        raise RuntimeError(
+            f"Saved {collection_name} count mismatch: expected {expected_count}, retrieved {len(records)}."
+        )
     write_company_audit_event(
         company_id, f"dataset.{collection_name}_read", "dataset", dataset_id,
         {"record_count": len(records), "collection": collection_name},
