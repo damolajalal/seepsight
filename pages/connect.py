@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import tempfile
+import time
 import uuid
 
 import pandas as pd
@@ -805,8 +806,11 @@ if result and st.session_state.get("connect_check_signature") == check_signature
             try:
                 status_message = "Saving original files and preparing your company workspace..."
                 stage = "Starting company workspace persistence"
+                stage_started_at = time.perf_counter()
                 support_id = uuid.uuid4().hex[:12].upper()
                 saved_upload_ids = []
+                upload_started_at = time.perf_counter()
+                stage_started_at = upload_started_at
                 with st.status(status_message, expanded=True) as status:
                     for source_filename, source_frame in raw.items():
                         source_bytes = source_file_bytes[source_filename]
@@ -836,12 +840,15 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
                         dataset_metadata["schema_version"] = "1"
                         stage = "Saving dataset metadata"
+                        stage_started_at = time.perf_counter()
                         status.write("Saving dataset metadata")
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         stage = "Saving original file chunks"
+                        stage_started_at = time.perf_counter()
                         status.write("Saving original file")
                         save_original_file(company_id, upload_id, source_filename, source_bytes)
                         stage = "Saving confirmed column mapping"
+                        stage_started_at = time.perf_counter()
                         save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
                         source_records = source_frame.astype(object).where(
                             pd.notna(source_frame), None
@@ -854,6 +861,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                                 if isinstance(value, float):
                                     source_record[field] = str(value)
                         stage = "Saving original source rows in compact chunks"
+                        stage_started_at = time.perf_counter()
                         status.write(f"Saving {len(source_records):,} original source rows")
                         save_dataset_records(
                             company_id, upload_id, source_records,
@@ -863,16 +871,19 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             pd.notna(normalized_frame), None
                         ).to_dict("records")
                         stage = "Saving normalized procurement rows in compact chunks"
+                        stage_started_at = time.perf_counter()
                         status.write(f"Saving {len(saved_records):,} normalized rows")
                         save_dataset_records(company_id, upload_id, saved_records)
                         saved_upload_ids.append(upload_id)
                     st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
                     stage = "Building findings and supporting evidence"
+                    stage_started_at = time.perf_counter()
                     status.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = dataset_group_id
                     pack["dataset_group_id"] = dataset_group_id
                     stage = "Saving the analysis workspace"
+                    stage_started_at = time.perf_counter()
                     status.write("Saving analysis workspace")
                     workspace.persist(pack, analysis_id)
                     pack["analysis_id"] = analysis_id
@@ -883,9 +894,12 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 st.rerun()
             except Exception as exc:
                 logging.exception(
-                    "Company workspace persistence failed at stage=%s support_id=%s",
+                    "Company workspace persistence failed at stage=%s support_id=%s "
+                    "stage_duration_seconds=%.2f total_duration_seconds=%.2f",
                     stage,
                     support_id,
+                    time.perf_counter() - stage_started_at,
+                    time.perf_counter() - upload_started_at,
                 )
                 st.error(
                     "Company workspace setup did not finish. "
