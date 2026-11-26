@@ -4,6 +4,7 @@ name: Python detection and regression tests
 on:
   push:
     branches:
+      - main
       - feature/company-auth
       - feature/phase8-unified-hybrid-assistant
       - feature/dataset-management-and-connectors
