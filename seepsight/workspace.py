@@ -351,7 +351,10 @@ def cases():
     all_cases = st.session_state.setdefault("cases", {})
 
     if cache_key not in all_cases:
-        all_cases[cache_key] = case_store.get_company_cases(company_id, dataset_group_id=dataset_group_id)
+        if st.session_state.get("seepsight_demo_mode"):
+            all_cases[cache_key] = {}
+        else:
+            all_cases[cache_key] = case_store.get_company_cases(company_id, dataset_group_id=dataset_group_id)
 
     return all_cases[cache_key]
 
@@ -365,6 +368,9 @@ def save_case(finding_id, case):
         )
     mine = current()
     dataset_group_id = mine.get("dataset_group_id") or mine.get("analysis_id")
+    if st.session_state.get("seepsight_demo_mode"):
+        st.session_state.setdefault("cases", {}).setdefault(cache_key, {})[finding_id] = case
+        return True
     case_store.save_company_case(company_id, finding_id, case, dataset_group_id=dataset_group_id)
     cache_key = f"{company_id}:{dataset_group_id}"
     st.session_state.setdefault("cases", {}).setdefault(
