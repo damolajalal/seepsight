@@ -257,8 +257,17 @@ if saved_groups:
             st.caption(files_label)
     if account.get("role") == "owner":
         safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
-        protected_groups = [item for item in saved_groups if not item.get("deletion_safe")]
-        with st.expander("Delete a saved dataset", expanded=False):
+        used_groups = [item for item in saved_groups if item.get("used")]
+        pending_groups = [
+            item for item in saved_groups if item.get("pending_workspace")
+        ]
+        protected_groups = [
+            item for item in saved_groups
+            if not item.get("deletion_safe")
+            and not item.get("used")
+            and not item.get("pending_workspace")
+        ]
+        with st.expander("Delete an unused dataset", expanded=False):
             if safe_groups:
                 group_options = {
                     item["dataset_group_id"]: (
@@ -268,21 +277,22 @@ if saved_groups:
                     for item in safe_groups
                 }
                 delete_group_id = st.selectbox(
-                    "Choose the dataset to delete",
+                    "Choose an unused dataset to delete",
                     list(group_options),
                     format_func=lambda value: group_options[value],
                     key="delete_dataset_group_choice",
                 )
                 st.warning(
-                    "Permanent deletion removes the selected dataset's uploaded files, "
-                    "source and normalized records, saved analyses, findings and cases."
+                    "This permanently removes only the selected unused upload, including its "
+                    "original files, source rows and normalized rows. Datasets with analysis "
+                    "history are not eligible and will remain in your workspace history."
                 )
                 confirm_delete = st.checkbox(
-                    "I understand this deletion cannot be undone.",
+                    "I understand this unused dataset will be permanently deleted.",
                     key="confirm_delete_dataset_group",
                 )
                 if st.button(
-                    "Delete selected dataset",
+                    "Delete selected unused dataset",
                     type="secondary",
                     disabled=not confirm_delete,
                     key="delete_selected_dataset_group",
@@ -294,7 +304,7 @@ if saved_groups:
                             if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
                                 st.session_state.pop("mine", None)
                             st.session_state.pop("cases", None)
-                            st.success("Dataset and its associated records were deleted.")
+                            st.success("Unused dataset deleted. Existing analysis history was not changed.")
                             st.rerun()
                         else:
                             st.info("That dataset no longer exists.")
@@ -303,7 +313,31 @@ if saved_groups:
                     except Exception as exc:
                         st.error(f"Deletion was not completed: {exc}")
             else:
-                st.caption("There are no datasets currently eligible for safe deletion.")
+                st.caption("There are no unused, fully linked datasets eligible for deletion.")
+            if used_groups:
+                st.caption("Datasets retained in analysis history:")
+                for item in used_groups:
+                    st.write(
+                        f"• {item.get('company_name') or 'Dataset'} — "
+                        f"{item.get('file_count', 0)} file(s), "
+                        f"{int(item.get('analysis_count', 1) or 1)} saved analysis(es)"
+                    )
+                st.info(
+                    "These datasets have been analysed. Their saved analysis history, findings "
+                    "and cases are protected from dataset deletion."
+                )
+            if pending_groups:
+                st.caption("Datasets with an unfinished analysis save (protected):")
+                for item in pending_groups:
+                    st.write(
+                        f"• {item.get('company_name') or 'Dataset'} — "
+                        f"{item.get('file_count', 0)} file(s), "
+                        f"{item['dataset_group_id'][:8]}"
+                    )
+                st.info(
+                    "An unfinished analysis save contains recovery diagnostics. These datasets "
+                    "cannot be deleted until the incomplete save has been diagnosed."
+                )
             if protected_groups:
                 st.caption("Protected legacy datasets (not selectable for deletion):")
                 for item in protected_groups:
@@ -314,12 +348,8 @@ if saved_groups:
                     )
                 st.info(
                     "These older records are missing complete dataset-to-analysis links. "
-                    "Seepsight keeps them protected rather than risk deleting the wrong "
-                    "analysis or leaving orphaned records. They need a verified legacy-link "
-                    "migration before deletion can be enabled."
+                    "They remain protected until their links can be verified."
                 )
-else:
-    st.caption("No saved procurement datasets yet.")
 
 extendable_groups = [
     item for item in saved_groups
