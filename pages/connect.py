@@ -46,8 +46,15 @@ with st.expander("Cloud storage diagnostics", expanded=False):
     if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
         try:
             with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
-                firestore_db.test_firestore_connection()
-            st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+                diagnostic = firestore_db.test_firestore_connection()
+            latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
+            if latency is not None:
+                st.success(
+                    f"Firestore write, read and cleanup test passed. "
+                    f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
+                )
+            else:
+                st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
         except Exception:
             st.error("Firestore verification failed. Check the deployed Firebase Admin credentials and Firestore permissions. No credential details are displayed.")
 
