@@ -7,6 +7,7 @@ procurement findings in this version.
 """
 
 import hashlib
+import logging
 import os
 import tempfile
 import uuid
@@ -760,8 +761,10 @@ if result and st.session_state.get("connect_check_signature") == check_signature
         if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
             try:
                 status_message = "Saving original files and preparing your company workspace..."
+                stage = "Starting company workspace persistence"
+                support_id = uuid.uuid4().hex[:12].upper()
+                saved_upload_ids = []
                 with st.status(status_message, expanded=True) as status:
-                    saved_upload_ids = []
                     for source_filename, source_frame in raw.items():
                         source_bytes = source_file_bytes[source_filename]
                         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
@@ -789,9 +792,15 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         dataset_metadata["source_record_count"] = int(len(source_frame))
                         dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
                         dataset_metadata["schema_version"] = "1"
+                        stage = "Saving dataset metadata"
+                        status.write("Saving dataset metadata")
                         save_company_dataset(company_id, upload_id, dataset_metadata)
+                        stage = "Saving original file chunks"
+                        status.write("Saving original file")
                         save_original_file(company_id, upload_id, source_filename, source_bytes)
+                        stage = "Updating original-file status"
                         save_company_dataset(company_id, upload_id, {"status": "original_file_saved"})
+                        stage = "Saving confirmed column mapping"
                         save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
                         source_records = source_frame.astype(object).where(
                             pd.notna(source_frame), None
@@ -803,6 +812,8 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             for field, value in list(source_record.items()):
                                 if isinstance(value, float):
                                     source_record[field] = str(value)
+                        stage = "Saving original source rows in compact chunks"
+                        status.write(f"Saving {len(source_records):,} original source rows")
                         save_dataset_records(
                             company_id, upload_id, source_records,
                             collection_name="source_records",
@@ -810,13 +821,18 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         saved_records = normalized_frame.astype(object).where(
                             pd.notna(normalized_frame), None
                         ).to_dict("records")
+                        stage = "Saving normalized procurement rows in compact chunks"
+                        status.write(f"Saving {len(saved_records):,} normalized rows")
                         save_dataset_records(company_id, upload_id, saved_records)
                         saved_upload_ids.append(upload_id)
                     st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
-                    st.write("Preparing findings and supporting evidence")
+                    stage = "Building findings and supporting evidence"
+                    status.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = dataset_group_id
                     pack["dataset_group_id"] = dataset_group_id
+                    stage = "Saving the analysis workspace"
+                    status.write("Saving analysis workspace")
                     workspace.persist(pack, analysis_id)
                     pack["analysis_id"] = analysis_id
                     st.session_state["mine"] = pack
@@ -825,7 +841,25 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 st.session_state["_done"] = True
                 st.rerun()
             except Exception as exc:
-                st.error("We could not complete the company workspace setup. Please retry; if the problem continues, contact support.")
+                logging.exception(
+                    "Company workspace persistence failed at stage=%s support_id=%s",
+                    stage,
+                    support_id,
+                )
+                st.error(
+                    "Company workspace setup did not finish. "
+                    f"Failed stage: {stage}. "
+                    f"Error type: {type(exc).__name__}. "
+                    f"Support reference: {support_id}."
+                )
+                if saved_upload_ids:
+                    st.warning(
+                        f"{len(saved_upload_ids)} file(s) reached the saved-record stage before this failure. "
+                        "The incomplete workspace has not been activated. Do not delete the saved dataset; "
+                        "share the support reference so the failure can be diagnosed safely."
+                    )
+                else:
+                    st.caption("No complete file upload was confirmed before the failure. Your original upload remains available in this session.")
 
 if st.session_state.get("_done"):
     st.success("Your review is ready. Open Overview in the navigation menu to view your procurement intelligence.")
