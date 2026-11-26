@@ -1102,36 +1102,19 @@ def combine_dataset_frames(dataset_name, frames):
                     "Seepsight will not overwrite a populated value automatically."
                 )
             before_key_dedup = len(combined)
-            duplicate_keys = set(keys[duplicate_mask].dropna())
-            first_positions = {}
-            for position, key in enumerate(keys):
-                if pd.notna(key) and key in duplicate_keys and key not in first_positions:
-                    first_positions[key] = position
+            source_rows = combined.copy()
             replacements = {key: row for key, row in merged_rows}
-            keep_positions = [
-                position for position, key in enumerate(keys)
-                if pd.isna(key) or key not in duplicate_keys or first_positions.get(key) == position
-            ]
-            combined = combined.iloc[keep_positions].copy()
-            # Rebuild the merged values by stable row order to avoid index
-            # assumptions after dropping duplicate positions.
-            if replacements:
-                output_rows = []
-                seen = set()
-                for _, row in pd.concat(
-                    [frame.reindex(columns=columns) for frame in frames],
-                    ignore_index=True, sort=False
-                ).iterrows():
-                    key = _id_key(pd.Series([row.get("po_id")])).iloc[0]
-                    if key in replacements:
-                        if key not in seen:
-                            output_rows.append(replacements[key])
-                            seen.add(key)
-                    else:
-                        output_rows.append(row)
-                combined = pd.DataFrame(output_rows, columns=columns).reset_index(drop=True)
-            else:
-                combined = combined.reset_index(drop=True)
+            output_rows = []
+            seen = set()
+            for position, row in source_rows.iterrows():
+                key = keys.loc[position]
+                if pd.notna(key) and key in replacements:
+                    if key not in seen:
+                        output_rows.append(replacements[key])
+                        seen.add(key)
+                else:
+                    output_rows.append(row)
+            combined = pd.DataFrame(output_rows, columns=columns).reset_index(drop=True)
             duplicate_order_ids_removed = before_key_dedup - len(combined)
 
     return combined, {
