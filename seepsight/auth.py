@@ -806,6 +806,7 @@ def _verified_account(account):
         **account,
         "uid": uid,
         "email": email,
+        "email_verified": True,
         "company_id": company["company_id"],
         "company_name": company["company_name"],
         "role": company["role"],
@@ -847,7 +848,7 @@ def _jira_connection_panel(verified):
                 result = create_jira_pairing_code(
                     uid=verified["uid"],
                     email=verified["email"],
-                    email_verified=True,
+                    email_verified=verified["email_verified"],
                 )
                 st.session_state["jira_pairing_code"] = result["code"]
                 st.session_state["jira_pairing_expires_at"] = result["expires_at"]
