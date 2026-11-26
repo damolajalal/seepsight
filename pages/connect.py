@@ -256,15 +256,16 @@ if saved_groups:
             st.caption(files_label)
     if account.get("role") == "owner":
         safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
-        if safe_groups:
-            group_options = {
-                item["dataset_group_id"]: (
-                    f"{item.get('company_name') or 'Dataset'} · "
-                    f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
-                )
-                for item in safe_groups
-            }
-            with st.expander("Delete a saved dataset", expanded=False):
+        protected_groups = [item for item in saved_groups if not item.get("deletion_safe")]
+        with st.expander("Delete a saved dataset", expanded=False):
+            if safe_groups:
+                group_options = {
+                    item["dataset_group_id"]: (
+                        f"{item.get('company_name') or 'Dataset'} · "
+                        f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+                    )
+                    for item in safe_groups
+                }
                 delete_group_id = st.selectbox(
                     "Choose the dataset to delete",
                     list(group_options),
@@ -272,8 +273,8 @@ if saved_groups:
                     key="delete_dataset_group_choice",
                 )
                 st.warning(
-                    "This permanently deletes the selected dataset's uploaded files, "
-                    "source and normalized records, saved analysis, findings and cases."
+                    "Permanent deletion removes the selected dataset's uploaded files, "
+                    "source and normalized records, saved analyses, findings and cases."
                 )
                 confirm_delete = st.checkbox(
                     "I understand this deletion cannot be undone.",
@@ -298,10 +299,24 @@ if saved_groups:
                             st.info("That dataset no longer exists.")
                     except PermissionError:
                         st.error("Only the company owner can delete a dataset.")
-                    except Exception:
-                        st.error("The dataset could not be fully deleted. Contact support before retrying.")
-        elif saved_groups:
-            st.caption("Deletion is unavailable for older datasets that do not yet have complete file-to-analysis links. They are protected from partial deletion.")
+                    except Exception as exc:
+                        st.error(f"Deletion was not completed: {exc}")
+            else:
+                st.caption("There are no datasets currently eligible for safe deletion.")
+            if protected_groups:
+                st.caption("Protected legacy datasets (not selectable for deletion):")
+                for item in protected_groups:
+                    st.write(
+                        f"• {item.get('company_name') or 'Dataset'} — "
+                        f"{item.get('file_count', 0)} file(s), "
+                        f"{item['dataset_group_id'][:8]}"
+                    )
+                st.info(
+                    "These older records are missing complete dataset-to-analysis links. "
+                    "Seepsight keeps them protected rather than risk deleting the wrong "
+                    "analysis or leaving orphaned records. They need a verified legacy-link "
+                    "migration before deletion can be enabled."
+                )
 else:
     st.caption("No saved procurement datasets yet.")
 
@@ -309,13 +324,16 @@ extendable_groups = [
     item for item in saved_groups
     if item.get("extendable") and item.get("file_items")
 ]
+upload_modes = ["Create a separate dataset"]
+if extendable_groups:
+    upload_modes.append("Add complementary files to an existing dataset")
 upload_mode = st.radio(
     "How should this upload be handled?",
-    ["Create a separate dataset", "Add complementary files to an existing dataset"],
+    upload_modes,
     horizontal=True,
     key="connect_upload_mode",
     disabled=False,
-    help="Creating a separate dataset is always available. Extension is offered only for datasets whose original files can all be restored and verified.",
+    help="Create a clean separate dataset, or add complementary files only when an existing dataset's original files can all be restored and verified.",
 )
 target_group_id = None
 if upload_mode == "Add complementary files to an existing dataset" and extendable_groups:
