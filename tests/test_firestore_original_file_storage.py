@@ -30,7 +30,7 @@ class OriginalFileStorageTests(unittest.TestCase):
     def test_save_original_file_writes_chunk_and_checksum_metadata(self):
         payload = b"PO Number,Amount\nPO-1,100\n"
         result = firestore_db.save_original_file("company-a", "dataset-a", "orders.csv", payload)
-        self.client.recursive_delete.assert_called_once_with(self.chunks)
+        self.client.recursive_delete.assert_not_called()
         self.batch.set.assert_called_once()
         chunk = self.batch.set.call_args.args[1]
         self.assertEqual(chunk["data"], payload)
@@ -56,7 +56,7 @@ class OriginalFileStorageTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "could not be saved completely"):
             firestore_db.save_original_file("company-a", "dataset-a", "orders.csv", b"a,b\n1,2")
         self.assertEqual(self.dataset.set.call_args_list[-1].args[0]["original_file_status"], "failed")
-        self.client.recursive_delete.assert_called()
+        self.client.recursive_delete.assert_not_called()
 
     def test_get_original_file_reassembles_and_checks_sha256(self):
         payload = b"PO Number,Amount\nPO-1,100\n"
