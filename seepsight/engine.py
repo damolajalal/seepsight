@@ -899,8 +899,8 @@ def detect(led, config=None):
     if not rows:
         return pd.DataFrame(columns=cols)
     raw = pd.DataFrame(rows)
-    # Group transaction rows into actionable supplier-level issues. Each issue
-    # retains all of its purchase-order IDs for a complete evidence drill-down.
+    # Group transaction rows into one issue per problem type across suppliers.
+    # Every affected purchase order remains available in the evidence drill-down.
     transaction_rows = raw[raw["po_id"].notna()].copy()
     trend_rows = raw[raw["po_id"].isna()].copy()
     grouped = []
