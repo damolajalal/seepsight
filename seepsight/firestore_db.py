@@ -1606,12 +1606,24 @@ def get_company_dataset_groups(company_id):
             item["analysis_id"] = snapshot.id
             item["updated_at"] = data.get("updated_at")
     for item in groups.values():
-        # Only unused, fully linked datasets can be permanently deleted.
-        # Once analysed, the dataset remains in history so its analysis,
-        # findings and cases are never removed by upload cleanup.
+        # A failed save can leave an orphan revision under analyses/{group_id}
+        # before the parent analysis is activated. Keep that dataset protected
+        # so its diagnostic checkpoint is not stranded or silently discarded.
+        item["pending_workspace"] = False
+        if not item["has_analysis"] and item["file_count"]:
+            pending_revisions = company.collection("analyses").document(
+                item["dataset_group_id"]
+            ).collection("revisions").limit(1).stream()
+            item["pending_workspace"] = next(iter(pending_revisions), None) is not None
+
+        # Only unused, fully linked datasets without pending analysis writes can
+        # be deleted. Completed analyses remain available as history.
         item["used"] = bool(item["has_analysis"])
         item["deletion_safe"] = bool(
-            item["all_files_linked"] and not item["has_analysis"] and item["file_count"] > 0
+            item["all_files_linked"]
+            and not item["has_analysis"]
+            and not item["pending_workspace"]
+            and item["file_count"] > 0
         )
         item["extendable"] = bool(
             item["all_files_linked"]
