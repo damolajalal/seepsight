@@ -773,14 +773,14 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     count_key = "record_count" if collection_name == "records" else "source_record_count"
     format_key = f"{collection_name}_storage_format"
     chunks_ref = dataset_ref.collection(f"{collection_name}_chunks")
-    dataset_ref.set({
-        status_key: "saving",
-        saved_key: False,
-        expected_key: len(records),
-        "updated_at": datetime.now(timezone.utc),
-    }, merge=True, retry=upload_retry, timeout=20)
-
     try:
+        dataset_ref.set({
+            status_key: "saving",
+            saved_key: False,
+            expected_key: len(records),
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True, retry=upload_retry, timeout=20)
+
         max_batch_bytes = 8 * 1024 * 1024
         batch = client.batch()
         batch_bytes = 0
@@ -823,10 +823,10 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
                 stale_batch.delete(snapshot.reference)
                 stale_count += 1
                 if stale_count % 400 == 0:
-                    stale_batch.commit()
+                    stale_batch.commit(retry=upload_retry, timeout=20)
                     stale_batch = client.batch()
         if stale_count % 400:
-            stale_batch.commit()
+            stale_batch.commit(retry=upload_retry, timeout=20)
 
         dataset_ref.set({
             count_key: len(records),
@@ -985,10 +985,12 @@ def save_company_mapping(
     cleaned_mapping = _normalise_workspace_value(mapping)
     if len(json.dumps(cleaned_mapping, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Dataset mapping is too large to store safely.")
+    from google.api_core.retry import Retry
+
     mapping_ref.set({
         "mapping": cleaned_mapping,
         "updated_at": datetime.now(timezone.utc),
-    })
+    }, retry=Retry(deadline=15), timeout=20)
     _write_company_audit_event_to_ref(company,
         company_id, "dataset.mapping_saved", "dataset", dataset_id,
         {"mapped_field_count": len(mapping)},
@@ -1381,10 +1383,14 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
     analysis_ref = company.collection("analyses").document(analysis_id)
     revision_id = uuid.uuid4().hex
     revision_ref = analysis_ref.collection("revisions").document(revision_id)
+    from google.api_core.retry import Retry
+
+    workspace_retry = Retry(deadline=15)
+    workspace_timeout = 20
     revision_ref.set({
         "workspace_status": "saving",
         "created_at": datetime.now(timezone.utc),
-    })
+    }, retry=workspace_retry, timeout=workspace_timeout)
 
     client = get_firestore_client()
     table_counts = {}
@@ -1396,7 +1402,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
         "save_stage": "preparing_table_chunks",
         "table_progress": {},
         "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
     for table_name, records in prepared.items():
         table_ref = revision_ref.collection("tables").document(table_name)
         chunks_ref = table_ref.collection("chunks")
@@ -1428,7 +1434,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
                 "current_table": table_name,
                 "current_chunk_batch": [offset, batch_end],
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
             for chunk_index, (payload, row_count) in enumerate(chunks[offset:batch_end], start=offset):
                 batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
                     "chunk_index": chunk_index,
@@ -1436,17 +1442,17 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
                     "payload_zlib_json": payload,
                     "format_version": 1,
                 })
-            batch.commit()
+            batch.commit(retry=workspace_retry, timeout=workspace_timeout)
             revision_ref.set({
                 "table_progress": {table_name: batch_end},
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
 
         table_ref.set({
             "storage_format": "zlib-json-v1",
             "row_count": len(records),
             "chunk_count": len(chunks),
-        })
+        }, retry=workspace_retry, timeout=workspace_timeout)
         table_counts[table_name] = len(records)
 
     # Mark the revision complete before switching the active pointer. If this
@@ -1455,10 +1461,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
         "workspace_status": "complete",
         "tables": table_counts,
         "completed_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
 
     from firebase_admin import firestore
-    switch_transaction = client.transaction()
+    switch_transaction = client.transaction(max_attempts=3)
 
     @firestore.transactional
     def _activate_revision(transaction):
@@ -1478,7 +1484,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
     revision_ref.set({
         "save_stage": "activating_workspace",
         "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
     _activate_revision(switch_transaction)
     write_company_audit_event(
         company_id, "analysis.workspace_saved", "analysis", analysis_id,
