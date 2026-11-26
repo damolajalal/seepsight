@@ -43,31 +43,6 @@ with st.expander("Cloud storage diagnostics", expanded=False):
     except Exception:
         st.error("Firestore read access could not be verified.")
 
-    if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
-        try:
-            with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
-                diagnostic = firestore_db.test_firestore_connection(company_id)
-            latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
-            if latency is not None:
-                st.success(
-                    f"Firestore write, read and cleanup test passed. "
-                    f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
-                )
-            else:
-                st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
-        except Exception as exc:
-            support_id = uuid.uuid4().hex[:12].upper()
-            logging.getLogger(__name__).exception(
-                "Firestore company-dataset diagnostic failed; support_id=%s",
-                support_id,
-            )
-            st.error(
-                "Firestore verification failed. "
-                f"{str(exc)} "
-                f"Support reference: {support_id}. "
-                "No credential values are displayed."
-            )
-
     st.caption("The full test creates a temporary document, reads it, and deletes it. Secret Manager and external database access are tested separately when a database connection is configured.")
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
@@ -256,6 +231,31 @@ company_name = str(account.get("company_name") or "").strip()
 if not company_id or not company_name:
     st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
     st.stop()
+
+    if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
+        try:
+            with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
+                diagnostic = firestore_db.test_firestore_connection(company_id)
+            latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
+            if latency is not None:
+                st.success(
+                    f"Firestore write, read and cleanup test passed. "
+                    f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
+                )
+            else:
+                st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+        except Exception as exc:
+            support_id = uuid.uuid4().hex[:12].upper()
+            logging.getLogger(__name__).exception(
+                "Firestore company-dataset diagnostic failed; support_id=%s",
+                support_id,
+            )
+            st.error(
+                "Firestore verification failed. "
+                f"{str(exc)} "
+                f"Support reference: {support_id}. "
+                "No credential values are displayed."
+            )
 
 st.markdown("### Company workspace")
 st.write(f"**{company_name}**")
