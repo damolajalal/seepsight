@@ -52,6 +52,34 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         self.assertEqual(len(combined), 1)
         self.assertEqual(report["duplicate_order_ids_removed"], 1)
 
+    def test_complementary_po_exports_are_coalesced_without_false_conflict(self):
+        first = pd.DataFrame([{
+            "po_id": "PO-2026-00116",
+            "supplier": "North Star Supplies",
+            "po_date": pd.Timestamp("2026-02-10"),
+            "ordered_qty": 20,
+            "po_unit_price": 150,
+            "branch": None,
+        }])
+        second = pd.DataFrame([{
+            "po_id": "PO-2026-00116",
+            "supplier": "North Star Supplies",
+            "po_date": pd.Timestamp("2026-02-10"),
+            "ordered_qty": 20,
+            "po_unit_price": 150,
+            "branch": "Kano",
+        }])
+        combined, report = engine.combine_dataset_frames("orders", [first, second])
+        self.assertEqual(len(combined), 1)
+        self.assertEqual(combined.loc[0, "branch"], "Kano")
+        self.assertEqual(report["duplicate_order_ids_removed"], 1)
+
+    def test_conflicting_populated_values_still_block_po_merge(self):
+        first = pd.DataFrame([{"po_id": "PO-001", "supplier": "Supplier A", "ordered_qty": 10}])
+        second = pd.DataFrame([{"po_id": "PO-001", "supplier": "Supplier B", "ordered_qty": 10}])
+        with self.assertRaisesRegex(ValueError, "supplier"):
+            engine.combine_dataset_frames("orders", [first, second])
+
     def test_different_purchase_orders_combine(self):
         first = pd.DataFrame([{"po_id": "PO-001", "ordered_qty": 10}])
         second = pd.DataFrame([{"po_id": "PO-002", "ordered_qty": 20}])
