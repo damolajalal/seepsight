@@ -31,6 +31,14 @@ ui.page_header(
     "confirm its structure, map the registered procurement dataset types and review data quality before analysis.",
 )
 
+account = st.session_state.get("seepsight_auth", {})
+account = account if isinstance(account, dict) else {}
+company_id = account.get("company_id")
+company_name = str(account.get("company_name") or "").strip()
+if not company_id or not company_name:
+    st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
+    st.stop()
+
 # Session-only demo mode avoids all dataset reads and writes to Firestore.
 if "seepsight_demo_mode" not in st.session_state:
     st.session_state["seepsight_demo_mode"] = True
@@ -885,119 +893,143 @@ if result and st.session_state.get("connect_check_signature") == check_signature
 
         st.markdown("### Step 6. Open your company workspace")
         st.caption("Your results will stay in this session." if DEMO_MODE else "Your results will be attached to the signed-in company identity shown at the top of this page.")
-        if st.button("Review procurement intelligence", type="primary", use_container_width=True, key="open_company_workspace"):
+        if DEMO_MODE:
             try:
-                status_message = "Saving original files and preparing your company workspace..."
-                stage = "Starting company workspace persistence"
-                stage_started_at = time.perf_counter()
-                support_id = uuid.uuid4().hex[:12].upper()
-                saved_upload_ids = []
-                upload_started_at = time.perf_counter()
-                stage_started_at = upload_started_at
-                with st.status(status_message, expanded=True) as status:
+                with st.spinner("Building your session-only procurement intelligence..."):
+                    normalized_tables = st.session_state.get("connect_file_normalized_tables", {})
                     for source_filename, source_frame in raw.items():
-                        source_bytes = source_file_bytes[source_filename]
-                        source_sha256 = hashlib.sha256(source_bytes).hexdigest()
-                        upload_id = hashlib.sha256(
-                            (dataset_group_id + ":" + source_filename + ":" + source_sha256).encode("utf-8")
-                        ).hexdigest()[:32]
-                        dataset_kind = kinds[source_filename]
-                        dataset_metadata = {
-                            "dataset_type": dataset_kind,
-                            "filename": source_filename,
-                            "status": "saving",
-                            "record_count": int(len(source_frame)),
-                            "source_sha256": source_sha256,
-                            "dataset_group_id": dataset_group_id,
-                            "company_name": company_name,
-                        }
-                        normalized_tables = st.session_state.get("connect_file_normalized_tables", {})
                         normalized_frame = normalized_tables.get(source_filename)
-                        source_frame = raw[source_filename]
-                        if not isinstance(normalized_frame, pd.DataFrame) or not isinstance(source_frame, pd.DataFrame):
-                            raise RuntimeError(
-                                f"Validated source and normalized records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
-                                "were not returned by the ingestion engine."
-                            )
-                        dataset_metadata["source_record_count"] = int(len(source_frame))
-                        dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
-                        dataset_metadata["schema_version"] = "1"
-                        stage = "Saving dataset metadata"
-                        stage_started_at = time.perf_counter()
-                        status.write("Saving dataset metadata")
-                        save_company_dataset(company_id, upload_id, dataset_metadata)
-                        stage = "Saving original file chunks"
-                        stage_started_at = time.perf_counter()
-                        status.write("Saving original file")
-                        save_original_file(company_id, upload_id, source_filename, source_bytes)
-                        stage = "Saving confirmed column mapping"
-                        stage_started_at = time.perf_counter()
-                        save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
-                        source_records = source_frame.astype(object).where(
-                            pd.notna(source_frame), None
-                        ).to_dict("records")
-                        # Preserve Excel numeric source cells as their displayed
-                        # string representation; CSV and JSON retain their source
-                        # text/Decimal representation from engine.read_any().
-                        for source_record in source_records:
-                            for field, value in list(source_record.items()):
-                                if isinstance(value, float):
-                                    source_record[field] = str(value)
-                        stage = "Saving original source rows in compact chunks"
-                        stage_started_at = time.perf_counter()
-                        status.write(f"Saving {len(source_records):,} original source rows")
-                        save_dataset_records(
-                            company_id, upload_id, source_records,
-                            collection_name="source_records",
-                        )
-                        saved_records = normalized_frame.astype(object).where(
-                            pd.notna(normalized_frame), None
-                        ).to_dict("records")
-                        stage = "Saving normalized procurement rows in compact chunks"
-                        stage_started_at = time.perf_counter()
-                        status.write(f"Saving {len(saved_records):,} normalized rows")
-                        save_dataset_records(company_id, upload_id, saved_records)
-                        saved_upload_ids.append(upload_id)
-                    st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
-                    stage = "Building findings and supporting evidence"
-                    stage_started_at = time.perf_counter()
-                    status.write("Preparing findings and supporting evidence")
+                        if not isinstance(source_frame, pd.DataFrame) or not isinstance(normalized_frame, pd.DataFrame):
+                            raise RuntimeError(f"Validated data for {source_filename} is missing. Run validation again.")
                     pack = workspace.from_result(result, company_name, company_id)
-                    analysis_id = dataset_group_id
                     pack["dataset_group_id"] = dataset_group_id
-                    stage = "Saving the analysis workspace"
-                    stage_started_at = time.perf_counter()
-                    status.write("Saving analysis workspace")
-                    workspace.persist(pack, analysis_id)
-                    pack["analysis_id"] = analysis_id
+                    pack["analysis_id"] = dataset_group_id
+                    pack["session_only"] = True
+                    pack["source_files"] = list(raw.keys())
+                    pack["source_rows"] = {name: int(len(frame)) for name, frame in raw.items()}
+                    pack["normalized_rows"] = {name: int(len(normalized_tables[name])) for name in raw}
                     st.session_state["mine"] = pack
-                    status.update(label="Your procurement review is ready", state="complete")
-                st.session_state["_ws_next"] = "mine"
-                st.session_state["_done"] = True
+                    st.session_state["seepsight_demo_workspace"] = pack
+                    st.session_state["cases"] = {}
+                    st.session_state["_done"] = True
+                st.success("Session-only procurement workspace is ready.")
                 st.rerun()
             except Exception as exc:
-                logging.exception(
-                    "Company workspace persistence failed at stage=%s support_id=%s "
-                    "stage_duration_seconds=%.2f total_duration_seconds=%.2f",
-                    stage,
-                    support_id,
-                    time.perf_counter() - stage_started_at,
-                    time.perf_counter() - upload_started_at,
-                )
-                st.error(
-                    "Company workspace setup did not finish. "
-                    f"Failed stage: {stage}. "
-                    f"Error type: {type(exc).__name__}. "
-                    f"Support reference: {support_id}."
-                )
-                if saved_upload_ids:
-                    st.warning(
-                        f"{len(saved_upload_ids)} file(s) reached the saved-record stage before this failure. "
-                        "The incomplete workspace has not been activated. Do not delete the saved dataset; "
-                        "share the support reference so the failure can be diagnosed safely."
+                logging.exception("Session-only demo workspace build failed")
+                st.error(f"Could not prepare the demo workspace: {type(exc).__name__}: {exc}")
+        else:
+                try:
+                    status_message = "Saving original files and preparing your company workspace..."
+                    stage = "Starting company workspace persistence"
+                    stage_started_at = time.perf_counter()
+                    support_id = uuid.uuid4().hex[:12].upper()
+                    saved_upload_ids = []
+                    upload_started_at = time.perf_counter()
+                    stage_started_at = upload_started_at
+                    with st.status(status_message, expanded=True) as status:
+                        for source_filename, source_frame in raw.items():
+                            source_bytes = source_file_bytes[source_filename]
+                            source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+                            upload_id = hashlib.sha256(
+                                (dataset_group_id + ":" + source_filename + ":" + source_sha256).encode("utf-8")
+                            ).hexdigest()[:32]
+                            dataset_kind = kinds[source_filename]
+                            dataset_metadata = {
+                                "dataset_type": dataset_kind,
+                                "filename": source_filename,
+                                "status": "saving",
+                                "record_count": int(len(source_frame)),
+                                "source_sha256": source_sha256,
+                                "dataset_group_id": dataset_group_id,
+                                "company_name": company_name,
+                            }
+                            normalized_tables = st.session_state.get("connect_file_normalized_tables", {})
+                            normalized_frame = normalized_tables.get(source_filename)
+                            source_frame = raw[source_filename]
+                            if not isinstance(normalized_frame, pd.DataFrame) or not isinstance(source_frame, pd.DataFrame):
+                                raise RuntimeError(
+                                    f"Validated source and normalized records for {DATASET_LABELS.get(dataset_kind, dataset_kind)} "
+                                    "were not returned by the ingestion engine."
+                                )
+                            dataset_metadata["source_record_count"] = int(len(source_frame))
+                            dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
+                            dataset_metadata["schema_version"] = "1"
+                            stage = "Saving dataset metadata"
+                            stage_started_at = time.perf_counter()
+                            status.write("Saving dataset metadata")
+                            save_company_dataset(company_id, upload_id, dataset_metadata)
+                            stage = "Saving original file chunks"
+                            stage_started_at = time.perf_counter()
+                            status.write("Saving original file")
+                            save_original_file(company_id, upload_id, source_filename, source_bytes)
+                            stage = "Saving confirmed column mapping"
+                            stage_started_at = time.perf_counter()
+                            save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
+                            source_records = source_frame.astype(object).where(
+                                pd.notna(source_frame), None
+                            ).to_dict("records")
+                            # Preserve Excel numeric source cells as their displayed
+                            # string representation; CSV and JSON retain their source
+                            # text/Decimal representation from engine.read_any().
+                            for source_record in source_records:
+                                for field, value in list(source_record.items()):
+                                    if isinstance(value, float):
+                                        source_record[field] = str(value)
+                            stage = "Saving original source rows in compact chunks"
+                            stage_started_at = time.perf_counter()
+                            status.write(f"Saving {len(source_records):,} original source rows")
+                            save_dataset_records(
+                                company_id, upload_id, source_records,
+                                collection_name="source_records",
+                            )
+                            saved_records = normalized_frame.astype(object).where(
+                                pd.notna(normalized_frame), None
+                            ).to_dict("records")
+                            stage = "Saving normalized procurement rows in compact chunks"
+                            stage_started_at = time.perf_counter()
+                            status.write(f"Saving {len(saved_records):,} normalized rows")
+                            save_dataset_records(company_id, upload_id, saved_records)
+                            saved_upload_ids.append(upload_id)
+                        st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
+                        stage = "Building findings and supporting evidence"
+                        stage_started_at = time.perf_counter()
+                        status.write("Preparing findings and supporting evidence")
+                        pack = workspace.from_result(result, company_name, company_id)
+                        analysis_id = dataset_group_id
+                        pack["dataset_group_id"] = dataset_group_id
+                        stage = "Saving the analysis workspace"
+                        stage_started_at = time.perf_counter()
+                        status.write("Saving analysis workspace")
+                        workspace.persist(pack, analysis_id)
+                        pack["analysis_id"] = analysis_id
+                        st.session_state["mine"] = pack
+                        status.update(label="Your procurement review is ready", state="complete")
+                    st.session_state["_ws_next"] = "mine"
+                    st.session_state["_done"] = True
+                    st.rerun()
+                except Exception as exc:
+                    logging.exception(
+                        "Company workspace persistence failed at stage=%s support_id=%s "
+                        "stage_duration_seconds=%.2f total_duration_seconds=%.2f",
+                        stage,
+                        support_id,
+                        time.perf_counter() - stage_started_at,
+                        time.perf_counter() - upload_started_at,
                     )
-                else:
-                    st.caption("No complete file upload was confirmed before the failure. Your original upload remains available in this session.")
+                    st.error(
+                        "Company workspace setup did not finish. "
+                        f"Failed stage: {stage}. "
+                        f"Error type: {type(exc).__name__}. "
+                        f"Support reference: {support_id}."
+                    )
+                    if saved_upload_ids:
+                        st.warning(
+                            f"{len(saved_upload_ids)} file(s) reached the saved-record stage before this failure. "
+                            "The incomplete workspace has not been activated. Do not delete the saved dataset; "
+                            "share the support reference so the failure can be diagnosed safely."
+                        )
+                    else:
+                        st.caption("No complete file upload was confirmed before the failure. Your original upload remains available in this session.")
 
 if st.session_state.get("_done"):
     st.success("Your review is ready. Open Overview in the navigation menu to view your procurement intelligence.")
