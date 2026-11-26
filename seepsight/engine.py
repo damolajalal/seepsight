@@ -194,7 +194,7 @@ FLAT_FIELDS = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price", "
                "promised_date", "received_date", "received_qty", "invoice_qty", "invoice_unit_price", "invoice_date",
                "approval_requested_at", "approval_completed_at"]
 TABLE_FIELDS = {
-    "orders": ["po_id", "supplier", "supplier_id", "po_date", "ordered_qty", "po_unit_price", "branch", "department", "product", "product_id", "promised_date"],
+    "orders": ["po_id", "supplier", "supplier_id", "po_date", "ordered_qty", "po_unit_price", "branch_id", "branch", "department", "product", "product_id", "promised_date"],
     "receipts": ["po_id", "received_date", "received_qty", "product_id", "warehouse"],
     "invoices": ["invoice_id", "po_id", "supplier_id", "invoice_qty", "invoice_unit_price", "invoice_date", "currency"],
     "approvals": ["po_id", "approval_stage", "approval_requested_at", "approval_completed_at"],
@@ -1232,6 +1232,24 @@ def _relationship_quality(tables):
                 report["orders_to_products"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
                 if coverage < 0.8:
                     warnings.append(f"Only {coverage:.0%} of product IDs in orders matched the product master.")
+    branches = tables.get("branches")
+    if branches is not None and orders is not None:
+        if "branch_id" in branches.columns and "branch_id" in orders.columns:
+            parent = set(_id_key(branches["branch_id"]).dropna())
+            child = set(_id_key(orders["branch_id"]).dropna())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_branches"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of branch IDs in orders matched the branch master.")
+        elif "branch" in branches.columns and "branch" in orders.columns:
+            parent = set(clean_text(branches["branch"]).dropna().str.casefold())
+            child = set(clean_text(orders["branch"]).dropna().str.casefold())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_branches"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3), "key_type": "branch_name"}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of branch names in orders matched the branch master.")
     return report, warnings
 
 
