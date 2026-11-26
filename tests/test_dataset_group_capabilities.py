@@ -50,8 +50,21 @@ class DatasetGroupEligibilityTests(unittest.TestCase):
             [("analysis-a", {"dataset_group_id": "group-a", "updated_at": None})],
         )
         self.assertTrue(groups[0]["extendable"])
-        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["deletion_safe"])
+        self.assertTrue(groups[0]["used"])
         self.assertEqual(groups[0]["file_count"], 1)
+
+    def test_unused_fully_linked_dataset_can_be_deleted(self):
+        groups = self._groups(
+            [("file-unused", {
+                "dataset_group_id": "unused-group",
+                "filename": "unused.csv",
+            })],
+            [],
+        )
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["used"])
 
     def test_group_with_missing_original_file_is_not_extendable(self):
         groups = self._groups(
