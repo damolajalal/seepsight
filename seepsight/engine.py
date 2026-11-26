@@ -895,7 +895,7 @@ def detect(led, config=None):
                                  severity="High" if recent - early >= 5 else "Medium"))
 
     cols = ["finding_id", "finding_type", "entity", "severity", "affected_orders", "leakage", "orders_held",
-            "first_seen", "last_seen", "po_id", "po_ids", "supplier_count", "evidence"]
+            "first_seen", "last_seen", "po_id", "po_ids", "supplier_count", "supplier_names", "evidence"]
     if not rows:
         return pd.DataFrame(columns=cols)
     raw = pd.DataFrame(rows)
@@ -905,30 +905,34 @@ def detect(led, config=None):
     trend_rows = raw[raw["po_id"].isna()].copy()
     grouped = []
     severity_rank = {"Low": 1, "Medium": 2, "High": 3}
-    for (finding_type, entity), group in transaction_rows.groupby(
-        ["finding_type", "entity"], dropna=False, sort=False
+    for finding_type, group in transaction_rows.groupby(
+        ["finding_type"], dropna=False, sort=False
     ):
         po_ids = list(dict.fromkeys(group["po_id"].dropna().astype(str)))
+        supplier_names = sorted(group["entity"].dropna().astype(str).unique())
+        entity = supplier_names[0] if len(supplier_names) == 1 else "Multiple suppliers"
         first_values = pd.to_datetime(group["first_seen"], errors="coerce").dropna()
         last_values = pd.to_datetime(group["last_seen"], errors="coerce").dropna()
         grouped.append({
-            "finding_type": finding_type, "entity": str(entity),
+            "finding_type": finding_type, "entity": entity,
             "severity": max(group["severity"], key=lambda value: severity_rank.get(value, 0)),
             "affected_orders": len(po_ids),
             "leakage": round(float(group["leakage"].sum()), 2),
             "orders_held": round(float(group["orders_held"].sum()), 2),
             "first_seen": first_values.min() if len(first_values) else None,
             "last_seen": last_values.max() if len(last_values) else None,
-            "po_id": None, "po_ids": po_ids, "supplier_count": 1,
+            "po_id": None, "po_ids": po_ids, "supplier_count": len(supplier_names),
+            "supplier_names": supplier_names,
             "evidence": (
                 " ".join(dict.fromkeys(group["evidence"].dropna().astype(str)))
                 if len(group) <= 5 else
-                f"{len(po_ids):,} affected purchase order(s) require review; supporting records are attached."
+                f"{len(po_ids):,} affected purchase order(s) across {len(supplier_names):,} supplier(s); supporting records are attached."
             ),
         })
     for row in trend_rows.to_dict("records"):
         row["po_ids"] = []
         row["supplier_count"] = 1
+        row["supplier_names"] = [str(row.get("entity", ""))]
         grouped.append(row)
     f = pd.DataFrame(grouped)
     if f.empty:
@@ -1742,7 +1746,14 @@ def build_evidence(led, findings, cfg):
 
 def scorecard(findings, key):
     """Compare the leaks that were planted with the leaks that were found."""
-    found = set(zip(findings["finding_type"], findings["entity"])) if len(findings) else set()
+    found = set()
+    if len(findings):
+        for row in findings.itertuples():
+            names = getattr(row, "supplier_names", None)
+            if isinstance(names, (list, tuple, set)) and names:
+                found.update((row.finding_type, str(name)) for name in names)
+            else:
+                found.add((row.finding_type, row.entity))
     planted = set(key)
     rows = [dict(finding_type=t, entity=e, planted=True, found=(t, e) in found) for t, e in key]
     rows += [dict(finding_type=t, entity=e, planted=False, found=True) for t, e in sorted(found - planted)]
