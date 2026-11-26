@@ -92,10 +92,21 @@ def _read_upload(upload):
 
 
 def _fingerprint(uploaded_files):
+    """Identify the current Streamlit upload without re-hashing large files on every rerun."""
     digest = hashlib.sha256()
     for item in sorted(uploaded_files, key=lambda x: x.name.lower()):
+        file_id = getattr(item, "file_id", None)
         digest.update(item.name.encode("utf-8", errors="replace"))
-        digest.update(item.getvalue())
+        digest.update(str(getattr(item, "size", 0)).encode("ascii"))
+        digest.update(str(getattr(item, "type", "") or "").encode("utf-8"))
+        if file_id:
+            # Streamlit assigns a stable upload ID for the lifetime of this
+            # uploaded object. This avoids reading up to 100 MB just to decide
+            # whether the same upload needs to be parsed again after a rerun.
+            digest.update(str(file_id).encode("utf-8"))
+        else:
+            # Compatibility fallback for upload objects without a file ID.
+            digest.update(hashlib.sha256(item.getvalue()).digest())
     return digest.hexdigest()
 
 
@@ -433,13 +444,14 @@ if uploaded:
         errors = []
         for item in uploaded:
             try:
-                frame = _read_upload(item)
+                payload = item.getvalue()
+                frame = _read_bytes(item.name, payload)
                 if frame.empty or len(frame.columns) == 0:
                     errors.append(f"{item.name}: no usable rows or columns were found.")
                 else:
                     loaded[item.name] = frame
-                    source_file_bytes[item.name] = item.getvalue()
-            except Exception as exc:
+                    source_file_bytes[item.name] = payload
+            except Exception:
                 errors.append(f"{item.name}: could not be read. Check the file format and try again.")
         st.session_state["connect_raw"] = loaded
         st.session_state["connect_source_file_bytes"] = source_file_bytes
@@ -829,8 +841,6 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         stage = "Saving original file chunks"
                         status.write("Saving original file")
                         save_original_file(company_id, upload_id, source_filename, source_bytes)
-                        stage = "Updating original-file status"
-                        save_company_dataset(company_id, upload_id, {"status": "original_file_saved"})
                         stage = "Saving confirmed column mapping"
                         save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
                         source_records = source_frame.astype(object).where(
