@@ -1668,6 +1668,13 @@ def delete_company_dataset_group(company_id, dataset_group_id):
             "This dataset has been used. Its analysis history, findings and cases are retained; "
             "only unused datasets can be permanently deleted."
         )
+    pending_revisions = company.collection("analyses").document(
+        dataset_group_id
+    ).collection("revisions").limit(1).stream()
+    if next(iter(pending_revisions), None) is not None:
+        raise RuntimeError(
+            "This dataset has an unfinished analysis save. Keep it intact until its recovery diagnostics are reviewed."
+        )
     if not datasets:
         return False
 
