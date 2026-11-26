@@ -1007,11 +1007,14 @@ def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=
     dropped = {}
     if "po_id" in typed.columns:
         n0 = len(typed)
-        typed = typed[typed["po_id"].notna()]
+        typed = typed[typed["po_id"].notna()].reset_index(drop=True)
         dropped["rows_without_order_number"] = n0 - len(typed)
-        n1 = len(typed)
-        typed = typed.drop_duplicates(subset="po_id", keep="first")
-        dropped["duplicate_orders_removed"] = n1 - len(typed)
+        typed, merge_details = combine_dataset_frames("orders", [typed])
+        dropped["duplicate_orders_removed"] = (
+            merge_details["exact_duplicate_rows_removed"]
+            + merge_details["duplicate_order_ids_removed"]
+        )
+        dropped["order_merge_details"] = merge_details
     result = _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
     # Keep the mapped, validated source rows available for durable ingestion.
     result["normalized_tables"] = {"orders": typed.copy()}
