@@ -39,7 +39,7 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         saved = firestore_db.save_dataset_records(
             "company-a",
             "dataset-a",
-            [{"po_id": "PO-1", "unit_price": Decimal("12.340000000000000009")}],
+            [{"po_id": "PO-1", "_source_tag": "original", "unit_price": Decimal("12.340000000000000009")}],
         )
 
         self.assertEqual(saved, 1)
@@ -51,6 +51,7 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         )
         decoded = json.loads(zlib.decompress(chunk_payload["payload_zlib_json"]))
         self.assertEqual(decoded[0]["po_id"], "PO-1")
+        self.assertEqual(decoded[0]["_source_tag"], "original")
         self.assertEqual(
             decoded[0]["unit_price"],
             {"__seepsight_decimal__": "12.340000000000000009"},
@@ -111,6 +112,7 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             "record_count": 1,
             "payload_zlib_json": zlib.compress(json.dumps([{
                 "po_id": "PO-1",
+                "_source_tag": "original",
                 "unit_price": {"__seepsight_decimal__": "0.100000000000000009"},
                 "_record_number": 0,
             }]).encode("utf-8")),
@@ -122,6 +124,7 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
             values = firestore_db.get_dataset_records("company-a", "dataset-a")
 
         self.assertEqual(values[0]["po_id"], "PO-1")
+        self.assertEqual(values[0]["_source_tag"], "original")
         self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
         self.assertNotIn("_record_number", values[0])
 
