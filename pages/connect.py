@@ -127,7 +127,27 @@ def _template_csv():
     return pd.DataFrame([row], columns=columns).to_csv(index=False)
 
 
+def _derived_cache():
+    """Keep pure upload-derived calculations for this Streamlit session."""
+    cache = st.session_state.get("_connect_derived_cache")
+    if not isinstance(cache, dict):
+        cache = {}
+        st.session_state["_connect_derived_cache"] = cache
+    return cache
+
+
 def _dataset_guess(df, filename):
+    cache_key = (
+        "dataset_guess",
+        st.session_state.get("connect_upload_fingerprint"),
+        filename,
+        len(df),
+        tuple(map(str, df.columns)),
+    )
+    cache = _derived_cache()
+    if cache_key in cache:
+        return cache[cache_key]
+
     ranked = engine.detect_dataset_type(df, filename)
     if not ranked:
         ranked = []
@@ -150,23 +170,40 @@ def _dataset_guess(df, filename):
             "header_hits": 5,
             "filename_hits": 0,
         })
-        return "orders", round(best_score, 3), ranked
+        result = ("orders", round(best_score, 3), ranked)
+    elif not ranked:
+        result = ("orders", 0.0, ranked)
+    else:
+        result = (ranked[0]["dataset"], ranked[0]["confidence"], ranked)
 
-    if not ranked:
-        return "orders", 0.0, ranked
-    return ranked[0]["dataset"], ranked[0]["confidence"], ranked
+    cache[cache_key] = result
+    return result
 
 
 def _mapping_editor(df, fields, key_prefix, required_fields=None, saved_mapping=None):
     """Show ranked suggestions and let the user confirm or correct each field."""
     required_fields = set(required_fields if required_fields is not None else engine.REQUIRED)
     saved_mapping = saved_mapping if isinstance(saved_mapping, dict) else {}
-    suggested, _, _ = engine.suggest_mapping(
-        df,
-        engine.DEFAULT_CONFIG["accept_score"],
-        fields,
+    cache_key = (
+        "mapping_suggestions",
+        st.session_state.get("connect_upload_fingerprint"),
+        key_prefix,
+        tuple(fields),
+        len(df),
+        tuple(map(str, df.columns)),
     )
-    candidates = engine.mapping_candidates(df, fields=fields, top_n=4)
+    cache = _derived_cache()
+    cached = cache.get(cache_key)
+    if cached is None:
+        suggested, _, _ = engine.suggest_mapping(
+            df,
+            engine.DEFAULT_CONFIG["accept_score"],
+            fields,
+        )
+        candidates = engine.mapping_candidates(df, fields=fields, top_n=4)
+        cache[cache_key] = (suggested, candidates)
+    else:
+        suggested, candidates = cached
     overrides = {}
     selected = {}
     columns = list(df.columns)
@@ -475,12 +512,14 @@ if uploaded:
         st.session_state["connect_raw"] = loaded
         st.session_state["connect_source_file_bytes"] = source_file_bytes
         st.session_state["connect_upload_fingerprint"] = current_fingerprint
+        # Any upload change invalidates all derived detection/mapping results.
+        st.session_state.pop("_connect_derived_cache", None)
         st.session_state.pop("connect_check", None)
         st.session_state.pop("_done", None)
         st.session_state["connect_load_errors"] = errors
 
 if st.button("Clear uploaded files and start again", key="clear_connect_uploads"):
-    for key in ("connect_raw", "connect_source_file_bytes", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
+    for key in ("connect_raw", "connect_source_file_bytes", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id", "_connect_derived_cache"):
         st.session_state.pop(key, None)
     st.session_state.pop("_done", None)
     st.rerun()
