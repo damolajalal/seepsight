@@ -134,6 +134,36 @@ class DatasetGroupManagementTests(unittest.TestCase):
         client.recursive_delete.assert_not_called()
         dataset.reference.set.assert_not_called()
 
+    def test_delete_rejects_dataset_with_incomplete_analysis_revision(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        cases = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+            "cases": cases,
+        }[name]
+        dataset = snapshot("file-a", {"dataset_group_id": "group-a"})
+        dataset.reference = MagicMock()
+        analyses.document.return_value.collection.return_value.limit.return_value.stream.return_value = [
+            snapshot("revision-pending", {"workspace_status": "saving"})
+        ]
+        client = MagicMock()
+
+        with patch.object(firestore_db, "_company_owner_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[iter([dataset]), iter([]), iter([])],
+            ):
+                with patch.object(firestore_db, "get_firestore_client", return_value=client):
+                    with self.assertRaisesRegex(RuntimeError, "unfinished analysis save"):
+                        firestore_db.delete_company_dataset_group("company-a", "group-a")
+
+        client.recursive_delete.assert_not_called()
+        dataset.reference.set.assert_not_called()
+
     def test_delete_removes_only_unused_dataset_and_audits_it(self):
         company = MagicMock()
         datasets = MagicMock()
