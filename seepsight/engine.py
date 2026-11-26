@@ -164,6 +164,28 @@ CONTRACT = {
                         names=["returnqty", "returnedqty", "quantityreturned", "rejectedqty", "disputedquantity"]),
     "return_reason": dict(kind="text", required=False, desc="Reason for return/dispute",
                            names=["returnreason", "reason", "disputereason", "rejectionreason", "claimreason"]),
+    "branch_id": dict(kind="text", required=False, desc="Stable branch/site identifier",
+                      names=["branchid", "siteid", "locationid", "branchcode", "sitecode", "depotid"]),
+    "state": dict(kind="text", required=False, desc="State where a branch is located",
+                  names=["state", "stateprovince", "branchstate"]),
+    "region": dict(kind="text", required=False, desc="Region or subregion for a branch",
+                   names=["region", "subregion", "branchregion", "geographicregion"]),
+    "address": dict(kind="text", required=False, desc="Physical branch address",
+                    names=["address", "branchaddress", "siteaddress", "locationaddress"]),
+    "amendment_id": dict(kind="text", required=False, desc="Purchase-order price amendment identifier",
+                         names=["amendmentid", "priceamendmentid", "revisionid", "changeid"]),
+    "original_unit_price": dict(kind="number", required=False, desc="Original purchase-order unit price",
+                                names=["originalunitprice", "previousunitprice", "oldunitprice", "priorunitprice"]),
+    "amended_unit_price": dict(kind="number", required=False, desc="Revised unit price in the amendment",
+                               names=["amendedunitprice", "revisedunitprice", "newunitprice", "updatedunitprice"]),
+    "amendment_date": dict(kind="date", required=False, desc="Date the price amendment was raised",
+                           names=["amendmentdate", "amendedon", "revisiondate", "pricechangedate"]),
+    "approval_status": dict(kind="text", required=False, desc="Approval status of a price amendment",
+                             names=["approvalstatus", "amendmentstatus", "authorizationstatus", "approvedstatus"]),
+    "amendment_reason": dict(kind="text", required=False, desc="Reason for changing the purchase-order price",
+                             names=["amendmentreason", "reasonforchange", "changereason", "pricechangereason"]),
+    "effective_date": dict(kind="date", required=False, desc="Date the amended price takes effect",
+                           names=["amendmenteffectivedate", "priceeffectivedate", "revisedpriceeffectivedate"]),
 }
 REQUIRED = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price"]
 # Preserve the flat-file contract so new optional entities do not appear as missing
@@ -172,7 +194,7 @@ FLAT_FIELDS = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price", "
                "promised_date", "received_date", "received_qty", "invoice_qty", "invoice_unit_price", "invoice_date",
                "approval_requested_at", "approval_completed_at"]
 TABLE_FIELDS = {
-    "orders": ["po_id", "supplier", "supplier_id", "po_date", "ordered_qty", "po_unit_price", "branch", "department", "product", "product_id", "promised_date"],
+    "orders": ["po_id", "supplier", "supplier_id", "po_date", "ordered_qty", "po_unit_price", "branch_id", "branch", "department", "product", "product_id", "promised_date"],
     "receipts": ["po_id", "received_date", "received_qty", "product_id", "warehouse"],
     "invoices": ["invoice_id", "po_id", "supplier_id", "invoice_qty", "invoice_unit_price", "invoice_date", "currency"],
     "approvals": ["po_id", "approval_stage", "approval_requested_at", "approval_completed_at"],
@@ -184,6 +206,8 @@ TABLE_FIELDS = {
     "contracts": ["contract_id", "supplier_id", "supplier", "product_id", "product", "contract_start_date", "contract_end_date", "contract_unit_price", "currency"],
     "quotations": ["quote_id", "requisition_id", "supplier_id", "supplier", "product_id", "quote_date", "quote_unit_price", "currency"],
     "returns": ["return_id", "po_id", "product_id", "supplier_id", "return_date", "return_qty", "return_reason"],
+    "branches": ["branch_id", "branch", "state", "region", "address"],
+    "price_amendments": ["amendment_id", "po_id", "supplier_id", "product_id", "original_unit_price", "amended_unit_price", "amendment_date", "approval_status", "amendment_reason", "effective_date", "currency"],
 }
 
 # Extensible dataset catalogue. These definitions describe the procurement data
@@ -214,6 +238,10 @@ DATASET_REGISTRY = {
                    "signals": ["quotation", "quote", "rfq", "bid", "tender"]},
     "returns": {"label": "Returns / disputes", "required": ["return_id"],
                 "signals": ["return", "rejected", "dispute", "claim", "creditnote"]},
+    "branches": {"label": "Branches / locations", "required": ["branch_id", "branch"],
+                 "signals": ["branch", "branchcode", "site", "location", "branchname"]},
+    "price_amendments": {"label": "Purchase-order price amendments", "required": ["amendment_id", "po_id"],
+                         "signals": ["priceamendment", "amendment", "revisedprice", "newunitprice", "pricechange"]},
 }
 
 DEFAULT_CONFIG = dict(
@@ -1007,11 +1035,14 @@ def onboard(path=None, df=None, sheet=None, overrides=None, config=None, client=
     dropped = {}
     if "po_id" in typed.columns:
         n0 = len(typed)
-        typed = typed[typed["po_id"].notna()]
+        typed = typed[typed["po_id"].notna()].reset_index(drop=True)
         dropped["rows_without_order_number"] = n0 - len(typed)
-        n1 = len(typed)
-        typed = typed.drop_duplicates(subset="po_id", keep="first")
-        dropped["duplicate_orders_removed"] = n1 - len(typed)
+        typed, merge_details = combine_dataset_frames("orders", [typed])
+        dropped["duplicate_orders_removed"] = (
+            merge_details["exact_duplicate_rows_removed"]
+            + merge_details["duplicate_order_ids_removed"]
+        )
+        dropped["order_merge_details"] = merge_details
     result = _analyze(typed, mapping, unmapped, needs, len(raw), dropped, cfg, verbose, with_ml)
     # Keep the mapped, validated source rows available for durable ingestion.
     result["normalized_tables"] = {"orders": typed.copy()}
@@ -1062,23 +1093,59 @@ def combine_dataset_frames(dataset_name, frames):
         keys = _id_key(combined["po_id"])
         duplicate_mask = keys.notna() & keys.duplicated(keep=False)
         if duplicate_mask.any():
+            # Files exported from different procurement modules often contain
+            # overlapping PO headers with different column coverage. A blank
+            # value in one export is not a contradiction of a populated value
+            # in another. Coalesce those complementary rows, but never choose
+            # between two different non-empty values for the same PO field.
             conflicts = []
-            compare_columns = [column for column in combined.columns if column != "po_id"]
+            merged_rows = []
             for key, rows in combined.loc[duplicate_mask].groupby(keys[duplicate_mask], sort=False):
-                if len(rows[compare_columns].drop_duplicates()) > 1:
-                    conflicts.append(str(rows["po_id"].iloc[0]))
-                if len(conflicts) >= 5:
-                    break
+                conflict_fields = []
+                for column in combined.columns:
+                    if column == "po_id":
+                        continue
+                    values = rows[column].dropna()
+                    values = values[values.astype(str).str.strip().ne("")]
+                    if len(values.astype(str).drop_duplicates()) > 1:
+                        conflict_fields.append(column)
+                if conflict_fields:
+                    conflicts.append(
+                        f"{rows['po_id'].iloc[0]} [{', '.join(conflict_fields[:4])}]"
+                    )
+                    if len(conflicts) >= 5:
+                        break
+                else:
+                    merged = rows.iloc[0].copy()
+                    for column in combined.columns:
+                        if column == "po_id":
+                            continue
+                        values = rows[column].dropna()
+                        values = values[values.astype(str).str.strip().ne("")]
+                        if len(values):
+                            merged[column] = values.iloc[0]
+                    merged_rows.append((key, merged))
             if conflicts:
-                examples = ", ".join(conflicts)
+                examples = "; ".join(conflicts)
                 raise ValueError(
-                    "The purchase-order files contain conflicting rows for the same PO number "
-                    f"({examples}). Resolve those records before combining; Seepsight will not "
-                    "choose one version automatically."
+                    "The purchase-order files contain conflicting rows with genuinely different values for the same "
+                    f"PO number: {examples}. Check the named fields before combining. "
+                    "Seepsight will not overwrite a populated value automatically."
                 )
             before_key_dedup = len(combined)
-            keep_rows = keys.isna() | ~keys.duplicated(keep="first")
-            combined = combined.loc[keep_rows].reset_index(drop=True)
+            source_rows = combined.copy()
+            replacements = {key: row for key, row in merged_rows}
+            output_rows = []
+            seen = set()
+            for position, row in source_rows.iterrows():
+                key = keys.loc[position]
+                if pd.notna(key) and key in replacements:
+                    if key not in seen:
+                        output_rows.append(replacements[key])
+                        seen.add(key)
+                else:
+                    output_rows.append(row)
+            combined = pd.DataFrame(output_rows, columns=columns).reset_index(drop=True)
             duplicate_order_ids_removed = before_key_dedup - len(combined)
 
     return combined, {
@@ -1116,6 +1183,7 @@ def _table_key_fields(name, table):
         "products": ["product_id", "sku", "product"], "invoices": ["invoice_id"],
         "payments": ["payment_id"], "requisitions": ["requisition_id"],
         "contracts": ["contract_id"], "quotations": ["quote_id"], "returns": ["return_id"],
+        "branches": ["branch_id"], "price_amendments": ["amendment_id"],
     }.get(name, [])
     return next(([c] for c in candidates if c in table.columns), [])
 
@@ -1164,6 +1232,24 @@ def _relationship_quality(tables):
                 report["orders_to_products"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
                 if coverage < 0.8:
                     warnings.append(f"Only {coverage:.0%} of product IDs in orders matched the product master.")
+    branches = tables.get("branches")
+    if branches is not None and orders is not None:
+        if "branch_id" in branches.columns and "branch_id" in orders.columns:
+            parent = set(_id_key(branches["branch_id"]).dropna())
+            child = set(_id_key(orders["branch_id"]).dropna())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_branches"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3)}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of branch IDs in orders matched the branch master.")
+        elif "branch" in branches.columns and "branch" in orders.columns:
+            parent = set(clean_text(branches["branch"]).dropna().str.casefold())
+            child = set(clean_text(orders["branch"]).dropna().str.casefold())
+            if child:
+                coverage = len(parent & child) / len(child)
+                report["orders_to_branches"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3), "key_type": "branch_name"}
+                if coverage < 0.8:
+                    warnings.append(f"Only {coverage:.0%} of branch names in orders matched the branch master.")
     return report, warnings
 
 
@@ -1235,7 +1321,10 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
         warnings.extend(_ambiguous_date_warnings(raw, mp, name))
         typed = apply_mapping(raw, mp)
         if name == "orders" and "po_id" in typed:
-            typed = typed[typed["po_id"].notna()].copy()
+            typed = typed[typed["po_id"].notna()].copy().reset_index(drop=True)
+            # Enforce the same PO identity rules for direct multi-table
+            # onboarding as for files uploaded through the Connect page.
+            typed, _ = combine_dataset_frames("orders", [typed])
         if "po_id" in typed.columns:
             typed["_key"] = _id_key(typed["po_id"])
         typed_tables[name] = typed
