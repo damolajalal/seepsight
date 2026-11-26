@@ -1,6 +1,8 @@
 """Tests for durable company procurement record storage."""
 
+import json
 import unittest
+import zlib
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -37,22 +39,29 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         saved = firestore_db.save_dataset_records(
             "company-a",
             "dataset-a",
-            [{"po_id": "PO-1", "unit_price": Decimal("12.340000000000000009")}],
+            [{"po_id": "PO-1", "_source_tag": "original", "unit_price": Decimal("12.340000000000000009")}],
         )
 
         self.assertEqual(saved, 1)
         self.batch.set.assert_called_once()
-        record_payload = self.batch.set.call_args.args[1]
+        chunk_payload = self.batch.set.call_args.args[1]
         self.assertEqual(
-            record_payload["unit_price"],
+            self.records.document.call_args.args[0],
+            "chunk_00000000",
+        )
+        decoded = json.loads(zlib.decompress(chunk_payload["payload_zlib_json"]))
+        self.assertEqual(decoded[0]["po_id"], "PO-1")
+        self.assertEqual(decoded[0]["_source_tag"], "original")
+        self.assertEqual(
+            decoded[0]["unit_price"],
             {"__seepsight_decimal__": "12.340000000000000009"},
         )
-        self.assertEqual(record_payload["_record_number"], 0)
-        self.assertTrue(self.dataset_ref.set.call_args_list[-1].args[0]["records_saved"])
-        self.assertEqual(
-            self.dataset_ref.set.call_args_list[-1].args[0]["records_status"],
-            "complete",
-        )
+        self.assertEqual(decoded[0]["_record_number"], 0)
+        final_state = self.dataset_ref.set.call_args_list[-1].args[0]
+        self.assertTrue(final_state["records_saved"])
+        self.assertEqual(final_state["records_status"], "complete")
+        self.assertEqual(final_state["records_storage_format"], "zlib-json-v1")
+        self.assertEqual(final_state["record_count"], 1)
 
     def test_failed_batch_marks_dataset_records_incomplete(self):
         self.batch.commit.side_effect = RuntimeError("write failed")
@@ -82,26 +91,40 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         )
         self.assertEqual(
             self.records.document.call_args.args[0],
-            "record_000000000000",
+            "chunk_00000000",
         )
+        final_state = self.dataset_ref.set.call_args_list[-1].args[0]
+        self.assertEqual(final_state["source_records_storage_format"], "zlib-json-v1")
+        self.assertEqual(final_state["source_record_count"], 1)
+        self.dataset_ref.collection.assert_any_call("source_records_chunks")
 
     def test_reads_records_and_restores_decimal_values(self):
         metadata = MagicMock(exists=True)
-        metadata.to_dict.return_value = {"records_status": "complete"}
-        self.dataset_ref.get.return_value = metadata
-        row = MagicMock()
-        row.to_dict.return_value = {
-            "po_id": "PO-1",
-            "unit_price": {"__seepsight_decimal__": "0.100000000000000009"},
-            "_record_number": 0,
+        metadata.to_dict.return_value = {
+            "records_status": "complete",
+            "records_storage_format": "zlib-json-v1",
+            "record_count": 1,
         }
-        query = self.records.order_by.return_value
-        query.limit.return_value.stream.return_value = [row]
+        self.dataset_ref.get.return_value = metadata
+        chunk = MagicMock()
+        chunk.to_dict.return_value = {
+            "chunk_index": 0,
+            "record_count": 1,
+            "payload_zlib_json": zlib.compress(json.dumps([{
+                "po_id": "PO-1",
+                "_source_tag": "original",
+                "unit_price": {"__seepsight_decimal__": "0.100000000000000009"},
+                "_record_number": 0,
+            }]).encode("utf-8")),
+        }
 
-        with patch.object(firestore_db, "_company_ref", return_value=self.company):
+        with patch.object(
+            firestore_db, "_stream_query_pages", return_value=iter([chunk])
+        ):
             values = firestore_db.get_dataset_records("company-a", "dataset-a")
 
         self.assertEqual(values[0]["po_id"], "PO-1")
+        self.assertEqual(values[0]["_source_tag"], "original")
         self.assertEqual(values[0]["unit_price"], Decimal("0.100000000000000009"))
         self.assertNotIn("_record_number", values[0])
 
