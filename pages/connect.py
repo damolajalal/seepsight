@@ -745,6 +745,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 relationship_rows.append({
                     "Relationship": relationship.replace("_", " "),
                     "Matched keys": details.get("matched_keys", 0),
+                    "Unmatched keys": details.get("orphan_keys", max(details.get("source_keys", 0) - details.get("matched_keys", 0), 0)),
                     "Source keys": details.get("source_keys", 0),
                     "Coverage": f"{details.get('coverage', 0):.0%}",
                 })
