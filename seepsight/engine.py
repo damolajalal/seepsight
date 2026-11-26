@@ -377,7 +377,9 @@ def _fix_header(df):
 
 
 # ---------------------------------------------------------------- cleaning values
-MISSING = {"", "n/a", "na", "nan", "-", "--", "null", "none", "nil", "#n/a", "tbc", "pending"}
+# Do not treat legitimate business states such as "Pending" or "TBC" as null text.
+# Numeric/date parsers will still reject these as non-values for their respective types.
+MISSING = {"", "n/a", "na", "nan", "-", "--", "null", "none", "nil", "#n/a"}
 
 
 def to_number(v):
@@ -1119,8 +1121,9 @@ def _id_key(series):
     def k(v):
         if _is_blank(v):
             return None
-        t = re.sub(r"[^A-Za-z0-9]", "", str(v)).upper()
-        return t.lstrip("0") if t.isdigit() else t
+        # Identifiers are strings, not quantities: leading zeroes can be significant.
+        # Remove presentation separators and normalise case, but never equate "001" with "1".
+        return re.sub(r"[^A-Za-z0-9]", "", str(v)).upper()
     return series.map(k)
 
 
