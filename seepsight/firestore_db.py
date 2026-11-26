@@ -123,20 +123,25 @@ def get_firestore_client():
 # ============================================================
 
 def test_firestore_connection():
-    """Verify Firestore access and report cleanup failures without masking errors."""
+    """Verify Firestore read/write/delete with bounded retries and report latency."""
+    import time
+    from google.api_core.retry import Retry
+
     client = get_firestore_client()
     test_id = f"connection_{uuid.uuid4().hex}"
     test_ref = client.collection("_system").document(test_id)
     operation_error = None
     cleanup_error = None
+    started_at = time.perf_counter()
+    retry = Retry(deadline=8)
 
     try:
         test_ref.set({
             "status": "connected",
             "purpose": "temporary_connection_test",
             "created_at": datetime.now(timezone.utc),
-        })
-        snapshot = test_ref.get()
+        }, retry=retry, timeout=10)
+        snapshot = test_ref.get(retry=retry, timeout=10)
         if not snapshot.exists:
             raise RuntimeError("Firestore test document could not be read.")
         data = snapshot.to_dict() or {}
@@ -146,7 +151,7 @@ def test_firestore_connection():
         operation_error = exc
     finally:
         try:
-            test_ref.delete()
+            test_ref.delete(retry=retry, timeout=10)
         except Exception as exc:
             cleanup_error = exc
 
@@ -154,11 +159,15 @@ def test_firestore_connection():
         raise RuntimeError("Firestore connection verification failed.") from operation_error
     if cleanup_error is not None:
         raise RuntimeError("Firestore connection test cleanup failed.") from cleanup_error
-    return True
+    return {
+        "connected": True,
+        "latency_ms": round((time.perf_counter() - started_at) * 1000),
+    }
 
 # ============================================================
 # 3. INPUT VALIDATION AND NORMALISATION
 # ============================================================
+
 
 def _validate_id(value, field_name):
     """Validate Firestore document identifiers."""
@@ -423,9 +432,9 @@ def _safe_audit_value(value):
     return value
 
 
-def write_company_audit_event(company_id, event_type, resource_type,
-                              resource_id=None, details=None):
-    """Append a bounded company-scoped audit event without credential values."""
+def _write_company_audit_event_to_ref(company, company_id, event_type, resource_type,
+                                      resource_id=None, details=None):
+    """Append an audit event using an already-authorized company reference."""
     if not isinstance(event_type, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,79}", event_type):
         raise ValueError("event_type is invalid.")
     if not isinstance(resource_type, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,39}", resource_type):
@@ -444,7 +453,6 @@ def write_company_audit_event(company_id, event_type, resource_type,
 
     event_id = uuid.uuid4().hex
     try:
-        company = _company_ref(company_id)
         company.collection("audit_events").document(event_id).create({
             "event_id": event_id,
             "event_type": event_type,
@@ -456,11 +464,40 @@ def write_company_audit_event(company_id, event_type, resource_type,
         })
         return event_id
     except Exception:
-        # Audit is best-effort within Firestore boundaries; never report a
-        # successful data write as failed solely because the audit sink is down.
+        # Audit is best-effort; a successful data write must not be reported
+        # as failed solely because the separate audit sink is unavailable.
         logging.getLogger(__name__).warning("Company audit event could not be persisted.")
         return None
 
+
+def write_company_audit_event(company_id, event_type, resource_type,
+                              resource_id=None, details=None):
+    """Append a bounded company-scoped audit event without credential values."""
+    # Validate caller input before treating an unavailable audit sink as
+    # best-effort. Invalid event names and oversized payloads are programming
+    # errors and must remain visible to callers and tests.
+    if not isinstance(event_type, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,79}", event_type):
+        raise ValueError("event_type is invalid.")
+    if not isinstance(resource_type, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,39}", resource_type):
+        raise ValueError("resource_type is invalid.")
+    if resource_id is not None:
+        resource_id = _validate_id(resource_id, "resource_id")
+    if details is None:
+        details = {}
+    if not isinstance(details, dict):
+        raise TypeError("Audit details must be a dictionary.")
+    safe_details = _normalise_workspace_value(_safe_audit_value(details))
+    if len(json.dumps(safe_details, default=str).encode("utf-8")) > 12_000:
+        raise ValueError("Audit details exceed the safe size limit.")
+
+    try:
+        company = _company_ref(company_id)
+    except Exception:
+        logging.getLogger(__name__).warning("Company audit event authorization failed.")
+        return None
+    return _write_company_audit_event_to_ref(
+        company, company_id, event_type, resource_type, resource_id, details
+    )
 
 # ============================================================
 # 4. COMPANY DATASET METADATA
@@ -502,19 +539,33 @@ def save_company_dataset(
         "updated_at": datetime.now(timezone.utc),
     })
 
-    company.collection("datasets").document(
-        dataset_id
-    ).set(
-        document,
-        merge=True,
-    )
-    write_company_audit_event(
+    # Dataset metadata is the first durable write in the upload workflow.
+    # Bound the retry window so a transient Firestore outage does not leave the
+    # Streamlit request waiting through the SDK's much longer default retry
+    # period. The deterministic dataset_id makes this merge write safe to retry.
+    from google.api_core.retry import Retry
+
+    metadata_ref = company.collection("datasets").document(dataset_id)
+    try:
+        metadata_ref.set(
+            document,
+            merge=True,
+            retry=Retry(deadline=15),
+            timeout=20,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Firestore dataset metadata write failed for company-scoped dataset_id=%s",
+            dataset_id,
+        )
+        raise
+
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.metadata_saved", "dataset", dataset_id,
         {"dataset_type": document.get("dataset_type"), "filename": document.get("filename"),
          "status": document.get("status"), "record_count": document.get("record_count")},
     )
     return dataset_id
-
 
 def get_company_datasets(company_id):
     """Retrieve all dataset metadata for a company."""
@@ -574,6 +625,9 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
     if not payload:
         raise ValueError("The uploaded file is empty.")
 
+    from google.api_core.retry import Retry
+
+    upload_retry = Retry(deadline=15)
     dataset_ref = company.collection("datasets").document(dataset_id)
     chunks_ref = dataset_ref.collection("original_file_chunks")
     digest = hashlib.sha256(payload).hexdigest()
@@ -588,11 +642,14 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
             "chunk_count": count, "chunk_bytes": _ORIGINAL_FILE_CHUNK_BYTES,
         },
         "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=upload_retry, timeout=20)
 
     client = get_firestore_client()
     try:
-        client.recursive_delete(chunks_ref)
+        # Upload IDs are content-addressed by the caller. Rewriting the same
+        # deterministic chunk IDs is idempotent, so do not recursively delete
+        # the existing chunk collection before every retry. This also preserves
+        # partial chunks for diagnosis and avoids an expensive delete round trip.
         for start in range(0, count, 16):
             batch = client.batch()
             for index in range(start, min(start + 16, count)):
@@ -600,33 +657,31 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
                 batch.set(chunks_ref.document(f"chunk_{index:06d}"), {
                     "chunk_index": index, "data": part, "size_bytes": len(part),
                 })
-            batch.commit()
+            batch.commit(retry=Retry(deadline=20), timeout=25)
         dataset_ref.set({
             "original_file_status": "complete",
             "original_file_saved": True,
+            "status": "original_file_saved",
             "updated_at": datetime.now(timezone.utc),
-        }, merge=True)
+        }, merge=True, retry=upload_retry, timeout=20)
     except Exception as exc:
-        try:
-            client.recursive_delete(chunks_ref)
-        except Exception:
-            logging.getLogger(__name__).warning("Partial original-file chunk cleanup failed.")
+        # Keep any successfully written deterministic chunks. A retry can
+        # safely overwrite them, and diagnostics can inspect the partial state.
         try:
             dataset_ref.set({
                 "original_file_status": "failed",
                 "original_file_saved": False,
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=Retry(deadline=5), timeout=8)
         except Exception:
             pass
         raise RuntimeError("The original file could not be saved completely to Firestore.") from exc
 
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.original_file_saved", "dataset", dataset_id,
         {"filename": safe_name, "size_bytes": len(payload), "chunk_count": count, "sha256": digest},
     )
     return {"filename": safe_name, "size_bytes": len(payload), "sha256": digest, "chunk_count": count}
-
 
 def get_original_file(company_id, dataset_id):
     """Reassemble and integrity-check a company's original upload."""
@@ -677,6 +732,9 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     row. Existing row-per-document datasets remain readable during migration.
     """
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+    from google.api_core.retry import Retry
+
+    upload_retry = Retry(deadline=15)
 
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
@@ -721,27 +779,45 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     count_key = "record_count" if collection_name == "records" else "source_record_count"
     format_key = f"{collection_name}_storage_format"
     chunks_ref = dataset_ref.collection(f"{collection_name}_chunks")
-    dataset_ref.set({
-        status_key: "saving",
-        saved_key: False,
-        expected_key: len(records),
-        "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
-
     try:
-        for offset in range(0, len(prepared_chunks), 200):
-            batch = client.batch()
-            for chunk_index, row_count, first_row, last_row, payload in prepared_chunks[offset:offset + 200]:
-                batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
-                    "chunk_index": chunk_index,
-                    "record_count": row_count,
-                    "first_record_number": first_row,
-                    "last_record_number": last_row,
-                    "payload_zlib_json": payload,
-                    "format_version": 1,
-                    "saved_at": SERVER_TIMESTAMP,
-                })
-            batch.commit()
+        dataset_ref.set({
+            status_key: "saving",
+            saved_key: False,
+            expected_key: len(records),
+            "updated_at": datetime.now(timezone.utc),
+        }, merge=True, retry=upload_retry, timeout=20)
+
+        max_batch_bytes = 8 * 1024 * 1024
+        batch = client.batch()
+        batch_bytes = 0
+        batch_operations = 0
+        for chunk_index, row_count, first_row, last_row, payload in prepared_chunks:
+            # Keep each Firestore commit comfortably below its 10 MiB request
+            # ceiling, including document and protocol overhead.
+            payload_size = len(payload)
+            if batch_operations and (
+                batch_operations >= 400
+                or batch_bytes + payload_size > max_batch_bytes
+            ):
+                batch.commit(retry=Retry(deadline=20), timeout=25)
+                batch = client.batch()
+                batch_bytes = 0
+                batch_operations = 0
+
+            batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
+                "chunk_index": chunk_index,
+                "record_count": row_count,
+                "first_record_number": first_row,
+                "last_record_number": last_row,
+                "payload_zlib_json": payload,
+                "format_version": 1,
+                "saved_at": SERVER_TIMESTAMP,
+            })
+            batch_bytes += payload_size
+            batch_operations += 1
+
+        if batch_operations:
+            batch.commit(retry=Retry(deadline=20), timeout=25)
 
         # Delete obsolete chunks only after every replacement chunk is durable.
         stale_batch = client.batch()
@@ -753,10 +829,10 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
                 stale_batch.delete(snapshot.reference)
                 stale_count += 1
                 if stale_count % 400 == 0:
-                    stale_batch.commit()
+                    stale_batch.commit(retry=upload_retry, timeout=20)
                     stale_batch = client.batch()
         if stale_count % 400:
-            stale_batch.commit()
+            stale_batch.commit(retry=upload_retry, timeout=20)
 
         dataset_ref.set({
             count_key: len(records),
@@ -764,24 +840,23 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
             status_key: "complete",
             format_key: "zlib-json-v1",
             "updated_at": datetime.now(timezone.utc),
-        }, merge=True)
+        }, merge=True, retry=upload_retry, timeout=20)
     except Exception as exc:
         try:
             dataset_ref.set({
                 saved_key: False,
                 status_key: "failed",
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=Retry(deadline=5), timeout=8)
         except Exception:
             pass
         raise RuntimeError("Validated procurement records could not be saved completely.") from exc
 
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, f"dataset.{collection_name}_saved", "dataset", dataset_id,
         {count_key: len(records), "chunk_count": len(prepared_chunks), status_key: "complete"},
     )
     return len(records)
-
 
 def get_dataset_records(company_id, dataset_id, collection_name="records"):
     """Retrieve source or normalized records from chunked or legacy storage."""
@@ -915,16 +990,17 @@ def save_company_mapping(
     cleaned_mapping = _normalise_workspace_value(mapping)
     if len(json.dumps(cleaned_mapping, default=str).encode("utf-8")) > 800_000:
         raise ValueError("Dataset mapping is too large to store safely.")
+    from google.api_core.retry import Retry
+
     mapping_ref.set({
         "mapping": cleaned_mapping,
         "updated_at": datetime.now(timezone.utc),
-    })
-    write_company_audit_event(
+    }, retry=Retry(deadline=15), timeout=20)
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.mapping_saved", "dataset", dataset_id,
         {"mapped_field_count": len(mapping)},
     )
     return True
-
 
 def get_company_mapping(company_id, dataset_id):
     """Retrieve a saved dataset column mapping."""
@@ -1311,14 +1387,26 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
     analysis_ref = company.collection("analyses").document(analysis_id)
     revision_id = uuid.uuid4().hex
     revision_ref = analysis_ref.collection("revisions").document(revision_id)
+    from google.api_core.retry import Retry
+
+    workspace_retry = Retry(deadline=15)
+    workspace_timeout = 20
     revision_ref.set({
         "workspace_status": "saving",
         "created_at": datetime.now(timezone.utc),
-    })
+    }, retry=workspace_retry, timeout=workspace_timeout)
 
     client = get_firestore_client()
     table_counts = {}
     max_chunk_bytes = 450 * 1024
+    # Persist a small progress marker before each remote write group. If Firestore
+    # exhausts its retry window, the incomplete revision tells support exactly
+    # which table and chunk batch was being saved; the active pointer is untouched.
+    revision_ref.set({
+        "save_stage": "preparing_table_chunks",
+        "table_progress": {},
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
     for table_name, records in prepared.items():
         table_ref = revision_ref.collection("tables").document(table_name)
         chunks_ref = table_ref.collection("chunks")
@@ -1342,22 +1430,33 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
             raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
             chunks.append((zlib.compress(raw, 6), len(current_rows)))
 
-        for offset in range(0, len(chunks), 200):
+        for offset in range(0, len(chunks), 40):
             batch = client.batch()
-            for chunk_index, (payload, row_count) in enumerate(chunks[offset:offset + 200], start=offset):
+            batch_end = min(offset + 40, len(chunks))
+            revision_ref.set({
+                "save_stage": "writing_table_chunks",
+                "current_table": table_name,
+                "current_chunk_batch": [offset, batch_end],
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
+            for chunk_index, (payload, row_count) in enumerate(chunks[offset:batch_end], start=offset):
                 batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
                     "chunk_index": chunk_index,
                     "row_count": row_count,
                     "payload_zlib_json": payload,
                     "format_version": 1,
                 })
-            batch.commit()
+            batch.commit(retry=workspace_retry, timeout=workspace_timeout)
+            revision_ref.set({
+                "table_progress": {table_name: batch_end},
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
 
         table_ref.set({
             "storage_format": "zlib-json-v1",
             "row_count": len(records),
             "chunk_count": len(chunks),
-        })
+        }, retry=workspace_retry, timeout=workspace_timeout)
         table_counts[table_name] = len(records)
 
     # Mark the revision complete before switching the active pointer. If this
@@ -1366,10 +1465,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
         "workspace_status": "complete",
         "tables": table_counts,
         "completed_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
 
     from firebase_admin import firestore
-    switch_transaction = client.transaction()
+    switch_transaction = client.transaction(max_attempts=3)
 
     @firestore.transactional
     def _activate_revision(transaction):
@@ -1386,6 +1485,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
             "latest_analysis_updated_at": datetime.now(timezone.utc),
         }, merge=True)
 
+    revision_ref.set({
+        "save_stage": "activating_workspace",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True, retry=workspace_retry, timeout=workspace_timeout)
     _activate_revision(switch_transaction)
     write_company_audit_event(
         company_id, "analysis.workspace_saved", "analysis", analysis_id,
@@ -1398,7 +1501,6 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
         # Cleanup must never turn a successfully committed analysis into a failed run.
         pass
     return analysis_id
-
 
 def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
     """Delete superseded analysis revisions while protecting the active revision."""
