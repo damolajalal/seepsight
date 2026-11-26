@@ -1,6 +1,6 @@
 """Seepsight company data onboarding.
 
-The page supports the twelve procurement dataset schemas exposed by the
+The page supports the registered procurement dataset schemas exposed by the
 engine. Dataset ingestion, mapping and relationship checks are distinct from
 detector coverage: only the four established detector pipelines generate
 procurement findings in this version.
@@ -26,7 +26,7 @@ from seepsight.firestore_db import (
 ui.page_header(
     "Connect your data",
     "Bring your company's procurement records into Seepsight. Preview the data, "
-    "confirm its structure, map up to twelve procurement dataset types and review data quality before analysis.",
+    "confirm its structure, map the registered procurement dataset types and review data quality before analysis.",
 )
 
 st.info("Original uploaded files, source rows, normalized records, mappings and analysis results are saved in your company's Firestore workspace. Original files are stored as integrity-checked chunks.")
