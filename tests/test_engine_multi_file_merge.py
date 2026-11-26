@@ -163,6 +163,18 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         self.assertEqual(relation["coverage"], 0.5)
         self.assertTrue(any("Source rows were retained" in warning for warning in warnings))
 
+    def test_identifier_normalisation_preserves_significant_leading_zeroes(self):
+        keys = engine._id_key(pd.Series(["001", "1", "PO-001", "po 001"]))
+        self.assertNotEqual(keys.iloc[0], keys.iloc[1])
+        self.assertEqual(keys.iloc[2], keys.iloc[3])
+
+    def test_pending_is_preserved_as_a_valid_business_status(self):
+        cleaned = engine.clean_text(pd.Series(["Pending", "Approved", "N/A", ""]))
+        self.assertEqual(cleaned.iloc[0], "Pending")
+        self.assertEqual(cleaned.iloc[1], "Approved")
+        self.assertIsNone(cleaned.iloc[2])
+        self.assertIsNone(cleaned.iloc[3])
+
     def test_transaction_primary_keys_are_recognised(self):
         self.assertEqual(engine._table_key_fields("approvals", pd.DataFrame(columns=["approval_event_id"])), ["approval_event_id"])
         self.assertEqual(engine._table_key_fields("receipts", pd.DataFrame(columns=["receipt_id"])), ["receipt_id"])
