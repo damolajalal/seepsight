@@ -546,14 +546,22 @@ def mapping_candidates(df, fields=None, top_n=3):
     """
     fields = fields or FLAT_FIELDS
     ranked = {}
+    # Content compatibility depends on a source column and canonical data type,
+    # not on the individual field. Calculate it once per (column, type) rather
+    # than repeatedly sampling and parsing the same values for every field.
+    fit_cache = {}
+    columns = list(df.columns)
     for field in fields:
         spec = CONTRACT[field]
         candidates = []
-        for col in df.columns:
+        for col in columns:
             ns = name_score(col, spec)
             if ns <= 0:
                 continue
-            fit = content_fit(df[col], spec["kind"])
+            cache_key = (col, spec["kind"])
+            if cache_key not in fit_cache:
+                fit_cache[cache_key] = content_fit(df[col], spec["kind"])
+            fit = fit_cache[cache_key]
             if spec["kind"] in ("number", "date") and fit < 0.7:
                 score = ns * 0.3
             else:
