@@ -50,7 +50,9 @@ class AnalysisWorkspacePersistenceTests(unittest.TestCase):
         self.assertEqual(result, "analysis-a")
         self.batch.commit.assert_called_once()
         self.assertEqual(self.revision_ref.set.call_args_list[0].args[0]["workspace_status"], "saving")
-        revision_writes = [call.args[0] for call in self.revision_ref.set.call_args_list]\n        self.assertTrue(any(payload.get("workspace_status") == "complete" for payload in revision_writes))\n        self.assertEqual(revision_writes[-1]["save_stage"], "activating_workspace")
+        revision_writes = [call.args[0] for call in self.revision_ref.set.call_args_list]
+        self.assertTrue(any(payload.get("workspace_status") == "complete" for payload in revision_writes))
+        self.assertEqual(revision_writes[-1]["save_stage"], "activating_workspace")
         transaction = self.client.transaction.return_value
         self.assertEqual(transaction.set.call_count, 2)
         analysis_payload = transaction.set.call_args_list[0].args[1]
