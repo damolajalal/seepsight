@@ -1301,7 +1301,7 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
                 raise TypeError("Each analysis row must be a dictionary.")
             cleaned = _normalise_workspace_value(record)
             size = len(__import__("json").dumps(cleaned, default=str).encode("utf-8"))
-            if size > 800_000:
+            if size > 450 * 1024:
                 raise ValueError(
                     f"An analysis row in '{table_name}' is too large to store safely."
                 )
@@ -1333,24 +1333,21 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
                 )
             if current_rows and current_size + len(encoded) + 1 > max_chunk_bytes:
                 raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
-                chunks.append(zlib.compress(raw, 6))
+                chunks.append((zlib.compress(raw, 6), len(current_rows)))
                 current_rows = []
                 current_size = 2
             current_rows.append(cleaned)
             current_size += len(encoded) + (1 if len(current_rows) > 1 else 0)
         if current_rows:
             raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
-            chunks.append(zlib.compress(raw, 6))
+            chunks.append((zlib.compress(raw, 6), len(current_rows)))
 
         for offset in range(0, len(chunks), 200):
             batch = client.batch()
-            for chunk_index, payload in enumerate(chunks[offset:offset + 200], start=offset):
+            for chunk_index, (payload, row_count) in enumerate(chunks[offset:offset + 200], start=offset):
                 batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
                     "chunk_index": chunk_index,
-                    "row_count": min(
-                        250_000,
-                        len(json.loads(zlib.decompress(payload).decode("utf-8")))
-                    ),
+                    "row_count": row_count,
                     "payload_zlib_json": payload,
                     "format_version": 1,
                 })
