@@ -820,7 +820,7 @@ def get_dataset_records(company_id, dataset_id, collection_name="records"):
                 restored = _denormalise_workspace_value(item)
                 records.append({
                     key: value for key, value in restored.items()
-                    if not key.startswith("_")
+                    if key != "_record_number"
                 })
     else:
         # Backward compatibility for datasets saved before chunked storage.
@@ -1779,7 +1779,7 @@ def search_dataset_records(
         record_number = int(item.get("_record_number", scanned))
         searchable = " ".join(
             f"{key} {value}" for key, value in item.items()
-            if not str(key).startswith("_") and value is not None
+            if str(key) != "_record_number" and value is not None
         ).casefold()
         score = sum(1 for term in clean_terms if term in searchable)
         scanned += 1
@@ -1787,7 +1787,7 @@ def search_dataset_records(
             match_count += 1
             record = {
                 key: value for key, value in item.items()
-                if not str(key).startswith("_")
+                if str(key) != "_record_number"
             }
             ranked.append((score, record_number, record))
 
