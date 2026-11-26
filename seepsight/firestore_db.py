@@ -1578,14 +1578,29 @@ def get_company_dataset_groups(company_id):
             "has_analysis": False,
         })
         item["has_analysis"] = True
+        item["analysis_count"] = int(item.get("analysis_count", 0)) + 1
         if "analysis_id" not in item:
             item["analysis_id"] = snapshot.id
             item["updated_at"] = data.get("updated_at")
     for item in groups.values():
-        # Deletion needs complete logical links and a saved analysis. Extension
-        # additionally needs every original upload to be present and verifiable.
+        # A failed save can leave an orphan revision under analyses/{group_id}
+        # before the parent analysis is activated. Keep that dataset protected
+        # so its diagnostic checkpoint is not stranded or silently discarded.
+        item["pending_workspace"] = False
+        if not item["has_analysis"] and item["file_count"]:
+            pending_revisions = company.collection("analyses").document(
+                item["dataset_group_id"]
+            ).collection("revisions").limit(1).stream()
+            item["pending_workspace"] = next(iter(pending_revisions), None) is not None
+
+        # Only unused, fully linked datasets without pending analysis writes can
+        # be deleted. Completed analyses remain available as history.
+        item["used"] = bool(item["has_analysis"])
         item["deletion_safe"] = bool(
-            item["all_files_linked"] and item["has_analysis"]
+            item["all_files_linked"]
+            and not item["has_analysis"]
+            and not item["pending_workspace"]
+            and item["file_count"] > 0
         )
         item["extendable"] = bool(
             item["all_files_linked"]
@@ -1600,7 +1615,7 @@ def get_company_dataset_groups(company_id):
 
 
 def delete_company_dataset_group(company_id, dataset_group_id):
-    """Owner-only cascade deletion of one logical dataset and all dependent records."""
+    """Owner-only deletion of an unused dataset; analysed history is immutable here."""
     company = _company_owner_ref(company_id)
     dataset_group_id = _validate_id(dataset_group_id, "dataset_group_id")
     datasets = []
@@ -1623,27 +1638,36 @@ def delete_company_dataset_group(company_id, dataset_group_id):
         if data.get("dataset_group_id") == dataset_group_id:
             cases.append(snapshot.reference)
 
-    if has_unlinked_file or not analyses:
-        raise RuntimeError("This dataset does not have complete file-to-analysis links and cannot be safely deleted.")
-    if not datasets and not analyses and not cases:
+    if has_unlinked_file:
+        raise RuntimeError("This dataset has legacy files without complete dataset links and cannot be safely deleted.")
+    if analyses or cases:
+        raise RuntimeError(
+            "This dataset has been used. Its analysis history, findings and cases are retained; "
+            "only unused datasets can be permanently deleted."
+        )
+    pending_revisions = company.collection("analyses").document(
+        dataset_group_id
+    ).collection("revisions").limit(1).stream()
+    if next(iter(pending_revisions), None) is not None:
+        raise RuntimeError(
+            "This dataset has an unfinished analysis save. Keep it intact until its recovery diagnostics are reviewed."
+        )
+    if not datasets:
         return False
 
-    company_snapshot = company.get()
-    company_data = company_snapshot.to_dict() or {}
-    active_analysis_id = company_data.get("latest_analysis_id")
-    deleting_active = any(ref.id == active_analysis_id for ref in analyses)
-
     client = get_firestore_client()
-    for reference in datasets + analyses + cases:
+    for reference in datasets:
         reference.set({
             "deletion_status": "deleting",
             "updated_at": datetime.now(timezone.utc),
         }, merge=True)
     try:
-        for reference in datasets + analyses + cases:
+        # recursive_delete also removes each dataset's nested source/normalised
+        # record chunks and original-file chunks.
+        for reference in datasets:
             client.recursive_delete(reference)
     except Exception as exc:
-        for reference in datasets + analyses + cases:
+        for reference in datasets:
             try:
                 reference.set({
                     "deletion_status": "deletion_failed",
@@ -1651,34 +1675,15 @@ def delete_company_dataset_group(company_id, dataset_group_id):
                 }, merge=True)
             except Exception:
                 pass
-        raise RuntimeError("The dataset deletion was incomplete. Retry the same deletion before using this dataset.") from exc
-
-    if deleting_active:
-        remaining = [item for item in _stream_query_pages(
-            company.collection("analyses").order_by("__name__"), page_size=200
-        ) if (item.to_dict() or {}).get("workspace_status") == "complete"]
-        remaining.sort(
-            key=lambda item: (item.to_dict() or {}).get("updated_at") or datetime.min.replace(tzinfo=timezone.utc),
-            reverse=True,
-        )
-        if remaining:
-            company.set({
-                "latest_analysis_id": remaining[0].id,
-                "latest_analysis_updated_at": (remaining[0].to_dict() or {}).get("updated_at"),
-            }, merge=True)
-        else:
-            from firebase_admin import firestore
-            company.set({
-                "latest_analysis_id": firestore.DELETE_FIELD,
-                "latest_analysis_updated_at": firestore.DELETE_FIELD,
-            }, merge=True)
+        raise RuntimeError(
+            "The unused dataset deletion was incomplete. Retry the same deletion before uploading it again."
+        ) from exc
 
     write_company_audit_event(
-        company_id, "dataset_group.deleted", "dataset_group", dataset_group_id,
-        {"files_deleted": len(datasets), "analyses_deleted": len(analyses), "cases_deleted": len(cases)},
+        company_id, "dataset_group.deleted_unused", "dataset_group", dataset_group_id,
+        {"files_deleted": len(datasets), "analyses_retained": 0, "cases_retained": 0},
     )
     return True
-
 
 def get_company_analysis_workspaces(company_id):
     """List completed analysis workspaces for this authenticated company."""
