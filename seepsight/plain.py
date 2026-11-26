@@ -62,27 +62,32 @@ def title(f):
 
 def what_we_found(f, ev, cur):
     t, n = f["finding_type"], int(f["affected_orders"]) if pd.notna(f["affected_orders"]) else None
+    supplier_count = int(f.get("supplier_count", 1) or 1)
+    supplier_phrase = (
+        f"across {supplier_count:,} suppliers"
+        if supplier_count > 1 else f"from {f['entity']}"
+    )
     if t == "Short delivery":
         units = float((ev["ordered_qty"] - ev["received_qty"]).clip(lower=0).sum()) if len(ev) and {"ordered_qty", "received_qty"}.issubset(ev.columns) else 0
         if len(ev) and "invoice_qty" in ev.columns:
             units = max(units, float((ev["invoice_qty"] - ev["received_qty"]).clip(lower=0).sum()))
-        return (f"{n:,} purchase order(s) from {f['entity']} have a combined quantity shortfall "
+        return (f"{n:,} purchase order(s) {supplier_phrase} have a combined quantity shortfall "
                 f"of {units:g} unit(s). Estimated value to review: {cur} {float(f['identified_exposure']):,.2f}.")
     if t == "Invoice price above PO price":
         pct = (ev["invoice_unit_price"] / ev["po_unit_price"] - 1).mean() * 100 if len(ev) else 0
-        return (f"{n:,} purchase order(s) from {f['entity']} show invoice prices above the agreed rate "
+        return (f"{n:,} purchase order(s) {supplier_phrase} show invoice prices above the agreed rate "
                 f"(average difference {pct:.4f}%). Potential extra cost to review: {cur} {float(f['identified_exposure']):,.2f}.")
     if t == "Slow approvals":
         d = ev["approval_days"].mean() if len(ev) else 0
-        return (f"{n:,} purchase order(s) from {f['entity']} exceeded the finance approval time limit "
+        return (f"{n:,} purchase order(s) {supplier_phrase} exceeded the finance approval time limit "
                 f"(average wait {d:.2f} days). Order value awaiting attention: {cur} {float(f['order_value_held_up']):,.2f}.")
     if t == "Late delivery":
         days = pd.to_numeric(ev["days_late"], errors="coerce").dropna() if len(ev) and "days_late" in ev else pd.Series(dtype=float)
         detail = f" The longest recorded delay is {days.max():g} day(s)." if len(days) else ""
-        return (f"{n:,} purchase order(s) from {f['entity']} have confirmed receipt dates later "
+        return (f"{n:,} purchase order(s) {supplier_phrase} have confirmed receipt dates later "
                 f"than their promised dates.{detail}")
     if t == "Overdue order awaiting receipt confirmation":
-        return (f"{n:,} purchase order(s) from {f['entity']} are past their promised delivery dates, "
+        return (f"{n:,} purchase order(s) {supplier_phrase} are past their promised delivery dates, "
                 "but no actual receipt date is recorded. These are unconfirmed overdue orders, "
                 "not confirmed late deliveries. Check the goods-received records.")
     m = re.search(r"rose from ([\d.]+) to ([\d.]+) days", str(f["evidence"]))
