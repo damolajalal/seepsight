@@ -1319,6 +1319,14 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
     client = get_firestore_client()
     table_counts = {}
     max_chunk_bytes = 450 * 1024
+    # Persist a small progress marker before each remote write group. If Firestore
+    # exhausts its retry window, the incomplete revision tells support exactly
+    # which table and chunk batch was being saved; the active pointer is untouched.
+    revision_ref.set({
+        "save_stage": "preparing_table_chunks",
+        "table_progress": {},
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
     for table_name, records in prepared.items():
         table_ref = revision_ref.collection("tables").document(table_name)
         chunks_ref = table_ref.collection("chunks")
@@ -1342,9 +1350,16 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
             raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
             chunks.append((zlib.compress(raw, 6), len(current_rows)))
 
-        for offset in range(0, len(chunks), 200):
+        for offset in range(0, len(chunks), 40):
             batch = client.batch()
-            for chunk_index, (payload, row_count) in enumerate(chunks[offset:offset + 200], start=offset):
+            batch_end = min(offset + 40, len(chunks))
+            revision_ref.set({
+                "save_stage": "writing_table_chunks",
+                "current_table": table_name,
+                "current_chunk_batch": [offset, batch_end],
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
+            for chunk_index, (payload, row_count) in enumerate(chunks[offset:batch_end], start=offset):
                 batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
                     "chunk_index": chunk_index,
                     "row_count": row_count,
@@ -1352,6 +1367,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
                     "format_version": 1,
                 })
             batch.commit()
+            revision_ref.set({
+                "table_progress": {table_name: batch_end},
+                "updated_at": datetime.now(timezone.utc),
+            }, merge=True)
 
         table_ref.set({
             "storage_format": "zlib-json-v1",
@@ -1386,6 +1405,10 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
             "latest_analysis_updated_at": datetime.now(timezone.utc),
         }, merge=True)
 
+    revision_ref.set({
+        "save_stage": "activating_workspace",
+        "updated_at": datetime.now(timezone.utc),
+    }, merge=True)
     _activate_revision(switch_transaction)
     write_company_audit_event(
         company_id, "analysis.workspace_saved", "analysis", analysis_id,
