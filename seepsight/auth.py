@@ -841,6 +841,8 @@ def require_auth():
         st.sidebar.write(verified["company_name"])
         st.sidebar.caption(verified["email"])
 
+        _jira_connection_panel(verified)
+
         if st.sidebar.button("Sign out", use_container_width=True):
             logout()
 
