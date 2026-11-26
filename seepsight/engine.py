@@ -226,7 +226,6 @@ CONTRACT = {
     "tax_amount": dict(kind="number", required=False, desc="Invoice tax amount", names=["taxamount", "vatamount"]),
     "discount_amount": dict(kind="number", required=False, desc="Invoice discount amount", names=["discountamount", "discount"]),
     "invoice_status": dict(kind="text", required=False, desc="Invoice status", names=["invoicestatus", "billstatus"]),
-    "invoice_number": dict(kind="text", required=False, desc="Invoice document number", names=["invoicenumber", "invoiceno", "billnumber"]),
     "receipt_id": dict(kind="text", required=False, desc="Goods receipt identifier", names=["receiptid", "grnid", "goodsreceiptid"]),
     "accepted_qty": dict(kind="number", required=False, desc="Quantity accepted", names=["acceptedqty", "quantityaccepted"]),
     "rejected_qty": dict(kind="number", required=False, desc="Quantity rejected", names=["rejectedqty", "quantityrejected"]),
