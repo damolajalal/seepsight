@@ -303,159 +303,161 @@ if not company_id or not company_name:
     st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
     st.stop()
 
-with st.expander("Firestore write/read/cleanup verification", expanded=False):
-    if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
-        try:
-            with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
-                diagnostic = firestore_db.test_firestore_connection(company_id)
-            latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
-            if latency is not None:
-                st.success(
-                    f"Firestore write, read and cleanup test passed. "
-                    f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
+if not DEMO_MODE:
+    with st.expander("Firestore write/read/cleanup verification", expanded=False):
+        if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
+            try:
+                with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
+                    diagnostic = firestore_db.test_firestore_connection(company_id)
+                latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
+                if latency is not None:
+                    st.success(
+                        f"Firestore write, read and cleanup test passed. "
+                        f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
+                    )
+                else:
+                    st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+            except Exception as exc:
+                support_id = uuid.uuid4().hex[:12].upper()
+                logging.getLogger(__name__).exception(
+                    "Firestore company-dataset diagnostic failed; support_id=%s",
+                    support_id,
                 )
-            else:
-                st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
-        except Exception as exc:
-            support_id = uuid.uuid4().hex[:12].upper()
-            logging.getLogger(__name__).exception(
-                "Firestore company-dataset diagnostic failed; support_id=%s",
-                support_id,
+                st.error(
+                    "Firestore verification failed. "
+                    f"{str(exc)} "
+                    f"Support reference: {support_id}. "
+                    "No credential values are displayed."
+                )
+
+    st.markdown("### Company workspace")
+    st.write(f"**{company_name}**")
+    st.caption("Your upload will be associated with the signed-in company account.")
+
+    st.markdown("### Database connections")
+    connection_ui.render_company_database_connections(company_id, account)
+
+    st.markdown("### Saved procurement datasets")
+    try:
+        saved_groups = firestore_db.get_company_dataset_groups(company_id)
+    except Exception:
+        saved_groups = []
+        st.warning("Saved datasets could not be loaded right now. Refresh the page and try again.")
+
+    if saved_groups:
+        for group in saved_groups:
+            files_label = ", ".join(group.get("files", [])[:4])
+            if len(group.get("files", [])) > 4:
+                files_label += f" and {len(group['files']) - 4} more"
+            st.write(f"**{group.get('company_name') or 'Procurement dataset'}**")
+            st.caption(
+                f"{group.get('file_count', 0)} file(s) · "
+                f"{group.get('record_count', 0):,} normalized rows · "
+                f"{group.get('source_record_count', 0):,} source rows"
             )
-            st.error(
-                "Firestore verification failed. "
-                f"{str(exc)} "
-                f"Support reference: {support_id}. "
-                "No credential values are displayed."
-            )
-
-st.markdown("### Company workspace")
-st.write(f"**{company_name}**")
-st.caption("Your upload will be associated with the signed-in company account.")
-
-st.markdown("### Database connections")
-connection_ui.render_company_database_connections(company_id, account)
-
-st.markdown("### Saved procurement datasets")
-try:
-    saved_groups = firestore_db.get_company_dataset_groups(company_id)
-except Exception:
-    saved_groups = []
-    st.warning("Saved datasets could not be loaded right now. Refresh the page and try again.")
-
-if saved_groups:
-    for group in saved_groups:
-        files_label = ", ".join(group.get("files", [])[:4])
-        if len(group.get("files", [])) > 4:
-            files_label += f" and {len(group['files']) - 4} more"
-        st.write(f"**{group.get('company_name') or 'Procurement dataset'}**")
-        st.caption(
-            f"{group.get('file_count', 0)} file(s) · "
-            f"{group.get('record_count', 0):,} normalized rows · "
-            f"{group.get('source_record_count', 0):,} source rows"
-        )
-        if files_label:
-            st.caption(files_label)
-    if account.get("role") == "owner":
-        safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
-        used_groups = [item for item in saved_groups if item.get("used")]
-        pending_groups = [
-            item for item in saved_groups if item.get("pending_workspace")
-        ]
-        protected_groups = [
-            item for item in saved_groups
-            if not item.get("deletion_safe")
-            and not item.get("used")
-            and not item.get("pending_workspace")
-        ]
-        with st.expander("Delete an unused dataset", expanded=False):
-            if safe_groups:
-                group_options = {
-                    item["dataset_group_id"]: (
-                        f"{item.get('company_name') or 'Dataset'} · "
-                        f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+            if files_label:
+                st.caption(files_label)
+        if account.get("role") == "owner":
+            safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
+            used_groups = [item for item in saved_groups if item.get("used")]
+            pending_groups = [
+                item for item in saved_groups if item.get("pending_workspace")
+            ]
+            protected_groups = [
+                item for item in saved_groups
+                if not item.get("deletion_safe")
+                and not item.get("used")
+                and not item.get("pending_workspace")
+            ]
+            with st.expander("Delete an unused dataset", expanded=False):
+                if safe_groups:
+                    group_options = {
+                        item["dataset_group_id"]: (
+                            f"{item.get('company_name') or 'Dataset'} · "
+                            f"{item.get('file_count', 0)} file(s) · {item['dataset_group_id'][:8]}"
+                        )
+                        for item in safe_groups
+                    }
+                    delete_group_id = st.selectbox(
+                        "Choose an unused dataset to delete",
+                        list(group_options),
+                        format_func=lambda value: group_options[value],
+                        key="delete_dataset_group_choice",
                     )
-                    for item in safe_groups
-                }
-                delete_group_id = st.selectbox(
-                    "Choose an unused dataset to delete",
-                    list(group_options),
-                    format_func=lambda value: group_options[value],
-                    key="delete_dataset_group_choice",
-                )
-                st.warning(
-                    "This permanently removes only the selected unused upload, including its "
-                    "original files, source rows and normalized rows. Datasets with analysis "
-                    "history are not eligible and will remain in your workspace history."
-                )
-                confirm_delete = st.checkbox(
-                    "I understand this unused dataset will be permanently deleted.",
-                    key="confirm_delete_dataset_group",
-                )
-                if st.button(
-                    "Delete selected unused dataset",
-                    type="secondary",
-                    disabled=not confirm_delete,
-                    key="delete_selected_dataset_group",
-                ):
-                    try:
-                        deleted = firestore_db.delete_company_dataset_group(company_id, delete_group_id)
-                        if deleted:
-                            mine = st.session_state.get("mine")
-                            if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
-                                st.session_state.pop("mine", None)
-                            st.session_state.pop("cases", None)
-                            st.success("Unused dataset deleted. Existing analysis history was not changed.")
-                            st.rerun()
-                        else:
-                            st.info("That dataset no longer exists.")
-                    except PermissionError:
-                        st.error("Only the company owner can delete a dataset.")
-                    except Exception as exc:
-                        st.error(f"Deletion was not completed: {exc}")
-            else:
-                st.caption("There are no unused, fully linked datasets eligible for deletion.")
-            if used_groups:
-                st.caption("Datasets retained in analysis history:")
-                for item in used_groups:
-                    st.write(
-                        f"• {item.get('company_name') or 'Dataset'} — "
-                        f"{item.get('file_count', 0)} file(s), "
-                        f"{int(item.get('analysis_count', 1) or 1)} saved analysis(es)"
+                    st.warning(
+                        "This permanently removes only the selected unused upload, including its "
+                        "original files, source rows and normalized rows. Datasets with analysis "
+                        "history are not eligible and will remain in your workspace history."
                     )
-                st.info(
-                    "These datasets have been analysed. Their saved analysis history, findings "
-                    "and cases are protected from dataset deletion."
-                )
-            if pending_groups:
-                st.caption("Datasets with an unfinished analysis save (protected):")
-                for item in pending_groups:
-                    st.write(
-                        f"• {item.get('company_name') or 'Dataset'} — "
-                        f"{item.get('file_count', 0)} file(s), "
-                        f"{item['dataset_group_id'][:8]}"
+                    confirm_delete = st.checkbox(
+                        "I understand this unused dataset will be permanently deleted.",
+                        key="confirm_delete_dataset_group",
                     )
-                st.info(
-                    "An unfinished analysis save contains recovery diagnostics. These datasets "
-                    "cannot be deleted until the incomplete save has been diagnosed."
-                )
-            if protected_groups:
-                st.caption("Protected legacy datasets (not selectable for deletion):")
-                for item in protected_groups:
-                    st.write(
-                        f"• {item.get('company_name') or 'Dataset'} — "
-                        f"{item.get('file_count', 0)} file(s), "
-                        f"{item['dataset_group_id'][:8]}"
+                    if st.button(
+                        "Delete selected unused dataset",
+                        type="secondary",
+                        disabled=not confirm_delete,
+                        key="delete_selected_dataset_group",
+                    ):
+                        try:
+                            deleted = firestore_db.delete_company_dataset_group(company_id, delete_group_id)
+                            if deleted:
+                                mine = st.session_state.get("mine")
+                                if isinstance(mine, dict) and mine.get("dataset_group_id") == delete_group_id:
+                                    st.session_state.pop("mine", None)
+                                st.session_state.pop("cases", None)
+                                st.success("Unused dataset deleted. Existing analysis history was not changed.")
+                                st.rerun()
+                            else:
+                                st.info("That dataset no longer exists.")
+                        except PermissionError:
+                            st.error("Only the company owner can delete a dataset.")
+                        except Exception as exc:
+                            st.error(f"Deletion was not completed: {exc}")
+                else:
+                    st.caption("There are no unused, fully linked datasets eligible for deletion.")
+                if used_groups:
+                    st.caption("Datasets retained in analysis history:")
+                    for item in used_groups:
+                        st.write(
+                            f"• {item.get('company_name') or 'Dataset'} — "
+                            f"{item.get('file_count', 0)} file(s), "
+                            f"{int(item.get('analysis_count', 1) or 1)} saved analysis(es)"
+                        )
+                    st.info(
+                        "These datasets have been analysed. Their saved analysis history, findings "
+                        "and cases are protected from dataset deletion."
                     )
-                st.info(
-                    "These older records are missing complete dataset-to-analysis links. "
-                    "They remain protected until their links can be verified."
-                )
+                if pending_groups:
+                    st.caption("Datasets with an unfinished analysis save (protected):")
+                    for item in pending_groups:
+                        st.write(
+                            f"• {item.get('company_name') or 'Dataset'} — "
+                            f"{item.get('file_count', 0)} file(s), "
+                            f"{item['dataset_group_id'][:8]}"
+                        )
+                    st.info(
+                        "An unfinished analysis save contains recovery diagnostics. These datasets "
+                        "cannot be deleted until the incomplete save has been diagnosed."
+                    )
+                if protected_groups:
+                    st.caption("Protected legacy datasets (not selectable for deletion):")
+                    for item in protected_groups:
+                        st.write(
+                            f"• {item.get('company_name') or 'Dataset'} — "
+                            f"{item.get('file_count', 0)} file(s), "
+                            f"{item['dataset_group_id'][:8]}"
+                        )
+                    st.info(
+                        "These older records are missing complete dataset-to-analysis links. "
+                        "They remain protected until their links can be verified."
+                    )
 
-extendable_groups = [
-    item for item in saved_groups
-    if item.get("extendable") and item.get("file_items")
-]
+    extendable_groups = [
+        item for item in saved_groups
+        if item.get("extendable") and item.get("file_items")
+    ]
+
 upload_modes = ["Create a separate dataset"]
 if extendable_groups:
     upload_modes.append("Add complementary files to an existing dataset")
