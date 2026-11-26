@@ -58,7 +58,8 @@ class DatasetGroupManagementTests(unittest.TestCase):
 
         self.assertEqual(len(groups), 1)
         group = groups[0]
-        self.assertTrue(group["deletion_safe"])
+        self.assertFalse(group["deletion_safe"])
+        self.assertTrue(group["used"])
         self.assertEqual(group["dataset_group_id"], "group-a")
         self.assertEqual(group["file_count"], 2)
         self.assertEqual(
@@ -69,6 +70,134 @@ class DatasetGroupManagementTests(unittest.TestCase):
             {item["dataset_id"] for item in group["file_items"]},
             {"file-orders", "file-suppliers"},
         )
+
+    def test_unused_fully_linked_dataset_is_eligible_for_deletion(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+        }[name]
+        dataset_rows = [
+            snapshot("file-unused", {
+                "dataset_group_id": "unused-group",
+                "filename": "unused.csv",
+                "dataset_type": "orders",
+                "record_count": 12,
+                "source_record_count": 12,
+            })
+        ]
+        with patch.object(firestore_db, "_company_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[iter(dataset_rows), iter([])],
+            ):
+                groups = firestore_db.get_company_dataset_groups("company-a")
+
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["used"])
+        self.assertEqual(groups[0]["file_count"], 1)
+
+    def test_delete_rejects_used_dataset_without_deleting_history(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        cases = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+            "cases": cases,
+        }[name]
+        dataset = snapshot("file-a", {"dataset_group_id": "group-a"})
+        dataset.reference = MagicMock()
+        analysis = snapshot("analysis-a", {"dataset_group_id": "group-a"})
+        analysis.reference = MagicMock()
+        client = MagicMock()
+
+        with patch.object(firestore_db, "_company_owner_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[
+                    iter([dataset]),
+                    iter([analysis]),
+                    iter([]),
+                ],
+            ):
+                with patch.object(firestore_db, "get_firestore_client", return_value=client):
+                    with self.assertRaisesRegex(RuntimeError, "has been used"):
+                        firestore_db.delete_company_dataset_group("company-a", "group-a")
+
+        client.recursive_delete.assert_not_called()
+        dataset.reference.set.assert_not_called()
+
+    def test_delete_rejects_dataset_with_incomplete_analysis_revision(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        cases = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+            "cases": cases,
+        }[name]
+        dataset = snapshot("file-a", {"dataset_group_id": "group-a"})
+        dataset.reference = MagicMock()
+        analyses.document.return_value.collection.return_value.limit.return_value.stream.return_value = [
+            snapshot("revision-pending", {"workspace_status": "saving"})
+        ]
+        client = MagicMock()
+
+        with patch.object(firestore_db, "_company_owner_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[iter([dataset]), iter([]), iter([])],
+            ):
+                with patch.object(firestore_db, "get_firestore_client", return_value=client):
+                    with self.assertRaisesRegex(RuntimeError, "unfinished analysis save"):
+                        firestore_db.delete_company_dataset_group("company-a", "group-a")
+
+        client.recursive_delete.assert_not_called()
+        dataset.reference.set.assert_not_called()
+
+    def test_delete_removes_only_unused_dataset_and_audits_it(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        cases = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+            "cases": cases,
+        }[name]
+        dataset = snapshot("file-unused", {"dataset_group_id": "unused-group"})
+        dataset.reference = MagicMock()
+        client = MagicMock()
+
+        with patch.object(firestore_db, "_company_owner_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[
+                    iter([dataset]),
+                    iter([]),
+                    iter([]),
+                ],
+            ):
+                with patch.object(firestore_db, "get_firestore_client", return_value=client):
+                    with patch.object(firestore_db, "write_company_audit_event") as audit:
+                        deleted = firestore_db.delete_company_dataset_group(
+                            "company-a", "unused-group"
+                        )
+
+        self.assertTrue(deleted)
+        client.recursive_delete.assert_called_once_with(dataset.reference)
+        audit.assert_called_once()
+        self.assertEqual(audit.call_args.args[1], "dataset_group.deleted_unused")
 
     def test_legacy_file_without_group_link_is_not_marked_safe_to_extend_or_delete(self):
         company = MagicMock()
