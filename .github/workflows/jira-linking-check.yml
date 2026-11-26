@@ -1,0 +1,29 @@
+name: Validate Jira account-linking code
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "seepsight/auth.py"
+      - "seepsight/jira_linking.py"
+      - ".github/workflows/jira-linking-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "seepsight/auth.py"
+      - "seepsight/jira_linking.py"
+      - ".github/workflows/jira-linking-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile authentication and pairing modules
+        run: python -m py_compile seepsight/auth.py seepsight/jira_linking.py
