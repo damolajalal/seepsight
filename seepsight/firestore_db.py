@@ -1681,7 +1681,28 @@ def search_dataset_records(
 
     count_key = "source_record_count" if collection_name == "source_records" else "record_count"
     total_count = int(metadata.get(count_key, 0) or 0)
+    storage_format = metadata.get(f"{collection_name}_storage_format")
     base_query = dataset_ref.collection(collection_name).order_by("_record_number")
+
+    def iter_saved_items():
+        if storage_format == "zlib-json-v1":
+            chunks_ref = dataset_ref.collection(f"{collection_name}_chunks")
+            for chunk_snapshot in _stream_query_pages(
+                chunks_ref.order_by("chunk_index"), page_size=200
+            ):
+                chunk = chunk_snapshot.to_dict() or {}
+                try:
+                    payload = zlib.decompress(chunk["payload_zlib_json"])
+                    rows = json.loads(payload.decode("utf-8"))
+                except Exception as exc:
+                    raise RuntimeError("A saved procurement data chunk could not be read or verified.") from exc
+                if not isinstance(rows, list):
+                    raise RuntimeError("A saved procurement data chunk has an invalid structure.")
+                for row in rows:
+                    yield _denormalise_workspace_value(row)
+        else:
+            for row_snapshot in _stream_query_pages(base_query, page_size=500):
+                yield _denormalise_workspace_value(row_snapshot.to_dict() or {})
 
     clean_terms = []
     for term in terms:
@@ -1699,12 +1720,10 @@ def search_dataset_records(
     match_count = 0
     scanned = 0
     budget_reached = False
-    page_size = min(500, scan_limit) if scan_limit is not None else 500
-    for snapshot in _stream_query_pages(base_query, page_size=page_size):
+    for item in iter_saved_items():
         if scan_limit is not None and scanned >= scan_limit:
             budget_reached = True
             break
-        item = _denormalise_workspace_value(snapshot.to_dict() or {})
         record_number = int(item.get("_record_number", scanned))
         searchable = " ".join(
             f"{key} {value}" for key, value in item.items()
