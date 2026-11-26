@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import tempfile
+import time
 import uuid
 
 import pandas as pd
@@ -45,8 +46,15 @@ with st.expander("Cloud storage diagnostics", expanded=False):
     if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
         try:
             with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
-                firestore_db.test_firestore_connection()
-            st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
+                diagnostic = firestore_db.test_firestore_connection()
+            latency = diagnostic.get("latency_ms") if isinstance(diagnostic, dict) else None
+            if latency is not None:
+                st.success(
+                    f"Firestore write, read and cleanup test passed. "
+                    f"End-to-end latency: {latency:,} ms. Temporary test document deleted."
+                )
+            else:
+                st.success("Firestore write, read and cleanup test passed. The temporary test document was deleted.")
         except Exception:
             st.error("Firestore verification failed. Check the deployed Firebase Admin credentials and Firestore permissions. No credential details are displayed.")
 
@@ -92,10 +100,17 @@ def _read_upload(upload):
 
 
 def _fingerprint(uploaded_files):
+    """Identify the current Streamlit upload without re-hashing large files on every rerun."""
     digest = hashlib.sha256()
     for item in sorted(uploaded_files, key=lambda x: x.name.lower()):
+        file_id = getattr(item, "file_id", None)
         digest.update(item.name.encode("utf-8", errors="replace"))
-        digest.update(item.getvalue())
+        digest.update(str(getattr(item, "size", 0)).encode("ascii"))
+        digest.update(str(getattr(item, "type", "") or "").encode("utf-8"))
+        if file_id:
+            digest.update(str(file_id).encode("utf-8"))
+        else:
+            digest.update(hashlib.sha256(item.getvalue()).digest())
     return digest.hexdigest()
 
 
@@ -433,12 +448,13 @@ if uploaded:
         errors = []
         for item in uploaded:
             try:
-                frame = _read_upload(item)
+                payload = item.getvalue()
+                frame = _read_bytes(item.name, payload)
                 if frame.empty or len(frame.columns) == 0:
                     errors.append(f"{item.name}: no usable rows or columns were found.")
                 else:
                     loaded[item.name] = frame
-                    source_file_bytes[item.name] = item.getvalue()
+                    source_file_bytes[item.name] = payload
             except Exception as exc:
                 errors.append(f"{item.name}: could not be read. Check the file format and try again.")
         st.session_state["connect_raw"] = loaded
@@ -449,7 +465,7 @@ if uploaded:
         st.session_state["connect_load_errors"] = errors
 
 if st.button("Clear uploaded files and start again", key="clear_connect_uploads"):
-    for key in ("connect_raw", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
+    for key in ("connect_raw", "connect_source_file_bytes", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
         st.session_state.pop(key, None)
     st.session_state.pop("_done", None)
     st.rerun()
@@ -794,6 +810,8 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 stage = "Starting company workspace persistence"
                 support_id = uuid.uuid4().hex[:12].upper()
                 saved_upload_ids = []
+                upload_started_at = time.perf_counter()
+                stage_started_at = upload_started_at
                 with st.status(status_message, expanded=True) as status:
                     for source_filename, source_frame in raw.items():
                         source_bytes = source_file_bytes[source_filename]
@@ -823,14 +841,17 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         dataset_metadata["normalized_record_count"] = int(len(normalized_frame))
                         dataset_metadata["schema_version"] = "1"
                         stage = "Saving dataset metadata"
+                        stage_started_at = time.perf_counter()
                         status.write("Saving dataset metadata")
                         save_company_dataset(company_id, upload_id, dataset_metadata)
                         stage = "Saving original file chunks"
+                        stage_started_at = time.perf_counter()
                         status.write("Saving original file")
                         save_original_file(company_id, upload_id, source_filename, source_bytes)
                         stage = "Updating original-file status"
                         save_company_dataset(company_id, upload_id, {"status": "original_file_saved"})
                         stage = "Saving confirmed column mapping"
+                        stage_started_at = time.perf_counter()
                         save_company_mapping(company_id, upload_id, selected_mappings.get(source_filename, selected_mappings.get(dataset_kind, {})))
                         source_records = source_frame.astype(object).where(
                             pd.notna(source_frame), None
@@ -843,6 +864,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                                 if isinstance(value, float):
                                     source_record[field] = str(value)
                         stage = "Saving original source rows in compact chunks"
+                        stage_started_at = time.perf_counter()
                         status.write(f"Saving {len(source_records):,} original source rows")
                         save_dataset_records(
                             company_id, upload_id, source_records,
@@ -852,16 +874,19 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                             pd.notna(normalized_frame), None
                         ).to_dict("records")
                         stage = "Saving normalized procurement rows in compact chunks"
+                        stage_started_at = time.perf_counter()
                         status.write(f"Saving {len(saved_records):,} normalized rows")
                         save_dataset_records(company_id, upload_id, saved_records)
                         saved_upload_ids.append(upload_id)
                     st.write(f"Saved {len(saved_upload_ids)} original file(s), source rows and normalized records to the company's Firestore workspace.")
                     stage = "Building findings and supporting evidence"
+                    stage_started_at = time.perf_counter()
                     status.write("Preparing findings and supporting evidence")
                     pack = workspace.from_result(result, company_name, company_id)
                     analysis_id = dataset_group_id
                     pack["dataset_group_id"] = dataset_group_id
                     stage = "Saving the analysis workspace"
+                    stage_started_at = time.perf_counter()
                     status.write("Saving analysis workspace")
                     workspace.persist(pack, analysis_id)
                     pack["analysis_id"] = analysis_id
@@ -872,9 +897,12 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                 st.rerun()
             except Exception as exc:
                 logging.exception(
-                    "Company workspace persistence failed at stage=%s support_id=%s",
+                    "Company workspace persistence failed at stage=%s support_id=%s "
+                    "stage_duration_seconds=%.2f total_duration_seconds=%.2f",
                     stage,
                     support_id,
+                    time.perf_counter() - stage_started_at,
+                    time.perf_counter() - upload_started_at,
                 )
                 st.error(
                     "Company workspace setup did not finish. "
