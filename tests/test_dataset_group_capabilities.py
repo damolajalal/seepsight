@@ -50,8 +50,50 @@ class DatasetGroupEligibilityTests(unittest.TestCase):
             [("analysis-a", {"dataset_group_id": "group-a", "updated_at": None})],
         )
         self.assertTrue(groups[0]["extendable"])
-        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["deletion_safe"])
+        self.assertTrue(groups[0]["used"])
         self.assertEqual(groups[0]["file_count"], 1)
+
+    def test_unused_fully_linked_dataset_can_be_deleted(self):
+        groups = self._groups(
+            [("file-unused", {
+                "dataset_group_id": "unused-group",
+                "filename": "unused.csv",
+            })],
+            [],
+        )
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["used"])
+
+    def test_incomplete_analysis_revision_protects_unused_dataset(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+        }[name]
+        analyses.document.return_value.collection.return_value.limit.return_value.stream.return_value = [
+            Snapshot("revision-pending", {"workspace_status": "saving"})
+        ]
+        with patch.object(firestore_db, "_company_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[
+                    [Snapshot("file-a", {
+                        "dataset_group_id": "group-a",
+                        "filename": "orders.csv",
+                    })],
+                    [],
+                ],
+            ):
+                groups = firestore_db.get_company_dataset_groups("company-a")
+
+        self.assertFalse(groups[0]["used"])
+        self.assertTrue(groups[0]["pending_workspace"])
+        self.assertFalse(groups[0]["deletion_safe"])
 
     def test_group_with_missing_original_file_is_not_extendable(self):
         groups = self._groups(
@@ -63,7 +105,8 @@ class DatasetGroupEligibilityTests(unittest.TestCase):
             [("analysis-a", {"dataset_group_id": "group-a"})],
         )
         self.assertFalse(groups[0]["extendable"])
-        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["deletion_safe"])
+        self.assertTrue(groups[0]["used"])
 
 
 if __name__ == "__main__":
