@@ -164,6 +164,28 @@ CONTRACT = {
                         names=["returnqty", "returnedqty", "quantityreturned", "rejectedqty", "disputedquantity"]),
     "return_reason": dict(kind="text", required=False, desc="Reason for return/dispute",
                            names=["returnreason", "reason", "disputereason", "rejectionreason", "claimreason"]),
+    "branch_id": dict(kind="text", required=False, desc="Stable branch/site identifier",
+                      names=["branchid", "siteid", "locationid", "branchcode", "sitecode", "depotid"]),
+    "state": dict(kind="text", required=False, desc="State where a branch is located",
+                  names=["state", "stateprovince", "branchstate"]),
+    "region": dict(kind="text", required=False, desc="Region or subregion for a branch",
+                   names=["region", "subregion", "branchregion", "geographicregion"]),
+    "address": dict(kind="text", required=False, desc="Physical branch address",
+                    names=["address", "branchaddress", "siteaddress", "locationaddress"]),
+    "amendment_id": dict(kind="text", required=False, desc="Purchase-order price amendment identifier",
+                         names=["amendmentid", "priceamendmentid", "revisionid", "changeid"]),
+    "original_unit_price": dict(kind="number", required=False, desc="Original purchase-order unit price",
+                                names=["originalunitprice", "previousunitprice", "oldunitprice", "priorunitprice"]),
+    "amended_unit_price": dict(kind="number", required=False, desc="Revised unit price in the amendment",
+                               names=["amendedunitprice", "revisedunitprice", "newunitprice", "updatedunitprice"]),
+    "amendment_date": dict(kind="date", required=False, desc="Date the price amendment was raised",
+                           names=["amendmentdate", "amendedon", "revisiondate", "pricechangedate"]),
+    "approval_status": dict(kind="text", required=False, desc="Approval status of a price amendment",
+                             names=["approvalstatus", "amendmentstatus", "authorizationstatus", "approvedstatus"]),
+    "amendment_reason": dict(kind="text", required=False, desc="Reason for changing the purchase-order price",
+                             names=["amendmentreason", "reasonforchange", "changereason", "pricechangereason"]),
+    "effective_date": dict(kind="date", required=False, desc="Date the amended price takes effect",
+                           names=["amendmenteffectivedate", "priceeffectivedate", "revisedpriceeffectivedate"]),
 }
 REQUIRED = ["po_id", "supplier", "po_date", "ordered_qty", "po_unit_price"]
 # Preserve the flat-file contract so new optional entities do not appear as missing
@@ -184,6 +206,8 @@ TABLE_FIELDS = {
     "contracts": ["contract_id", "supplier_id", "supplier", "product_id", "product", "contract_start_date", "contract_end_date", "contract_unit_price", "currency"],
     "quotations": ["quote_id", "requisition_id", "supplier_id", "supplier", "product_id", "quote_date", "quote_unit_price", "currency"],
     "returns": ["return_id", "po_id", "product_id", "supplier_id", "return_date", "return_qty", "return_reason"],
+    "branches": ["branch_id", "branch", "state", "region", "address"],
+    "price_amendments": ["amendment_id", "po_id", "supplier_id", "product_id", "original_unit_price", "amended_unit_price", "amendment_date", "approval_status", "amendment_reason", "effective_date", "currency"],
 }
 
 # Extensible dataset catalogue. These definitions describe the procurement data
@@ -214,6 +238,10 @@ DATASET_REGISTRY = {
                    "signals": ["quotation", "quote", "rfq", "bid", "tender"]},
     "returns": {"label": "Returns / disputes", "required": ["return_id"],
                 "signals": ["return", "rejected", "dispute", "claim", "creditnote"]},
+    "branches": {"label": "Branches / locations", "required": ["branch_id", "branch"],
+                 "signals": ["branch", "branchcode", "site", "location", "branchname"]},
+    "price_amendments": {"label": "Purchase-order price amendments", "required": ["amendment_id", "po_id"],
+                         "signals": ["priceamendment", "amendment", "revisedprice", "newunitprice", "pricechange"]},
 }
 
 DEFAULT_CONFIG = dict(
@@ -1155,6 +1183,7 @@ def _table_key_fields(name, table):
         "products": ["product_id", "sku", "product"], "invoices": ["invoice_id"],
         "payments": ["payment_id"], "requisitions": ["requisition_id"],
         "contracts": ["contract_id"], "quotations": ["quote_id"], "returns": ["return_id"],
+        "branches": ["branch_id"], "price_amendments": ["amendment_id"],
     }.get(name, [])
     return next(([c] for c in candidates if c in table.columns), [])
 
