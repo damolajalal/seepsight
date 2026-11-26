@@ -1763,7 +1763,14 @@ def build_data_pack(result, company, source_file="", answer_key=None, explanatio
     cur = cfg["currency"]
 
     # 1. findings (confirmed discrepancies), with case-tracking columns the dashboard fills in
-    findings.insert(2, "category", "Confirmed discrepancy")
+    findings.insert(
+        2, "category",
+        findings["finding_type"].map(
+            lambda value: "Needs verification"
+            if value == "Overdue order awaiting receipt confirmation"
+            else "Confirmed discrepancy"
+        ),
+    )
     findings = findings.rename(columns={"leakage": "identified_exposure", "orders_held": "order_value_held_up"})
     findings["currency"] = cur
     findings["status"], findings["owner"], findings["note"] = "Open", "", ""
