@@ -167,6 +167,14 @@ exposure = (
     if "identified_exposure" in f.columns else 0
 )
 issue_count = len(f)
+affected_order_count = (
+    int(pd.to_numeric(f["affected_orders"], errors="coerce").fillna(0).sum())
+    if "affected_orders" in f.columns else 0
+)
+affected_po_count = (
+    int(evidence["po_id"].dropna().astype(str).nunique())
+    if isinstance(evidence, pd.DataFrame) and "po_id" in evidence.columns else affected_order_count
+)
 held_value = (
     pd.to_numeric(f["order_value_held_up"], errors="coerce").sum()
     if "order_value_held_up" in f.columns else 0
@@ -193,10 +201,12 @@ kpi_row_one[1].metric(
     ),
 )
 kpi_row_two[0].metric(
-    "Issues identified",
+    "Actionable issues",
     f"{issue_count:,}",
-    help="Findings identified by Seepsight's procurement checks.",
+    help="Grouped issue clusters by check and supplier, not one issue per purchase order.",
 )
+st.caption(f"{affected_po_count:,} affected purchase orders across {issue_count:,} grouped issues. An issue can contain many supporting orders.")
+
 kpi_row_two[1].metric(
     "Orders awaiting attention",
     ui.money(cur, held_value),
