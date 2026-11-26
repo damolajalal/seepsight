@@ -464,6 +464,23 @@ def _write_company_audit_event_to_ref(company, company_id, event_type, resource_
 def write_company_audit_event(company_id, event_type, resource_type,
                               resource_id=None, details=None):
     """Append a bounded company-scoped audit event without credential values."""
+    # Validate caller input before treating an unavailable audit sink as
+    # best-effort. Invalid event names and oversized payloads are programming
+    # errors and must remain visible to callers and tests.
+    if not isinstance(event_type, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,79}", event_type):
+        raise ValueError("event_type is invalid.")
+    if not isinstance(resource_type, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,39}", resource_type):
+        raise ValueError("resource_type is invalid.")
+    if resource_id is not None:
+        resource_id = _validate_id(resource_id, "resource_id")
+    if details is None:
+        details = {}
+    if not isinstance(details, dict):
+        raise TypeError("Audit details must be a dictionary.")
+    safe_details = _normalise_workspace_value(_safe_audit_value(details))
+    if len(json.dumps(safe_details, default=str).encode("utf-8")) > 12_000:
+        raise ValueError("Audit details exceed the safe size limit.")
+
     try:
         company = _company_ref(company_id)
     except Exception:
