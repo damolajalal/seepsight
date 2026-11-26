@@ -58,7 +58,8 @@ class DatasetGroupManagementTests(unittest.TestCase):
 
         self.assertEqual(len(groups), 1)
         group = groups[0]
-        self.assertTrue(group["deletion_safe"])
+        self.assertFalse(group["deletion_safe"])
+        self.assertTrue(group["used"])
         self.assertEqual(group["dataset_group_id"], "group-a")
         self.assertEqual(group["file_count"], 2)
         self.assertEqual(
@@ -69,6 +70,36 @@ class DatasetGroupManagementTests(unittest.TestCase):
             {item["dataset_id"] for item in group["file_items"]},
             {"file-orders", "file-suppliers"},
         )
+
+    def test_unused_fully_linked_dataset_is_eligible_for_deletion(self):
+        company = MagicMock()
+        datasets = MagicMock()
+        analyses = MagicMock()
+        company.collection.side_effect = lambda name: {
+            "datasets": datasets,
+            "analyses": analyses,
+        }[name]
+        dataset_rows = [
+            snapshot("file-unused", {
+                "dataset_group_id": "unused-group",
+                "filename": "unused.csv",
+                "dataset_type": "orders",
+                "record_count": 12,
+                "source_record_count": 12,
+            })
+        ]
+        with patch.object(firestore_db, "_company_ref", return_value=company):
+            with patch.object(
+                firestore_db,
+                "_stream_query_pages",
+                side_effect=[iter(dataset_rows), iter([])],
+            ):
+                groups = firestore_db.get_company_dataset_groups("company-a")
+
+        self.assertEqual(len(groups), 1)
+        self.assertTrue(groups[0]["deletion_safe"])
+        self.assertFalse(groups[0]["used"])
+        self.assertEqual(groups[0]["file_count"], 1)
 
     def test_legacy_file_without_group_link_is_not_marked_safe_to_extend_or_delete(self):
         company = MagicMock()
