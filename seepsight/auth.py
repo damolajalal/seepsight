@@ -821,7 +821,63 @@ def logout():
     st.session_state.pop("chat", None)
     st.session_state.pop("cases", None)
     st.session_state.pop("seepsight_pending_verification_token", None)
+    st.session_state.pop("jira_pairing_code", None)
+    st.session_state.pop("jira_pairing_expires_at", None)
+    st.session_state.pop("jira_pairing_notice", None)
     st.rerun()
+
+
+
+def _jira_connection_panel(verified):
+    """Offer a short-lived Jira pairing code inside the verified session."""
+    with st.sidebar.expander("Connect Seepsight to Jira"):
+        st.caption(
+            "Link this Seepsight company workspace to your Jira account. "
+            "The code expires after 10 minutes and can be used once."
+        )
+
+        if st.button(
+            "Generate Jira connection code",
+            use_container_width=True,
+            key="generate_jira_pairing_code",
+        ):
+            try:
+                from seepsight.jira_linking import create_jira_pairing_code
+
+                result = create_jira_pairing_code(
+                    uid=verified["uid"],
+                    email=verified["email"],
+                    email_verified=True,
+                )
+                st.session_state["jira_pairing_code"] = result["code"]
+                st.session_state["jira_pairing_expires_at"] = result["expires_at"]
+                st.session_state["jira_pairing_notice"] = None
+            except ValueError as exc:
+                st.session_state["jira_pairing_notice"] = str(exc)
+                st.session_state.pop("jira_pairing_code", None)
+            except Exception:
+                st.session_state["jira_pairing_notice"] = (
+                    "A connection code could not be generated. Please try again."
+                )
+                st.session_state.pop("jira_pairing_code", None)
+
+        notice = st.session_state.get("jira_pairing_notice")
+        if notice:
+            st.warning(notice)
+
+        code = st.session_state.get("jira_pairing_code")
+        if code:
+            st.success("Your one-time Jira code is ready.")
+            st.code(code)
+            st.caption("Enter this code in the Seepsight Intelligence for Jira app before it expires.")
+            if st.button(
+                "Hide connection code",
+                use_container_width=True,
+                key="hide_jira_pairing_code",
+            ):
+                st.session_state.pop("jira_pairing_code", None)
+                st.session_state.pop("jira_pairing_expires_at", None)
+                st.rerun()
 
 
 def require_auth():
