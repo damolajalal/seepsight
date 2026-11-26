@@ -601,6 +601,9 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
     if not payload:
         raise ValueError("The uploaded file is empty.")
 
+    from google.api_core.retry import Retry
+
+    upload_retry = Retry(deadline=15)
     dataset_ref = company.collection("datasets").document(dataset_id)
     chunks_ref = dataset_ref.collection("original_file_chunks")
     digest = hashlib.sha256(payload).hexdigest()
@@ -615,11 +618,14 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
             "chunk_count": count, "chunk_bytes": _ORIGINAL_FILE_CHUNK_BYTES,
         },
         "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=upload_retry, timeout=20)
 
     client = get_firestore_client()
     try:
-        client.recursive_delete(chunks_ref)
+        # Upload IDs are content-addressed by the caller. Rewriting the same
+        # deterministic chunk IDs is idempotent, so do not recursively delete
+        # the existing chunk collection before every retry. This also preserves
+        # partial chunks for diagnosis and avoids an expensive delete round trip.
         for start in range(0, count, 16):
             batch = client.batch()
             for index in range(start, min(start + 16, count)):
@@ -627,24 +633,22 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
                 batch.set(chunks_ref.document(f"chunk_{index:06d}"), {
                     "chunk_index": index, "data": part, "size_bytes": len(part),
                 })
-            batch.commit()
+            batch.commit(retry=Retry(deadline=20), timeout=25)
         dataset_ref.set({
             "original_file_status": "complete",
             "original_file_saved": True,
             "status": "original_file_saved",
             "updated_at": datetime.now(timezone.utc),
-        }, merge=True)
+        }, merge=True, retry=upload_retry, timeout=20)
     except Exception as exc:
-        try:
-            client.recursive_delete(chunks_ref)
-        except Exception:
-            logging.getLogger(__name__).warning("Partial original-file chunk cleanup failed.")
+        # Keep any successfully written deterministic chunks. A retry can
+        # safely overwrite them, and diagnostics can inspect the partial state.
         try:
             dataset_ref.set({
                 "original_file_status": "failed",
                 "original_file_saved": False,
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=Retry(deadline=5), timeout=8)
         except Exception:
             pass
         raise RuntimeError("The original file could not be saved completely to Firestore.") from exc
@@ -705,6 +709,9 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     row. Existing row-per-document datasets remain readable during migration.
     """
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+    from google.api_core.retry import Retry
+
+    upload_retry = Retry(deadline=15)
 
     company = _company_ref(company_id)
     dataset_id = _validate_id(dataset_id, "dataset_id")
@@ -754,11 +761,9 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
         saved_key: False,
         expected_key: len(records),
         "updated_at": datetime.now(timezone.utc),
-    }, merge=True)
+    }, merge=True, retry=upload_retry, timeout=20)
 
     try:
-        from google.api_core.retry import Retry
-
         max_batch_bytes = 8 * 1024 * 1024
         batch = client.batch()
         batch_bytes = 0
@@ -812,14 +817,14 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
             status_key: "complete",
             format_key: "zlib-json-v1",
             "updated_at": datetime.now(timezone.utc),
-        }, merge=True)
+        }, merge=True, retry=upload_retry, timeout=20)
     except Exception as exc:
         try:
             dataset_ref.set({
                 saved_key: False,
                 status_key: "failed",
                 "updated_at": datetime.now(timezone.utc),
-            }, merge=True)
+            }, merge=True, retry=Retry(deadline=5), timeout=8)
         except Exception:
             pass
         raise RuntimeError("Validated procurement records could not be saved completely.") from exc
