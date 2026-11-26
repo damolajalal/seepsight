@@ -103,6 +103,71 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         self.assertEqual(report["orders_to_branches"]["source_keys"], 2)
         self.assertTrue(any("branch IDs" in warning for warning in warnings))
 
+    def test_real_world_approval_export_headers_map_without_guessing(self):
+        source = pd.DataFrame([{
+            "approval_id": "APR-001", "po_id": "PO-001", "invoice_id": "INV-001",
+            "approval_type": "Invoice", "approval_stage": "Finance",
+            "requested_date": "2026-01-01", "approved_date": "2026-01-03",
+            "approver_id": "USR-01", "approver_name": "Finance Lead",
+            "approval_status": "Approved", "rejection_reason": "",
+        }])
+        mapping, _, _ = engine.suggest_mapping(source, fields=engine.TABLE_FIELDS["approvals"])
+        self.assertEqual(mapping["approval_event_id"]["column"], "approval_id")
+        self.assertEqual(mapping["approval_requested_at"]["column"], "requested_date")
+        self.assertEqual(mapping["approval_completed_at"]["column"], "approved_date")
+
+    def test_real_world_branch_master_headers_map_branch_name(self):
+        source = pd.DataFrame([{
+            "branch_id": "BR-01", "branch_name": "Kano", "city": "Kano",
+            "state": "Kano", "region": "North West", "branch_type": "Regional",
+            "manager_name": "Manager", "opened_date": "2020-01-01",
+            "branch_status": "Active",
+        }])
+        mapping, _, _ = engine.suggest_mapping(source, fields=engine.TABLE_FIELDS["branches"])
+        self.assertEqual(mapping["branch_id"]["column"], "branch_id")
+        self.assertEqual(mapping["branch"]["column"], "branch_name")
+        self.assertEqual(mapping["state"]["column"], "state")
+        self.assertEqual(mapping["region"]["column"], "region")
+
+    def test_real_world_price_amendment_headers_keep_approval_and_reason_distinct(self):
+        source = pd.DataFrame([{
+            "amendment_id": "AMD-001", "po_id": "PO-001", "contract_id": "",
+            "supplier_id": "SUP-01", "product_id": "PRD-01",
+            "original_unit_price": 100, "amended_unit_price": 110,
+            "effective_date": "2026-01-01", "approval_date": "2025-12-29",
+            "approved_by": "Finance Lead", "reason": "Market adjustment",
+            "amendment_status": "Approved",
+        }])
+        mapping, _, _ = engine.suggest_mapping(source, fields=engine.TABLE_FIELDS["price_amendments"])
+        self.assertEqual(mapping["effective_date"]["column"], "effective_date")
+        self.assertEqual(mapping["amendment_approval_date"]["column"], "approval_date")
+        self.assertEqual(mapping["amendment_approved_by"]["column"], "approved_by")
+        self.assertEqual(mapping["amendment_reason"]["column"], "reason")
+        self.assertEqual(mapping["approval_status"]["column"], "amendment_status")
+
+    def test_every_registered_table_field_has_a_data_contract(self):
+        for table_name, fields in engine.TABLE_FIELDS.items():
+            for field in fields:
+                self.assertIn(field, engine.CONTRACT, f"{table_name}.{field} has no field contract")
+
+    def test_foreign_key_quality_reports_orphans_without_dropping_rows(self):
+        report, warnings = engine._relationship_quality({
+            "orders": pd.DataFrame({"po_id": ["PO-1"]}),
+            "invoices": pd.DataFrame({
+                "invoice_id": ["INV-1", "INV-2"],
+                "po_id": ["PO-1", "PO-MISSING"],
+            }),
+        })
+        relation = report["invoices.po_id_to_orders.po_id"]
+        self.assertEqual(relation["orphan_keys"], 1)
+        self.assertEqual(relation["coverage"], 0.5)
+        self.assertTrue(any("Source rows were retained" in warning for warning in warnings))
+
+    def test_transaction_primary_keys_are_recognised(self):
+        self.assertEqual(engine._table_key_fields("approvals", pd.DataFrame(columns=["approval_event_id"])), ["approval_event_id"])
+        self.assertEqual(engine._table_key_fields("receipts", pd.DataFrame(columns=["receipt_id"])), ["receipt_id"])
+        self.assertEqual(engine._table_key_fields("inventory", pd.DataFrame(columns=["inventory_id"])), ["inventory_id"])
+
     def test_different_purchase_orders_combine(self):
         first = pd.DataFrame([{"po_id": "PO-001", "ordered_qty": 10}])
         second = pd.DataFrame([{"po_id": "PO-002", "ordered_qty": 20}])
