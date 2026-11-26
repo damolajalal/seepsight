@@ -203,9 +203,9 @@ kpi_row_one[1].metric(
 kpi_row_two[0].metric(
     "Actionable issues",
     f"{issue_count:,}",
-    help="Grouped issue clusters by check and supplier, not one issue per purchase order.",
+    help="Company-wide issue groups by problem type, not one issue per purchase order or supplier.",
 )
-st.caption(f"{affected_po_count:,} affected purchase orders across {issue_count:,} grouped issues. An issue can contain many supporting orders.")
+st.caption(f"{affected_po_count:,} affected purchase orders across {issue_count:,} grouped issues. An issue can contain many supporting orders and suppliers.")
 
 kpi_row_two[1].metric(
     "Orders awaiting attention",
