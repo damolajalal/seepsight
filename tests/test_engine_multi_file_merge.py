@@ -80,6 +80,29 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "supplier"):
             engine.combine_dataset_frames("orders", [first, second])
 
+    def test_generator_branch_and_price_amendment_tables_are_supported(self):
+        self.assertIn("branches", engine.TABLE_FIELDS)
+        self.assertIn("price_amendments", engine.TABLE_FIELDS)
+        self.assertIn("branches", engine.DATASET_REGISTRY)
+        self.assertIn("price_amendments", engine.DATASET_REGISTRY)
+        self.assertEqual(engine._table_key_fields("branches", pd.DataFrame(columns=["branch_id"])), ["branch_id"])
+        self.assertEqual(engine._table_key_fields("price_amendments", pd.DataFrame(columns=["amendment_id"])), ["amendment_id"])
+
+    def test_branch_master_relationship_is_checked(self):
+        report, warnings = engine._relationship_quality({
+            "orders": pd.DataFrame({
+                "po_id": ["PO-1", "PO-2"],
+                "branch_id": ["BR-01", "BR-99"],
+            }),
+            "branches": pd.DataFrame({
+                "branch_id": ["BR-01"],
+                "branch": ["Kano"],
+            }),
+        })
+        self.assertEqual(report["orders_to_branches"]["matched_keys"], 1)
+        self.assertEqual(report["orders_to_branches"]["source_keys"], 2)
+        self.assertTrue(any("branch IDs" in warning for warning in warnings))
+
     def test_different_purchase_orders_combine(self):
         first = pd.DataFrame([{"po_id": "PO-001", "ordered_qty": 10}])
         second = pd.DataFrame([{"po_id": "PO-002", "ordered_qty": 20}])
