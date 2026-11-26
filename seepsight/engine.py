@@ -319,40 +319,57 @@ DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/
 
 
 def to_dates(series):
-    """Parse dates in mixed formats. Prefers day-first when a format is ambiguous."""
-    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[us]")
+    """Parse mixed date formats without pandas datetime-array unit assignment.
+
+    Building the result as Python Timestamp objects avoids pandas 3.x
+    OutOfBoundsDatetime errors when assigning parsed arrays with differing
+    datetime resolutions (notably under newer Python/pandas runtimes).
+    """
+    values = pd.Series(index=series.index, dtype=object)
     todo = pd.Series(False, index=series.index)
     for idx, v in series.items():
         if v is None or (isinstance(v, float) and np.isnan(v)):
             continue
         if isinstance(v, (pd.Timestamp, np.datetime64)) or hasattr(v, "year"):
-            out.at[idx] = pd.Timestamp(v)
+            try:
+                values.at[idx] = pd.Timestamp(v)
+            except (ValueError, TypeError, OverflowError):
+                continue
         elif isinstance(v, (int, float, np.integer, np.floating)) and 20000 < float(v) < 80000:
-            out.at[idx] = pd.Timestamp("1899-12-30") + pd.Timedelta(days=float(v))   # Excel serial date
+            try:
+                values.at[idx] = pd.Timestamp("1899-12-30") + pd.Timedelta(days=float(v))
+            except (ValueError, TypeError, OverflowError):
+                continue
         else:
             s = str(v).strip()
             if s.lower() not in MISSING:
                 todo.at[idx] = True
+
     if todo.any():
         strs = series[todo].astype(str).str.strip()
         rates = []
-        for fmt in ["ISO8601"] + DATE_FORMATS:       # ISO8601 covers 2025-10-02T13:21:45.123456 and similar
+        formats = ["ISO8601"] + DATE_FORMATS
+        for fmt in formats:
             try:
                 parsed = pd.to_datetime(strs, format=fmt, errors="coerce")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 continue
-            rates.append((parsed.notna().mean(), -(["ISO8601"] + DATE_FORMATS).index(fmt), fmt, parsed))
+            rates.append((parsed.notna().mean(), -formats.index(fmt), parsed))
         remaining = strs.index
-        for rate, _, fmt, parsed in sorted(rates, key=lambda t: (t[0], t[1]), reverse=True):
+        for rate, _, parsed in sorted(rates, key=lambda t: (t[0], t[1]), reverse=True):
             if rate == 0:
                 break
-            fill = parsed.reindex(remaining).dropna().astype("datetime64[us]")
-            if len(fill):
-                out.loc[fill.index] = fill
-                remaining = remaining.difference(fill.index)
+            fill = parsed.reindex(remaining).dropna()
+            for idx, value in fill.items():
+                try:
+                    values.at[idx] = pd.Timestamp(value)
+                except (ValueError, TypeError, OverflowError):
+                    continue
+            remaining = remaining.difference(fill.index)
             if len(remaining) == 0:
                 break
-    return out
+
+    return pd.to_datetime(values, errors="coerce")
 
 
 def _is_blank(v):
