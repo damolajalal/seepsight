@@ -18,7 +18,7 @@ def _code_hash(code):
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
-def create_jira_pairing_code(uid, email, email_verified=True):
+def create_jira_pairing_code(uid, email, email_verified):
     """Create a one-time pairing code for the currently authenticated user.
 
     Call only after the Firebase ID token has been verified by the existing
