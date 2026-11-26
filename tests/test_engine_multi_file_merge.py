@@ -172,8 +172,8 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         cleaned = engine.clean_text(pd.Series(["Pending", "Approved", "N/A", ""]))
         self.assertEqual(cleaned.iloc[0], "Pending")
         self.assertEqual(cleaned.iloc[1], "Approved")
-        self.assertIsNone(cleaned.iloc[2])
-        self.assertIsNone(cleaned.iloc[3])
+        self.assertTrue(pd.isna(cleaned.iloc[2]))
+        self.assertTrue(pd.isna(cleaned.iloc[3]))
 
     def test_missing_transaction_identifier_requires_review_not_silent_acceptance(self):
         result = engine.onboard_tables({
