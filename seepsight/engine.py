@@ -218,7 +218,7 @@ CONTRACT = {
     "approval_status": dict(kind="text", required=False, desc="Approval status of a price amendment",
                              names=["approvalstatus", "amendmentstatus", "authorizationstatus", "approvedstatus"]),
     "amendment_reason": dict(kind="text", required=False, desc="Reason for changing the purchase-order price",
-                             names=["amendmentreason", "reasonforchange", "changereason", "pricechangereason"]),
+                             names=["amendmentreason", "reason", "reasonforchange", "changereason", "pricechangereason"]),
     "effective_date": dict(kind="date", required=False, desc="Date the amended price takes effect",
                            names=["effectivedate", "amendmenteffectivedate", "priceeffectivedate", "revisedpriceeffectivedate"]),
     "invoice_amount": dict(kind="number", required=False, desc="Invoice total amount", names=["invoiceamount", "invoicetotal", "billamount"]),
@@ -1315,6 +1315,63 @@ def _relationship_quality(tables):
                 report["orders_to_branches"] = {"matched_keys": len(parent & child), "source_keys": len(child), "coverage": round(coverage, 3), "key_type": "branch_name"}
                 if coverage < 0.8:
                     warnings.append(f"Only {coverage:.0%} of branch names in orders matched the branch master.")
+    # Validate all declared foreign-key relationships whenever both sides are present.
+    # Diagnostics never discard or rewrite unmatched source records.
+    foreign_keys = [
+        ("orders", "supplier_id", "suppliers", "supplier_id"),
+        ("orders", "product_id", "products", "product_id"),
+        ("orders", "branch_id", "branches", "branch_id"),
+        ("orders", "requisition_id", "requisitions", "requisition_id"),
+        ("orders", "contract_id", "contracts", "contract_id"),
+        ("receipts", "po_id", "orders", "po_id"),
+        ("receipts", "supplier_id", "suppliers", "supplier_id"),
+        ("receipts", "product_id", "products", "product_id"),
+        ("receipts", "branch_id", "branches", "branch_id"),
+        ("invoices", "po_id", "orders", "po_id"),
+        ("invoices", "supplier_id", "suppliers", "supplier_id"),
+        ("invoices", "product_id", "products", "product_id"),
+        ("approvals", "po_id", "orders", "po_id"),
+        ("approvals", "invoice_id", "invoices", "invoice_id"),
+        ("payments", "invoice_id", "invoices", "invoice_id"),
+        ("payments", "po_id", "orders", "po_id"),
+        ("payments", "supplier_id", "suppliers", "supplier_id"),
+        ("requisitions", "branch_id", "branches", "branch_id"),
+        ("requisitions", "product_id", "products", "product_id"),
+        ("inventory", "product_id", "products", "product_id"),
+        ("inventory", "branch_id", "branches", "branch_id"),
+        ("contracts", "supplier_id", "suppliers", "supplier_id"),
+        ("contracts", "product_id", "products", "product_id"),
+        ("price_amendments", "po_id", "orders", "po_id"),
+        ("price_amendments", "contract_id", "contracts", "contract_id"),
+        ("price_amendments", "supplier_id", "suppliers", "supplier_id"),
+        ("price_amendments", "product_id", "products", "product_id"),
+    ]
+    for child_name, child_field, parent_name, parent_field in foreign_keys:
+        child_table, parent_table = tables.get(child_name), tables.get(parent_name)
+        if child_table is None or parent_table is None:
+            continue
+        if child_field not in child_table.columns or parent_field not in parent_table.columns:
+            continue
+        child_keys = set(_id_key(child_table[child_field]).dropna())
+        if not child_keys:
+            continue
+        parent_keys = set(_id_key(parent_table[parent_field]).dropna())
+        matched = child_keys & parent_keys
+        orphaned = child_keys - parent_keys
+        coverage = len(matched) / len(child_keys)
+        relation = f"{child_name}.{child_field}_to_{parent_name}.{parent_field}"
+        report[relation] = {
+            "matched_keys": len(matched),
+            "source_keys": len(child_keys),
+            "orphan_keys": len(orphaned),
+            "coverage": round(coverage, 3),
+        }
+        if orphaned:
+            examples = ", ".join(sorted(str(v) for v in list(orphaned)[:5]))
+            warnings.append(
+                f"{relation}: {len(orphaned)} distinct reference value(s) do not match the supplied "
+                f"{parent_name} dataset (examples: {examples}). Source rows were retained."
+            )
     return report, warnings
 
 
