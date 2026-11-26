@@ -123,20 +123,25 @@ def get_firestore_client():
 # ============================================================
 
 def test_firestore_connection():
-    """Verify Firestore access and report cleanup failures without masking errors."""
+    """Verify Firestore read/write/delete with bounded retries and report latency."""
+    import time
+    from google.api_core.retry import Retry
+
     client = get_firestore_client()
     test_id = f"connection_{uuid.uuid4().hex}"
     test_ref = client.collection("_system").document(test_id)
     operation_error = None
     cleanup_error = None
+    started_at = time.perf_counter()
+    retry = Retry(deadline=8)
 
     try:
         test_ref.set({
             "status": "connected",
             "purpose": "temporary_connection_test",
             "created_at": datetime.now(timezone.utc),
-        })
-        snapshot = test_ref.get()
+        }, retry=retry, timeout=10)
+        snapshot = test_ref.get(retry=retry, timeout=10)
         if not snapshot.exists:
             raise RuntimeError("Firestore test document could not be read.")
         data = snapshot.to_dict() or {}
@@ -146,7 +151,7 @@ def test_firestore_connection():
         operation_error = exc
     finally:
         try:
-            test_ref.delete()
+            test_ref.delete(retry=retry, timeout=10)
         except Exception as exc:
             cleanup_error = exc
 
@@ -154,7 +159,10 @@ def test_firestore_connection():
         raise RuntimeError("Firestore connection verification failed.") from operation_error
     if cleanup_error is not None:
         raise RuntimeError("Firestore connection test cleanup failed.") from cleanup_error
-    return True
+    return {
+        "connected": True,
+        "latency_ms": round((time.perf_counter() - started_at) * 1000),
+    }
 
 # ============================================================
 # 3. INPUT VALIDATION AND NORMALISATION
