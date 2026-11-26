@@ -1453,6 +1453,13 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
             typed["_key"] = _id_key(typed["po_id"])
         typed_tables[name] = typed
         dataset_quality[name] = _supplemental_quality(name, raw, typed, mp)
+        if dataset_quality[name]["duplicate_key_rows"]:
+            dataset_quality[name]["readiness"] = "needs review - duplicate key values"
+            warnings.append(
+                f"{name}: {dataset_quality[name]['duplicate_key_rows']} row(s) share a recognised "
+                f"key field ({dataset_quality[name]['key_field']}). Rows were retained; review the "
+                "identifier or define a valid composite key before relying on record-level results."
+            )
 
     orders = typed_tables.get("orders", pd.DataFrame())
     if "po_id" not in orders.columns or orders["po_id"].notna().sum() == 0:
