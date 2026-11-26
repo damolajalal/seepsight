@@ -1454,14 +1454,16 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
         typed_tables[name] = typed
         dataset_quality[name] = _supplemental_quality(name, raw, typed, mp)
         if not dataset_quality[name]["key_field"]:
-            dataset_quality[name]["readiness"] = "needs review - no stable identifier"
+            if not dataset_quality[name]["missing_required_fields"]:
+                dataset_quality[name]["readiness"] = "needs review - no stable identifier"
             warnings.append(
                 f"{name}: no stable record identifier was recognised. Rows were retained, but "
                 "duplicate detection and record-level reconciliation are limited until a key or "
                 "valid composite key is mapped."
             )
         elif dataset_quality[name]["duplicate_key_rows"]:
-            dataset_quality[name]["readiness"] = "needs review - duplicate key values"
+            if not dataset_quality[name]["missing_required_fields"]:
+                dataset_quality[name]["readiness"] = "needs review - duplicate key values"
             warnings.append(
                 f"{name}: {dataset_quality[name]['duplicate_key_rows']} row(s) share a recognised "
                 f"key field ({dataset_quality[name]['key_field']}). Rows were retained; review the "
