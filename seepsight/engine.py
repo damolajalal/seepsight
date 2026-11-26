@@ -906,7 +906,7 @@ def detect(led, config=None):
     grouped = []
     severity_rank = {"Low": 1, "Medium": 2, "High": 3}
     for finding_type, group in transaction_rows.groupby(
-        ["finding_type"], dropna=False, sort=False
+        "finding_type", dropna=False, sort=False
     ):
         po_ids = list(dict.fromkeys(group["po_id"].dropna().astype(str)))
         supplier_names = sorted(group["entity"].dropna().astype(str).unique())
