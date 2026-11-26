@@ -61,15 +61,21 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(late_evidence), 1)
         self.assertEqual(float(late_evidence.iloc[0]["days_late"]), 1.0)
 
-    def test_many_orders_for_same_supplier_are_one_grouped_issue(self):
-        ledger = pd.concat([self.ledger, self.ledger.assign(po_id="PO-SMALL-002")], ignore_index=True)
+    def test_many_orders_across_suppliers_are_one_grouped_issue(self):
+        second = self.ledger.assign(
+            po_id="PO-SMALL-002", supplier="Another Supplier"
+        )
+        ledger = pd.concat([self.ledger, second], ignore_index=True)
         findings = engine.detect(ledger)
         late = findings[findings["finding_type"] == "Late delivery"]
         self.assertEqual(len(late), 1)
         self.assertEqual(int(late.iloc[0]["affected_orders"]), 2)
+        self.assertEqual(int(late.iloc[0]["supplier_count"]), 2)
+        self.assertEqual(late.iloc[0]["entity"], "Multiple suppliers")
         evidence = engine.build_evidence(ledger, findings, engine.DEFAULT_CONFIG)
         late_evidence = evidence[evidence["finding_id"] == late.iloc[0]["finding_id"]]
         self.assertEqual(set(late_evidence["po_id"]), {"PO-SMALL-001", "PO-SMALL-002"})
+        self.assertEqual(set(late_evidence["supplier"]), {"Example Supplier", "Another Supplier"})
 
     def test_supplier_trend_without_quantity_fields_does_not_crash(self):
         dates = pd.date_range("2025-01-01", periods=6, freq="MS")
