@@ -920,7 +920,11 @@ def detect(led, config=None):
             "first_seen": first_values.min() if len(first_values) else None,
             "last_seen": last_values.max() if len(last_values) else None,
             "po_id": None, "po_ids": po_ids, "supplier_count": 1,
-            "evidence": f"{len(po_ids):,} affected purchase order(s) require review; supporting records are attached.",
+            "evidence": (
+                " ".join(dict.fromkeys(group["evidence"].dropna().astype(str)))
+                if len(group) <= 5 else
+                f"{len(po_ids):,} affected purchase order(s) require review; supporting records are attached."
+            ),
         })
     for row in trend_rows.to_dict("records"):
         row["po_ids"] = []
