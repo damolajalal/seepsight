@@ -55,6 +55,8 @@ def create_jira_pairing_code(uid, email, email_verified):
             raise PermissionError("Your Seepsight account could not be verified.")
         if str(user.get("email") or "").strip().lower() != email:
             raise PermissionError("Your Seepsight account could not be verified.")
+        if user.get("company_id") != membership["company_id"]:
+            raise PermissionError("Your company workspace changed. Refresh your Seepsight session and try again.")
 
         last_issued = user.get("jira_pairing_last_issued_at")
         if isinstance(last_issued, datetime):
