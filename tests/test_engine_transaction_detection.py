@@ -50,11 +50,26 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertAlmostEqual(float(price.iloc[0]["leakage"]), 0.01, places=6)
         self.assertEqual(price.iloc[0]["severity"], "Low")
 
-    def test_one_day_late_is_detected(self):
+    def test_one_day_late_is_detected_and_grouped_as_one_supplier_issue(self):
         findings = engine.detect(self.ledger)
         late = findings[findings["finding_type"] == "Late delivery"]
         self.assertEqual(len(late), 1)
-        self.assertIn("1 day", late.iloc[0]["evidence"])
+        self.assertEqual(int(late.iloc[0]["affected_orders"]), 1)
+        self.assertEqual(late.iloc[0]["po_ids"], ["PO-SMALL-001"])
+        evidence = engine.build_evidence(self.ledger, findings, engine.DEFAULT_CONFIG)
+        late_evidence = evidence[evidence["finding_id"] == late.iloc[0]["finding_id"]]
+        self.assertEqual(len(late_evidence), 1)
+        self.assertEqual(float(late_evidence.iloc[0]["days_late"]), 1.0)
+
+    def test_many_orders_for_same_supplier_are_one_grouped_issue(self):
+        ledger = pd.concat([self.ledger, self.ledger.assign(po_id="PO-SMALL-002")], ignore_index=True)
+        findings = engine.detect(ledger)
+        late = findings[findings["finding_type"] == "Late delivery"]
+        self.assertEqual(len(late), 1)
+        self.assertEqual(int(late.iloc[0]["affected_orders"]), 2)
+        evidence = engine.build_evidence(ledger, findings, engine.DEFAULT_CONFIG)
+        late_evidence = evidence[evidence["finding_id"] == late.iloc[0]["finding_id"]]
+        self.assertEqual(set(late_evidence["po_id"]), {"PO-SMALL-001", "PO-SMALL-002"})
 
     def test_supplier_trend_without_quantity_fields_does_not_crash(self):
         dates = pd.date_range("2025-01-01", periods=6, freq="MS")
@@ -118,15 +133,20 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(late), 1)
         self.assertIn("2 day", late.iloc[0]["evidence"])
 
-    def test_outstanding_order_past_due_is_detected_as_late(self):
+    def test_outstanding_order_past_due_is_not_confirmed_as_late(self):
         ledger = self.ledger.copy()
         ledger.loc[0, "received_date"] = pd.NaT
         ledger.loc[0, "received_qty"] = 0
         ledger.loc[0, "days_late"] = pd.NA
         findings = engine.detect(ledger, {"as_of_date": "2026-01-10"})
-        late = findings[findings["finding_type"] == "Late delivery"]
-        self.assertEqual(len(late), 1)
-        self.assertIn("5 day", late.iloc[0]["evidence"])
+        overdue = findings[findings["finding_type"] == "Overdue order awaiting receipt confirmation"]
+        self.assertEqual(len(overdue), 1)
+        self.assertEqual(int(overdue.iloc[0]["affected_orders"]), 1)
+        self.assertNotIn("Late delivery", set(findings["finding_type"]))
+        evidence = engine.build_evidence(ledger, findings, engine.DEFAULT_CONFIG)
+        overdue_evidence = evidence[evidence["finding_id"] == overdue.iloc[0]["finding_id"]]
+        self.assertEqual(len(overdue_evidence), 1)
+        self.assertTrue(pd.isna(overdue_evidence.iloc[0]["received_date"]))
 
     def test_partial_delivery_before_due_date_is_not_short_delivery(self):
         ledger = self.ledger.copy()
