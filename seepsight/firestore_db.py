@@ -423,9 +423,9 @@ def _safe_audit_value(value):
     return value
 
 
-def write_company_audit_event(company_id, event_type, resource_type,
-                              resource_id=None, details=None):
-    """Append a bounded company-scoped audit event without credential values."""
+def _write_company_audit_event_to_ref(company, company_id, event_type, resource_type,
+                                      resource_id=None, details=None):
+    """Append an audit event using an already-authorized company reference."""
     if not isinstance(event_type, str) or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,79}", event_type):
         raise ValueError("event_type is invalid.")
     if not isinstance(resource_type, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{1,39}", resource_type):
@@ -444,7 +444,6 @@ def write_company_audit_event(company_id, event_type, resource_type,
 
     event_id = uuid.uuid4().hex
     try:
-        company = _company_ref(company_id)
         company.collection("audit_events").document(event_id).create({
             "event_id": event_id,
             "event_type": event_type,
@@ -456,10 +455,23 @@ def write_company_audit_event(company_id, event_type, resource_type,
         })
         return event_id
     except Exception:
-        # Audit is best-effort within Firestore boundaries; never report a
-        # successful data write as failed solely because the audit sink is down.
+        # Audit is best-effort; a successful data write must not be reported
+        # as failed solely because the separate audit sink is unavailable.
         logging.getLogger(__name__).warning("Company audit event could not be persisted.")
         return None
+
+
+def write_company_audit_event(company_id, event_type, resource_type,
+                              resource_id=None, details=None):
+    """Append a bounded company-scoped audit event without credential values."""
+    try:
+        company = _company_ref(company_id)
+    except Exception:
+        logging.getLogger(__name__).warning("Company audit event authorization failed.")
+        return None
+    return _write_company_audit_event_to_ref(
+        company, company_id, event_type, resource_type, resource_id, details
+    )
 
 
 # ============================================================
@@ -523,7 +535,7 @@ def save_company_dataset(
         )
         raise
 
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.metadata_saved", "dataset", dataset_id,
         {"dataset_type": document.get("dataset_type"), "filename": document.get("filename"),
          "status": document.get("status"), "record_count": document.get("record_count")},
@@ -619,6 +631,7 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
         dataset_ref.set({
             "original_file_status": "complete",
             "original_file_saved": True,
+            "status": "original_file_saved",
             "updated_at": datetime.now(timezone.utc),
         }, merge=True)
     except Exception as exc:
@@ -636,7 +649,7 @@ def save_original_file(company_id, dataset_id, filename, data, content_type=None
             pass
         raise RuntimeError("The original file could not be saved completely to Firestore.") from exc
 
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.original_file_saved", "dataset", dataset_id,
         {"filename": safe_name, "size_bytes": len(payload), "chunk_count": count, "sha256": digest},
     )
@@ -744,19 +757,39 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
     }, merge=True)
 
     try:
-        for offset in range(0, len(prepared_chunks), 200):
-            batch = client.batch()
-            for chunk_index, row_count, first_row, last_row, payload in prepared_chunks[offset:offset + 200]:
-                batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
-                    "chunk_index": chunk_index,
-                    "record_count": row_count,
-                    "first_record_number": first_row,
-                    "last_record_number": last_row,
-                    "payload_zlib_json": payload,
-                    "format_version": 1,
-                    "saved_at": SERVER_TIMESTAMP,
-                })
-            batch.commit()
+        from google.api_core.retry import Retry
+
+        max_batch_bytes = 8 * 1024 * 1024
+        batch = client.batch()
+        batch_bytes = 0
+        batch_operations = 0
+        for chunk_index, row_count, first_row, last_row, payload in prepared_chunks:
+            # Keep each Firestore commit comfortably below its 10 MiB request
+            # ceiling, including document and protocol overhead.
+            payload_size = len(payload)
+            if batch_operations and (
+                batch_operations >= 400
+                or batch_bytes + payload_size > max_batch_bytes
+            ):
+                batch.commit(retry=Retry(deadline=20), timeout=25)
+                batch = client.batch()
+                batch_bytes = 0
+                batch_operations = 0
+
+            batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
+                "chunk_index": chunk_index,
+                "record_count": row_count,
+                "first_record_number": first_row,
+                "last_record_number": last_row,
+                "payload_zlib_json": payload,
+                "format_version": 1,
+                "saved_at": SERVER_TIMESTAMP,
+            })
+            batch_bytes += payload_size
+            batch_operations += 1
+
+        if batch_operations:
+            batch.commit(retry=Retry(deadline=20), timeout=25)
 
         # Delete obsolete chunks only after every replacement chunk is durable.
         stale_batch = client.batch()
@@ -791,7 +824,7 @@ def save_dataset_records(company_id, dataset_id, records, collection_name="recor
             pass
         raise RuntimeError("Validated procurement records could not be saved completely.") from exc
 
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, f"dataset.{collection_name}_saved", "dataset", dataset_id,
         {count_key: len(records), "chunk_count": len(prepared_chunks), status_key: "complete"},
     )
@@ -934,7 +967,7 @@ def save_company_mapping(
         "mapping": cleaned_mapping,
         "updated_at": datetime.now(timezone.utc),
     })
-    write_company_audit_event(
+    _write_company_audit_event_to_ref(company,
         company_id, "dataset.mapping_saved", "dataset", dataset_id,
         {"mapped_field_count": len(mapping)},
     )
