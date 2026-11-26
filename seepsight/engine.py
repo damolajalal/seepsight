@@ -323,7 +323,8 @@ DETECTORS = {   # fields each detector needs
     "Short delivery": ["supplier", "ordered_qty", "received_qty"],
     "Invoice price above PO price": ["supplier", "po_unit_price", "invoice_unit_price", "invoice_qty"],
     "Slow approvals": ["approval_requested_at", "approval_completed_at"],
-    "Late delivery": ["supplier", "promised_date"],
+    "Late delivery": ["supplier", "promised_date", "received_date"],
+    "Overdue order awaiting receipt confirmation": ["supplier", "promised_date"],
     "Supplier performance decline": ["supplier", "po_date", "promised_date", "received_date"],
 }
 
@@ -841,24 +842,29 @@ def detect(led, config=None):
                 orders_held=safe_amount(row.get("po_total", 0.0)),
             )
 
-    # Report late completed deliveries and orders still outstanding after the due date.
+    # Confirmed late deliveries require an actual receipt date. Missing receipt
+    # dates are classified separately as overdue orders awaiting confirmation.
     if available(["supplier", "promised_date"]):
         for idx, row in led.iterrows():
+            promised = row.get("promised_date")
+            if pd.isna(promised):
+                continue
+            days_overdue = (as_of - pd.Timestamp(promised).normalize()).days
+            if days_overdue <= 0:
+                continue
             received_date = row.get("received_date")
             if pd.notna(received_date):
                 days = row.get("days_late")
                 if pd.isna(days) or float(days) <= 0:
                     continue
                 evidence = f"Goods arrived {float(days):g} day(s) after the promised delivery date."
+                add_transaction("Late delivery", idx, evidence)
             else:
-                promised = row.get("promised_date")
-                if pd.isna(promised):
-                    continue
-                days = (as_of - pd.Timestamp(promised).normalize()).days
-                if days <= 0:
-                    continue
-                evidence = f"Goods were still outstanding {days} day(s) after the promised date as of {as_of.date()}."
-            add_transaction("Late delivery", idx, evidence)
+                evidence = (
+                    f"Receipt is not recorded. The order is {days_overdue} day(s) past "
+                    f"its promised date as of {as_of.date()}; delivery lateness is unconfirmed."
+                )
+                add_transaction("Overdue order awaiting receipt confirmation", idx, evidence)
 
     # Supplier deterioration remains an additional trend-level signal, never a gate on late-delivery findings.
     if available(["supplier", "po_date", "promised_date", "received_date"]):
@@ -889,10 +895,41 @@ def detect(led, config=None):
                                  severity="High" if recent - early >= 5 else "Medium"))
 
     cols = ["finding_id", "finding_type", "entity", "severity", "affected_orders", "leakage", "orders_held",
-            "first_seen", "last_seen", "po_id", "evidence"]
+            "first_seen", "last_seen", "po_id", "po_ids", "supplier_count", "evidence"]
     if not rows:
         return pd.DataFrame(columns=cols)
-    f = pd.DataFrame(rows).sort_values(["leakage", "orders_held"], ascending=False).reset_index(drop=True)
+    raw = pd.DataFrame(rows)
+    # Group transaction rows into actionable supplier-level issues. Each issue
+    # retains all of its purchase-order IDs for a complete evidence drill-down.
+    transaction_rows = raw[raw["po_id"].notna()].copy()
+    trend_rows = raw[raw["po_id"].isna()].copy()
+    grouped = []
+    severity_rank = {"Low": 1, "Medium": 2, "High": 3}
+    for (finding_type, entity), group in transaction_rows.groupby(
+        ["finding_type", "entity"], dropna=False, sort=False
+    ):
+        po_ids = list(dict.fromkeys(group["po_id"].dropna().astype(str)))
+        first_values = pd.to_datetime(group["first_seen"], errors="coerce").dropna()
+        last_values = pd.to_datetime(group["last_seen"], errors="coerce").dropna()
+        grouped.append({
+            "finding_type": finding_type, "entity": str(entity),
+            "severity": max(group["severity"], key=lambda value: severity_rank.get(value, 0)),
+            "affected_orders": len(po_ids),
+            "leakage": round(float(group["leakage"].sum()), 2),
+            "orders_held": round(float(group["orders_held"].sum()), 2),
+            "first_seen": first_values.min() if len(first_values) else None,
+            "last_seen": last_values.max() if len(last_values) else None,
+            "po_id": None, "po_ids": po_ids, "supplier_count": 1,
+            "evidence": f"{len(po_ids):,} affected purchase order(s) require review; supporting records are attached.",
+        })
+    for row in trend_rows.to_dict("records"):
+        row["po_ids"] = []
+        row["supplier_count"] = 1
+        grouped.append(row)
+    f = pd.DataFrame(grouped)
+    if f.empty:
+        return pd.DataFrame(columns=cols)
+    f = f.sort_values(["leakage", "orders_held"], ascending=False).reset_index(drop=True)
     f.insert(0, "finding_id", [f"TRQ-{i + 1:05d}" for i in range(len(f))])
     return f[cols]
 
@@ -903,7 +940,8 @@ def to_trace(findings, config=None):
         "Short delivery": "Transaction rule: ordered or invoiced quantity exceeds recorded received quantity",
         "Invoice price above PO price": "Transaction rule: any positive invoice unit-price difference is reported",
         "Slow approvals": f"Transaction rule: finance approval exceeded {cfg['approval_limit_days']} days",
-        "Late delivery": "Transaction rule: received date is later than the promised delivery date",
+        "Late delivery": "Confirmed transaction rule: actual received date is later than promised date",
+        "Overdue order awaiting receipt confirmation": "Overdue purchase order without a recorded goods-received date; lateness is unconfirmed",
         "Supplier performance decline": f"Trend rule: average delivery delay rose by more than {cfg['decline_days']:g} days "
                                         f"between the first and last {cfg['decline_window']} months",
     }
@@ -1650,7 +1688,10 @@ def build_evidence(led, findings, cfg):
     parts = []
     base_cols = [c for c in EVIDENCE_COLUMNS if c in led.columns]
     for f in findings.itertuples():
-        if getattr(f, "po_id", None) is not None and pd.notna(getattr(f, "po_id", None)):
+        po_ids = getattr(f, "po_ids", None)
+        if isinstance(po_ids, (list, tuple, set)) and len(po_ids):
+            d = led[led["po_id"].astype(str).isin({str(value) for value in po_ids})].copy()
+        elif getattr(f, "po_id", None) is not None and pd.notna(getattr(f, "po_id", None)):
             d = led[led["po_id"].astype(str) == str(f.po_id)].copy()
         elif f.finding_type == "Supplier performance decline":
             d = led[(led["supplier"] == f.entity) & led["days_late"].notna()].copy()
@@ -1676,9 +1717,9 @@ def build_evidence(led, findings, cfg):
         elif f.finding_type == "Slow approvals" and len(d):
             d["exposure"] = d["po_total"]
             basis = "order value held up"
-        elif f.finding_type == "Late delivery" and len(d):
+        elif f.finding_type in ("Late delivery", "Overdue order awaiting receipt confirmation") and len(d):
             d["exposure"] = 0.0
-            basis = "delivery delay"
+            basis = "delivery delay" if f.finding_type == "Late delivery" else "receipt confirmation outstanding"
         elif f.finding_type == "Supplier performance decline" and len(d):
             d["exposure"] = 0.0
             basis = "late orders in the most recent months"
