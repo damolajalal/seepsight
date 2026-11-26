@@ -17,7 +17,7 @@ currency = cur or "NGN"
 
 st.markdown("### Findings at a glance")
 st.caption(
-    "Findings are grouped by check and supplier; each issue can contain many affected purchase orders. "
+    "Each issue groups the same procurement problem across the company; it can include many purchase orders and suppliers. "
     "Potential exposure is an amount to investigate, not a confirmed loss."
 )
 if findings_chart.empty:
