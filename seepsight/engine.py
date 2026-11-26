@@ -1097,7 +1097,7 @@ def combine_dataset_frames(dataset_name, frames):
             if conflicts:
                 examples = "; ".join(conflicts)
                 raise ValueError(
-                    "The purchase-order files contain genuinely conflicting values for the same "
+                    "The purchase-order files contain conflicting rows with genuinely different values for the same "
                     f"PO number: {examples}. Check the named fields before combining. "
                     "Seepsight will not overwrite a populated value automatically."
                 )
