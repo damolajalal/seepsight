@@ -320,7 +320,7 @@ DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/
 
 def to_dates(series):
     """Parse dates in mixed formats. Prefers day-first when a format is ambiguous."""
-    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    out = pd.Series(pd.NaT, index=series.index, dtype="datetime64[us]")
     todo = pd.Series(False, index=series.index)
     for idx, v in series.items():
         if v is None or (isinstance(v, float) and np.isnan(v)):
@@ -346,7 +346,7 @@ def to_dates(series):
         for rate, _, fmt, parsed in sorted(rates, key=lambda t: (t[0], t[1]), reverse=True):
             if rate == 0:
                 break
-            fill = parsed.reindex(remaining).dropna()
+            fill = parsed.reindex(remaining).dropna().astype("datetime64[us]")
             if len(fill):
                 out.loc[fill.index] = fill
                 remaining = remaining.difference(fill.index)
