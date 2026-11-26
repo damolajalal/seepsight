@@ -122,43 +122,65 @@ def get_firestore_client():
 # 2. CONNECTION DIAGNOSTICS
 # ============================================================
 
-def test_firestore_connection():
-    """Verify Firestore read/write/delete with bounded retries and report latency."""
+def test_firestore_connection(company_id):
+    """Verify write/read/delete on the same company dataset path used by uploads."""
     import time
     from google.api_core.retry import Retry
 
-    client = get_firestore_client()
-    test_id = f"connection_{uuid.uuid4().hex}"
-    test_ref = client.collection("_system").document(test_id)
+    company = _company_ref(company_id)
+    test_id = f"_diagnostic_{uuid.uuid4().hex}"
+    test_ref = company.collection("datasets").document(test_id)
     operation_error = None
     cleanup_error = None
+    stage = "write"
     started_at = time.perf_counter()
     retry = Retry(deadline=8)
 
     try:
         test_ref.set({
-            "status": "connected",
-            "purpose": "temporary_connection_test",
+            "dataset_id": test_id,
+            "status": "diagnostic",
+            "purpose": "temporary_firestore_write_read_test",
             "created_at": datetime.now(timezone.utc),
         }, retry=retry, timeout=10)
+        stage = "read"
         snapshot = test_ref.get(retry=retry, timeout=10)
         if not snapshot.exists:
-            raise RuntimeError("Firestore test document could not be read.")
+            raise RuntimeError("Temporary dataset metadata document was not found after writing.")
         data = snapshot.to_dict() or {}
-        if data.get("status") != "connected":
-            raise RuntimeError("Firestore returned unexpected test data.")
+        if data.get("status") != "diagnostic":
+            raise RuntimeError("Firestore returned unexpected diagnostic data.")
     except Exception as exc:
         operation_error = exc
     finally:
         try:
+            stage_for_cleanup = stage
             test_ref.delete(retry=retry, timeout=10)
         except Exception as exc:
             cleanup_error = exc
 
+    def _safe_error_detail(exc):
+        cause = exc
+        while getattr(cause, "__cause__", None) is not None:
+            cause = cause.__cause__
+        code = getattr(cause, "code", None)
+        try:
+            code = code() if callable(code) else code
+        except Exception:
+            code = None
+        code_text = getattr(code, "name", None) or (str(code) if code is not None else "unavailable")
+        return f"{type(cause).__name__}; service_code={code_text}"
+
     if operation_error is not None:
-        raise RuntimeError("Firestore connection verification failed.") from operation_error
+        raise RuntimeError(
+            f"Firestore company-dataset {stage} check failed "
+            f"({_safe_error_detail(operation_error)})."
+        ) from operation_error
     if cleanup_error is not None:
-        raise RuntimeError("Firestore connection test cleanup failed.") from cleanup_error
+        raise RuntimeError(
+            f"Firestore diagnostic cleanup failed "
+            f"({_safe_error_detail(cleanup_error)})."
+        ) from cleanup_error
     return {
         "connected": True,
         "latency_ms": round((time.perf_counter() - started_at) * 1000),
