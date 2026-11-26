@@ -232,6 +232,7 @@ if not company_id or not company_name:
     st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
     st.stop()
 
+with st.expander("Firestore write/read/cleanup verification", expanded=False):
     if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
         try:
             with st.spinner("Testing Firestore write, read and temporary-document cleanup..."):
