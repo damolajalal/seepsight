@@ -462,7 +462,7 @@ if uploaded:
         st.session_state["connect_load_errors"] = errors
 
 if st.button("Clear uploaded files and start again", key="clear_connect_uploads"):
-    for key in ("connect_raw", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
+    for key in ("connect_raw", "connect_source_file_bytes", "connect_upload_fingerprint", "connect_check", "connect_check_signature", "connect_dataset_types", "connect_load_errors", "connect_dataset_group_signature", "connect_dataset_group_id"):
         st.session_state.pop(key, None)
     st.session_state.pop("_done", None)
     st.rerun()
