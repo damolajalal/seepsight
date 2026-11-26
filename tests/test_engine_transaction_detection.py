@@ -149,6 +149,7 @@ class TransactionLevelDetectionTests(unittest.TestCase):
         self.assertEqual(len(overdue), 1)
         self.assertEqual(int(overdue.iloc[0]["affected_orders"]), 1)
         self.assertNotIn("Late delivery", set(findings["finding_type"]))
+        self.assertNotIn("Short delivery", set(findings["finding_type"]))
         evidence = engine.build_evidence(ledger, findings, engine.DEFAULT_CONFIG)
         overdue_evidence = evidence[evidence["finding_id"] == overdue.iloc[0]["finding_id"]]
         self.assertEqual(len(overdue_evidence), 1)
