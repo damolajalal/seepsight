@@ -107,7 +107,11 @@ def from_result(result, company, company_id):
 # =========================================================
 
 def persist(pack, analysis_id):
-    """Save dashboard tables and compact run metadata for this company."""
+    """Persist normally, or retain the pack in session-only demo mode."""
+    if st.session_state.get("seepsight_demo_mode"):
+        st.session_state["mine"] = pack
+        st.session_state["seepsight_demo_workspace"] = pack
+        return True
     if not isinstance(pack, dict):
         raise TypeError("A valid company workspace is required.")
     company_id = pack.get("company_id")
@@ -164,6 +168,9 @@ def has_company_data():
     company_id, _ = _authenticated_company()
     mine = st.session_state.get("mine")
 
+    if st.session_state.get("seepsight_demo_mode"):
+        return bool(isinstance(mine, dict) and mine.get("session_only"))
+
     if company_id and not isinstance(mine, dict):
         mine = restore_latest(company_id)
         if mine is not None:
@@ -188,6 +195,16 @@ def workspace_picker():
     """
 
     company_id, company_name = _authenticated_company()
+
+    if st.session_state.get("seepsight_demo_mode"):
+        mine = st.session_state.get("mine")
+        st.caption("TEMPORARY DEMO · SESSION ONLY")
+        if isinstance(mine, dict):
+            st.write(mine.get("name", company_name or "Your company"))
+            st.caption("This analysis is held in memory and is not saved to Firestore.")
+        else:
+            st.caption("Upload and validate data to start the demo.")
+        return
 
     if not company_id:
         st.caption("Company workspace unavailable.")
@@ -266,6 +283,15 @@ def current(allow_empty=False):
         )
 
     mine = st.session_state.get("mine")
+
+    if st.session_state.get("seepsight_demo_mode"):
+        if isinstance(mine, dict) and mine.get("session_only") and mine.get("company_id") == company_id:
+            return mine
+        if allow_empty:
+            return None
+        st.info("No session-only analysis is loaded. Connect your data to begin.")
+        st.page_link("pages/connect.py", label="Connect your data", icon=":material/upload_file:")
+        st.stop()
 
     if not isinstance(mine, dict):
         mine = None
