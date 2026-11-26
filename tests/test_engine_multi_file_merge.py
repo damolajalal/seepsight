@@ -175,6 +175,20 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         self.assertIsNone(cleaned.iloc[2])
         self.assertIsNone(cleaned.iloc[3])
 
+    def test_missing_transaction_identifier_requires_review_not_silent_acceptance(self):
+        result = engine.onboard_tables({
+            "orders": pd.DataFrame([{
+                "po_id": "PO-1", "supplier": "Supplier A",
+                "po_date": "2026-01-01", "ordered_qty": 10, "po_unit_price": 5,
+            }]),
+            "receipts": pd.DataFrame([{"po_id": "PO-1", "received_qty": 10}]),
+        }, verbose=False, with_ml=False)
+        self.assertEqual(
+            result["dataset_quality"]["receipts"]["readiness"],
+            "needs review - no stable identifier",
+        )
+        self.assertTrue(any("no stable record identifier" in warning for warning in result["quality"]["warnings"]))
+
     def test_transaction_primary_keys_are_recognised(self):
         self.assertEqual(engine._table_key_fields("approvals", pd.DataFrame(columns=["approval_event_id"])), ["approval_event_id"])
         self.assertEqual(engine._table_key_fields("receipts", pd.DataFrame(columns=["receipt_id"])), ["receipt_id"])
