@@ -258,9 +258,14 @@ if saved_groups:
     if account.get("role") == "owner":
         safe_groups = [item for item in saved_groups if item.get("deletion_safe")]
         used_groups = [item for item in saved_groups if item.get("used")]
+        pending_groups = [
+            item for item in saved_groups if item.get("pending_workspace")
+        ]
         protected_groups = [
             item for item in saved_groups
-            if not item.get("deletion_safe") and not item.get("used")
+            if not item.get("deletion_safe")
+            and not item.get("used")
+            and not item.get("pending_workspace")
         ]
         with st.expander("Delete an unused dataset", expanded=False):
             if safe_groups:
@@ -320,6 +325,18 @@ if saved_groups:
                 st.info(
                     "These datasets have been analysed. Their saved analysis history, findings "
                     "and cases are protected from dataset deletion."
+                )
+            if pending_groups:
+                st.caption("Datasets with an unfinished analysis save (protected):")
+                for item in pending_groups:
+                    st.write(
+                        f"• {item.get('company_name') or 'Dataset'} — "
+                        f"{item.get('file_count', 0)} file(s), "
+                        f"{item['dataset_group_id'][:8]}"
+                    )
+                st.info(
+                    "An unfinished analysis save contains recovery diagnostics. These datasets "
+                    "cannot be deleted until the incomplete save has been diagnosed."
                 )
             if protected_groups:
                 st.caption("Protected legacy datasets (not selectable for deletion):")
