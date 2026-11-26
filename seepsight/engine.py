@@ -783,7 +783,12 @@ def detect(led, config=None):
                 max(float(ordered) - float(received), 0.0)
                 if delivery_due and receipt_confirmed else 0.0
             )
-            overbilled = max(float(invoice_qty) - float(received), 0.0) if pd.notna(invoice_qty) else 0.0
+            # Do not infer an undelivered quantity discrepancy from an invoice
+            # alone when there is no receipt record to establish what arrived.
+            overbilled = (
+                max(float(invoice_qty) - float(received), 0.0)
+                if pd.notna(invoice_qty) and receipt_confirmed else 0.0
+            )
             short_units = max(short_vs_order, overbilled)
             if short_units <= 0:
                 continue
