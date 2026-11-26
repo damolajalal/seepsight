@@ -7,7 +7,7 @@ from seepsight import hybrid_ai, plain, ui, workspace
 
 w = workspace.current()
 cur, f = w["cur"], w["findings"]
-ui.page_header("Findings", "The issues our checks identified, with the records behind each one.")
+ui.page_header("Findings", "Grouped procurement issues, with affected orders and supporting evidence.")
 
 # ---------------------------------------------------------
 # Findings analytics: visual summaries live on this page.
@@ -17,7 +17,7 @@ currency = cur or "NGN"
 
 st.markdown("### Findings at a glance")
 st.caption(
-    "Visual summaries are calculated from the active company's saved findings. "
+    "Findings are grouped by check and supplier; each issue can contain many affected purchase orders. "
     "Potential exposure is an amount to investigate, not a confirmed loss."
 )
 if findings_chart.empty:
@@ -159,7 +159,7 @@ st.markdown("#### Records supporting this finding")
 cols = [c for c in plain.EVIDENCE_COLUMNS[r["finding_type"]] if c in ev.columns]
 view = ev.sort_values("exposure", ascending=False) if "exposure" in ev.columns else ev
 st.dataframe(view[cols].head(25).rename(columns=plain.EVIDENCE_LABELS), hide_index=True, width="stretch")
-st.caption(f"Showing the {min(25, len(ev))} largest of {len(ev)} records.")
+st.caption(f"This grouped issue contains {len(ev):,} supporting purchase-order record(s). Showing up to 25 records.")
 
 with st.expander("Explain this finding with Hybrid AI", expanded=False):
     st.caption(
