@@ -1274,7 +1274,10 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
         warnings.extend(_ambiguous_date_warnings(raw, mp, name))
         typed = apply_mapping(raw, mp)
         if name == "orders" and "po_id" in typed:
-            typed = typed[typed["po_id"].notna()].copy()
+            typed = typed[typed["po_id"].notna()].copy().reset_index(drop=True)
+            # Enforce the same PO identity rules for direct multi-table
+            # onboarding as for files uploaded through the Connect page.
+            typed, _ = combine_dataset_frames("orders", [typed])
         if "po_id" in typed.columns:
             typed["_key"] = _id_key(typed["po_id"])
         typed_tables[name] = typed
