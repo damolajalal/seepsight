@@ -1318,21 +1318,49 @@ def save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_gr
 
     client = get_firestore_client()
     table_counts = {}
+    max_chunk_bytes = 450 * 1024
     for table_name, records in prepared.items():
-        rows_ref = (
-            revision_ref.collection("tables")
-            .document(table_name)
-            .collection("rows")
-        )
-        for offset in range(0, len(records), 300):
-            batch = client.batch()
-            chunk = records[offset:offset + 300]
-            for index, cleaned in enumerate(chunk, start=offset):
-                batch.set(
-                    rows_ref.document(f"row_{index:012d}"),
-                    cleaned,
+        table_ref = revision_ref.collection("tables").document(table_name)
+        chunks_ref = table_ref.collection("chunks")
+        chunks = []
+        current_rows = []
+        current_size = 2
+        for row_index, cleaned in enumerate(records):
+            encoded = json.dumps(cleaned, default=str, separators=(",", ":")).encode("utf-8")
+            if len(encoded) > max_chunk_bytes:
+                raise ValueError(
+                    f"An analysis row in '{table_name}' is too large to store safely."
                 )
+            if current_rows and current_size + len(encoded) + 1 > max_chunk_bytes:
+                raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
+                chunks.append(zlib.compress(raw, 6))
+                current_rows = []
+                current_size = 2
+            current_rows.append(cleaned)
+            current_size += len(encoded) + (1 if len(current_rows) > 1 else 0)
+        if current_rows:
+            raw = json.dumps(current_rows, default=str, separators=(",", ":")).encode("utf-8")
+            chunks.append(zlib.compress(raw, 6))
+
+        for offset in range(0, len(chunks), 200):
+            batch = client.batch()
+            for chunk_index, payload in enumerate(chunks[offset:offset + 200], start=offset):
+                batch.set(chunks_ref.document(f"chunk_{chunk_index:08d}"), {
+                    "chunk_index": chunk_index,
+                    "row_count": min(
+                        250_000,
+                        len(json.loads(zlib.decompress(payload).decode("utf-8")))
+                    ),
+                    "payload_zlib_json": payload,
+                    "format_version": 1,
+                })
             batch.commit()
+
+        table_ref.set({
+            "storage_format": "zlib-json-v1",
+            "row_count": len(records),
+            "chunk_count": len(chunks),
+        })
         table_counts[table_name] = len(records)
 
     # Mark the revision complete before switching the active pointer. If this
@@ -1445,28 +1473,55 @@ def get_latest_analysis_workspace(company_id, analysis_id=None):
 
     tables = {}
     for table_name in (summary.get("tables") or {}):
-        query = (
-            data_ref.collection("tables")
-            .document(table_name)
-            .collection("rows")
-            .order_by("__name__")
-        )
+        table_ref = data_ref.collection("tables").document(table_name)
+        table_snapshot = table_ref.get()
+        table_metadata = table_snapshot.to_dict() or {} if table_snapshot.exists else {}
         rows = []
-        last_snapshot = None
-        while True:
-            page_query = query.limit(500)
-            if last_snapshot is not None:
-                page_query = page_query.start_after(last_snapshot)
-            page = list(page_query.stream())
-            if not page:
-                break
-            rows.extend(
-                _denormalise_workspace_value(row.to_dict() or {})
-                for row in page
+        if table_metadata.get("storage_format") == "zlib-json-v1":
+            chunks_ref = table_ref.collection("chunks")
+            for chunk_snapshot in _stream_query_pages(
+                chunks_ref.order_by("chunk_index"), page_size=200
+            ):
+                chunk = chunk_snapshot.to_dict() or {}
+                try:
+                    payload = zlib.decompress(chunk["payload_zlib_json"])
+                    decoded = json.loads(payload.decode("utf-8"))
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Analysis table '{table_name}' contains a damaged data chunk."
+                    ) from exc
+                if not isinstance(decoded, list):
+                    raise RuntimeError(
+                        f"Analysis table '{table_name}' contains an invalid data chunk."
+                    )
+                rows.extend(_denormalise_workspace_value(item) for item in decoded)
+            expected_rows = int(table_metadata.get("row_count", 0) or 0)
+            if len(rows) != expected_rows:
+                raise RuntimeError(
+                    f"Analysis table '{table_name}' row count mismatch: "
+                    f"expected {expected_rows}, retrieved {len(rows)}."
+                )
+        else:
+            # Backward compatibility for completed workspaces written before chunking.
+            query = (
+                table_ref.collection("rows")
+                .order_by("__name__")
             )
-            last_snapshot = page[-1]
-            if len(page) < 500:
-                break
+            last_snapshot = None
+            while True:
+                page_query = query.limit(500)
+                if last_snapshot is not None:
+                    page_query = page_query.start_after(last_snapshot)
+                page = list(page_query.stream())
+                if not page:
+                    break
+                rows.extend(
+                    _denormalise_workspace_value(row.to_dict() or {})
+                    for row in page
+                )
+                last_snapshot = page[-1]
+                if len(page) < 500:
+                    break
         tables[table_name] = rows
 
     write_company_audit_event(
