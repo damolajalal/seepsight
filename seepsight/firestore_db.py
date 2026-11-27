@@ -1563,6 +1563,60 @@ def cleanup_analysis_revisions(company_id, analysis_id, keep=3):
     return deleted
 
 
+def _load_analysis_workspace_table(data_ref, table_name):
+    """Load one analysis table; safe to run alongside other table reads."""
+    table_ref = data_ref.collection("tables").document(table_name)
+    table_snapshot = table_ref.get()
+    table_metadata = table_snapshot.to_dict() or {} if table_snapshot.exists else {}
+    rows = []
+
+    if table_metadata.get("storage_format") == "zlib-json-v1":
+        chunks_ref = table_ref.collection("chunks")
+        for chunk_snapshot in _stream_query_pages(
+            chunks_ref.order_by("chunk_index"), page_size=200
+        ):
+            chunk = chunk_snapshot.to_dict() or {}
+            try:
+                payload = zlib.decompress(chunk["payload_zlib_json"])
+                decoded = json.loads(payload.decode("utf-8"))
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Analysis table '{table_name}' contains a damaged data chunk."
+                ) from exc
+            if not isinstance(decoded, list):
+                raise RuntimeError(
+                    f"Analysis table '{table_name}' contains an invalid data chunk."
+                )
+            rows.extend(_denormalise_workspace_value(item) for item in decoded)
+
+        expected_rows = int(table_metadata.get("row_count", 0) or 0)
+        if len(rows) != expected_rows:
+            raise RuntimeError(
+                f"Analysis table '{table_name}' row count mismatch: "
+                f"expected {expected_rows}, retrieved {len(rows)}."
+            )
+    else:
+        # Backward compatibility for completed workspaces written before chunking.
+        query = table_ref.collection("rows").order_by("__name__")
+        last_snapshot = None
+        while True:
+            page_query = query.limit(500)
+            if last_snapshot is not None:
+                page_query = page_query.start_after(last_snapshot)
+            page = list(page_query.stream())
+            if not page:
+                break
+            rows.extend(
+                _denormalise_workspace_value(row.to_dict() or {})
+                for row in page
+            )
+            last_snapshot = page[-1]
+            if len(page) < 500:
+                break
+
+    return table_name, rows
+
+
 def get_latest_analysis_workspace(company_id, analysis_id=None):
     """Load a selected complete analysis, or the latest one, with bounded row reads."""
     company = _company_ref(company_id)
@@ -1597,58 +1651,21 @@ def get_latest_analysis_workspace(company_id, analysis_id=None):
         if (revision_snapshot.to_dict() or {}).get("workspace_status") != "complete":
             return None
 
+    table_names = list(summary.get("tables") or {})
     tables = {}
-    for table_name in (summary.get("tables") or {}):
-        table_ref = data_ref.collection("tables").document(table_name)
-        table_snapshot = table_ref.get()
-        table_metadata = table_snapshot.to_dict() or {} if table_snapshot.exists else {}
-        rows = []
-        if table_metadata.get("storage_format") == "zlib-json-v1":
-            chunks_ref = table_ref.collection("chunks")
-            for chunk_snapshot in _stream_query_pages(
-                chunks_ref.order_by("chunk_index"), page_size=200
+    if table_names:
+        # Each table has independent metadata/chunk reads. Fetch a small,
+        # bounded number concurrently to avoid serial network round trips
+        # when restoring a complete workspace after login.
+        from concurrent.futures import ThreadPoolExecutor
+
+        workers = min(4, len(table_names))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            for table_name, rows in executor.map(
+                lambda name: _load_analysis_workspace_table(data_ref, name),
+                table_names,
             ):
-                chunk = chunk_snapshot.to_dict() or {}
-                try:
-                    payload = zlib.decompress(chunk["payload_zlib_json"])
-                    decoded = json.loads(payload.decode("utf-8"))
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"Analysis table '{table_name}' contains a damaged data chunk."
-                    ) from exc
-                if not isinstance(decoded, list):
-                    raise RuntimeError(
-                        f"Analysis table '{table_name}' contains an invalid data chunk."
-                    )
-                rows.extend(_denormalise_workspace_value(item) for item in decoded)
-            expected_rows = int(table_metadata.get("row_count", 0) or 0)
-            if len(rows) != expected_rows:
-                raise RuntimeError(
-                    f"Analysis table '{table_name}' row count mismatch: "
-                    f"expected {expected_rows}, retrieved {len(rows)}."
-                )
-        else:
-            # Backward compatibility for completed workspaces written before chunking.
-            query = (
-                table_ref.collection("rows")
-                .order_by("__name__")
-            )
-            last_snapshot = None
-            while True:
-                page_query = query.limit(500)
-                if last_snapshot is not None:
-                    page_query = page_query.start_after(last_snapshot)
-                page = list(page_query.stream())
-                if not page:
-                    break
-                rows.extend(
-                    _denormalise_workspace_value(row.to_dict() or {})
-                    for row in page
-                )
-                last_snapshot = page[-1]
-                if len(page) < 500:
-                    break
-        tables[table_name] = rows
+                tables[table_name] = rows
 
     write_company_audit_event(
         company_id, "analysis.workspace_restored", "analysis", analysis_id,
