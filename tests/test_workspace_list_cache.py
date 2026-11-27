@@ -61,6 +61,34 @@ class CompanyWorkspaceListCacheTests(unittest.TestCase):
         self.assertEqual(restore.call_count, 2)
         self.assertNotIn("mine", self.session)
 
+    def test_legacy_demo_kind_is_not_counted_as_persistent_company_data(self):
+        self.session["seepsight_demo_mode"] = False
+        self.session["seepsight_auth"] = {"company_id": "company-a"}
+        self.session["mine"] = {
+            "company_id": "company-a",
+            "kind": "demo",
+            "findings": [],
+        }
+        with patch.object(workspace, "restore_latest", return_value=None) as restore:
+            self.assertFalse(workspace.has_company_data())
+            self.assertIsNone(workspace.current(allow_empty=True))
+        self.assertEqual(restore.call_count, 2)
+        self.assertNotIn("mine", self.session)
+
+    def test_restore_latest_rejects_legacy_demo_analysis(self):
+        saved = {
+            "analysis_id": "demo-analysis",
+            "summary": {"kind": "demo", "company_name": "Old Demo"},
+            "tables": {},
+        }
+        with patch.object(
+            workspace.firestore_db,
+            "get_latest_analysis_workspace",
+            return_value=saved,
+        ):
+            self.assertIsNone(workspace.restore_latest("company-a"))
+        self.assertFalse(self.session.get("_workspace_restore_cache"))
+
     def test_workspace_picker_does_not_fetch_saved_analyses_on_initial_load(self):
         fake_streamlit = SimpleNamespace(
             session_state=self.session,
