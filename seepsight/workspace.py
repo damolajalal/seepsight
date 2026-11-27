@@ -294,90 +294,103 @@ def has_company_data():
 
 def workspace_picker():
     """
-    Display the authenticated company's workspace identity.
+    Show the company identity without querying every saved analysis on startup.
 
-    There is no customer-facing demo selector.
+    The saved-analysis list is fetched only when the user explicitly opens it.
     """
-
     company_id, company_name = _authenticated_company()
-
-    if st.session_state.get("seepsight_demo_mode"):
-        mine = st.session_state.get("mine")
-        st.caption("TEMPORARY DEMO · SESSION ONLY")
-        if isinstance(mine, dict):
-            st.write(mine.get("name", company_name or "Your company"))
-            st.caption("This analysis is held in memory and is not saved to Firestore.")
-        else:
-            st.caption("Upload and validate data to start the demo.")
-        return
-
     if not company_id:
         st.caption("Company workspace unavailable.")
         return
 
-    mine = st.session_state.get("mine")
-    # A session-only demo pack is never a saved company workspace. If the
-    # user switches Demo Mode off, do not display it as a persistent analysis.
-    if isinstance(mine, dict) and mine.get("session_only"):
-        mine = None
-    try:
-        saved_workspaces = _company_workspace_list(company_id)
-    except Exception:
-        # Do not cache failures: a transient Firestore issue should be retried
-        # on the next rerun rather than hiding newly available workspaces.
-        saved_workspaces = []
+    st.caption("COMPANY WORKSPACE")
+    st.write(company_name or "Your company")
 
-    if saved_workspaces:
-        labels = {}
-        for item in saved_workspaces:
-            updated = item.get("updated_at")
-            stamp = updated.strftime("%Y-%m-%d %H:%M") if hasattr(updated, "strftime") else item["analysis_id"][:8]
-            labels[item["analysis_id"]] = f'{item.get("company_name") or company_name or "Dataset"} · {stamp}'
-        ids = [item["analysis_id"] for item in saved_workspaces]
-        active_id = (
-            mine.get("analysis_id")
-            if isinstance(mine, dict)
-            and mine.get("company_id") == company_id
-            and not mine.get("session_only")
-            else None
-        )
-        selected_default = active_id if active_id in ids else ids[0]
-        selected = st.selectbox(
-            "Active dataset",
-            ids,
-            index=ids.index(selected_default),
-            format_func=lambda value: labels.get(value, value),
-            key=f"company_dataset_selector_{company_id}_{selected_default}",
-        )
-        if selected != active_id:
-            # A reviewed or pending Gemini request is tied to the dataset that
-            # produced its evidence. Never carry it across an active-dataset switch.
-            for key in list(st.session_state.keys()):
-                if not isinstance(key, str):
-                    continue
-                if key.startswith((
-                    f"ask_hybrid_pending_{company_id}",
-                    f"ask_hybrid_review_{company_id}",
-                    f"ask_hybrid_response_{company_id}",
-                )):
-                    st.session_state.pop(key, None)
-            restored = restore_latest(company_id, selected)
-            if restored is not None:
-                st.session_state["mine"] = restored
-                st.session_state.pop("cases", None)
-                st.rerun()
-        st.caption("Switching changes the active procurement analysis for this company.")
-    elif (
+    mine = st.session_state.get("mine")
+    if (
         isinstance(mine, dict)
         and mine.get("company_id") == company_id
         and not mine.get("session_only")
     ):
-        st.caption("ACTIVE COMPANY")
-        st.write(mine.get("name", company_name or "Your company"))
+        st.caption(f"ACTIVE ANALYSIS · {mine.get('name') or company_name or 'Company data'}")
     else:
-        st.caption("COMPANY WORKSPACE")
-        st.write(company_name or "Your company")
-        st.caption("No procurement data connected yet.")
+        st.caption("No procurement analysis loaded in this session.")
+
+    # Avoid scanning the company's datasets and analyses on every page load.
+    # This can be a costly Firestore query for organisations with long histories.
+    if st.button("Browse saved analyses", key=f"show_saved_analyses_{company_id}"):
+        st.session_state["_show_saved_analysis_picker"] = True
+
+    if not st.session_state.get("_show_saved_analysis_picker"):
+        return
+
+    if st.button("Hide saved analyses", key=f"hide_saved_analyses_{company_id}"):
+        st.session_state["_show_saved_analysis_picker"] = False
+        return
+
+    try:
+        saved_workspaces = _company_workspace_list(company_id)
+    except Exception:
+        # Do not cache failures: a transient Firestore issue should be retried.
+        st.warning("Saved analyses could not be loaded. Please try again.")
+        return
+
+    if not saved_workspaces:
+        st.caption("No saved analyses are available for this company.")
+        return
+
+    labels = {}
+    for item in saved_workspaces:
+        analysis_id = item.get("analysis_id")
+        if not analysis_id:
+            continue
+        updated = item.get("updated_at")
+        stamp = (
+            updated.strftime("%Y-%m-%d %H:%M")
+            if hasattr(updated, "strftime")
+            else analysis_id[:8]
+        )
+        labels[analysis_id] = (
+            f"{item.get('company_name') or company_name or 'Dataset'} · {stamp}"
+        )
+
+    ids = list(labels)
+    if not ids:
+        st.caption("No selectable saved analyses were found.")
+        return
+
+    active_id = (
+        mine.get("analysis_id")
+        if isinstance(mine, dict)
+        and mine.get("company_id") == company_id
+        and not mine.get("session_only")
+        else None
+    )
+    selected_default = active_id if active_id in ids else ids[0]
+    selected = st.selectbox(
+        "Active dataset",
+        ids,
+        index=ids.index(selected_default),
+        format_func=lambda value: labels.get(value, value),
+        key=f"company_dataset_selector_{company_id}_{selected_default}",
+    )
+    if selected != active_id:
+        # Clear dataset-bound AI review state before switching evidence sources.
+        for key in list(st.session_state.keys()):
+            if not isinstance(key, str):
+                continue
+            if key.startswith((
+                f"ask_hybrid_pending_{company_id}",
+                f"ask_hybrid_review_{company_id}",
+                f"ask_hybrid_response_{company_id}",
+            )):
+                st.session_state.pop(key, None)
+        restored = restore_latest(company_id, selected)
+        if restored is not None:
+            st.session_state["mine"] = restored
+            st.session_state.pop("cases", None)
+            st.rerun()
+    st.caption("Switching changes the active procurement analysis for this company.")
 
 
 # =========================================================
