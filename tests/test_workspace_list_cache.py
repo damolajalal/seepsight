@@ -108,6 +108,43 @@ class CompanyWorkspaceListCacheTests(unittest.TestCase):
 
         fetch.assert_not_called()
 
+    def test_demo_mode_never_reads_saved_workspace_list(self):
+        self.session["seepsight_demo_mode"] = True
+        with patch.object(
+            workspace.firestore_db,
+            "get_company_analysis_workspaces",
+        ) as fetch:
+            self.assertEqual(workspace._company_workspace_list("company-a"), [])
+        fetch.assert_not_called()
+
+    def test_demo_mode_never_restores_saved_workspace(self):
+        self.session["seepsight_demo_mode"] = True
+        with patch.object(
+            workspace.firestore_db,
+            "get_latest_analysis_workspace",
+        ) as fetch:
+            self.assertIsNone(workspace.restore_latest("company-a"))
+        fetch.assert_not_called()
+
+    def test_workspace_picker_hides_saved_analyses_in_demo_mode(self):
+        self.session["seepsight_demo_mode"] = True
+        self.session["seepsight_auth"] = {
+            "company_id": "company-a",
+            "company_name": "Company A",
+        }
+        fake_streamlit = SimpleNamespace(
+            session_state=self.session,
+            caption=lambda *args, **kwargs: None,
+            write=lambda *args, **kwargs: None,
+            button=lambda *args, **kwargs: self.fail("Saved-analysis controls must be hidden in demo mode"),
+        )
+        with patch.object(workspace, "st", fake_streamlit), patch.object(
+            workspace.firestore_db,
+            "get_company_analysis_workspaces",
+        ) as fetch:
+            workspace.workspace_picker()
+        fetch.assert_not_called()
+
     def test_successful_workspace_save_invalidates_company_cache(self):
         self.session["_workspace_list_cache"] = {
             "company-a": {"fetched_at": 1, "items": [{"analysis_id": "old"}]},
