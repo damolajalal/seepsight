@@ -703,7 +703,7 @@ else:
         frame = raw[filename]
         fields = engine.TABLE_FIELDS[kind]
         with st.expander(f"{CORE_DATASETS[kind]} · {filename}", expanded=(kind == "orders")):
-            required_fields = engine.REQUIRED if kind == "orders" else engine.DATASET_REGISTRY[kind].get("required", [])
+            required_fields = engine.REQUIRED if kind == "orders" else engine.DATASET_REGISTRY[kind].get("mapping_required", engine.DATASET_REGISTRY[kind].get("required", []))
             overrides, selected = _mapping_editor(
                 frame, fields, f"map_{kind}_{target_group_id or 'new'}_{hashlib.sha1(filename.encode()).hexdigest()[:8]}", required_fields,
                 saved_file_mappings.get(filename),
