@@ -280,6 +280,11 @@ if not company_id or not company_name:
     st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
     st.stop()
 
+# Keep external database connectivity available during the session-only demo.
+# Existing profiles remain testable; profile and audit writes are paused.
+st.markdown("### Database connections")
+connection_ui.render_company_database_connections(company_id, account)
+
 if not DEMO_MODE:
     with st.expander("Firestore write/read/cleanup verification", expanded=False):
         if st.button("Run Firestore read/write/cleanup test", key="connect_firestore_full_test"):
@@ -310,9 +315,6 @@ if not DEMO_MODE:
     st.markdown("### Company workspace")
     st.write(f"**{company_name}**")
     st.caption("Your upload will be associated with the signed-in company account.")
-
-    st.markdown("### Database connections")
-    connection_ui.render_company_database_connections(company_id, account)
 
     st.markdown("### Saved procurement datasets")
     try:
