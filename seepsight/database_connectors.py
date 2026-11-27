@@ -205,7 +205,7 @@ def execute_readonly_query(provider, secret_reference, sql, parameters=None,
 
 def execute_company_connection_query(company_id, connection_id, sql,
                                     parameters=None, max_rows=None,
-                                    timeout_seconds=None):
+                                    timeout_seconds=None, audit=True):
     """Run a query through a saved, tenant-scoped connection profile."""
     from seepsight import firestore_db
 
@@ -233,13 +233,13 @@ def execute_company_connection_query(company_id, connection_id, sql,
             timeout_seconds=effective_timeout,
         )
     except Exception:
-        if not st.session_state.get("seepsight_demo_mode"):
+        if audit:
             firestore_db.write_company_audit_event(
                 company_id, "connection.query_failed", "connection", connection_id,
                 {"provider": profile.get("provider")},
             )
         raise
-    if not st.session_state.get("seepsight_demo_mode"):
+    if audit:
         firestore_db.write_company_audit_event(
             company_id, "connection.query_executed", "connection", connection_id,
             {"provider": result.get("provider"), "row_count": result.get("row_count"),
