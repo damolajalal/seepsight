@@ -110,6 +110,15 @@ else:
 
     # Display authenticated account information and branding.
     auth.require_auth()
+
+    # Customer workspaces always use authenticated, persistent company data.
+    # Remove any legacy session-only demo pack before rendering a page.
+    st.session_state["seepsight_demo_mode"] = False
+    mine = st.session_state.get("mine")
+    if isinstance(mine, dict) and mine.get("session_only"):
+        st.session_state.pop("mine", None)
+        st.session_state.pop("seepsight_demo_workspace", None)
+
     ui.sidebar_header()
     workspace.workspace_picker()
 
