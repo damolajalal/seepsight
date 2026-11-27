@@ -270,6 +270,12 @@ def has_company_data():
     if st.session_state.get("seepsight_demo_mode"):
         return bool(isinstance(mine, dict) and mine.get("session_only"))
 
+    # Demo workspaces are deliberately ephemeral. Never count one as
+    # durable company data after Demo Mode has been switched off.
+    if isinstance(mine, dict) and mine.get("session_only"):
+        mine = None
+        st.session_state.pop("mine", None)
+
     if company_id and not isinstance(mine, dict):
         mine = restore_latest(company_id)
         if mine is not None:
@@ -310,6 +316,10 @@ def workspace_picker():
         return
 
     mine = st.session_state.get("mine")
+    # A session-only demo pack is never a saved company workspace. If the
+    # user switches Demo Mode off, do not display it as a persistent analysis.
+    if isinstance(mine, dict) and mine.get("session_only"):
+        mine = None
     try:
         saved_workspaces = _company_workspace_list(company_id)
     except Exception:
@@ -324,7 +334,13 @@ def workspace_picker():
             stamp = updated.strftime("%Y-%m-%d %H:%M") if hasattr(updated, "strftime") else item["analysis_id"][:8]
             labels[item["analysis_id"]] = f'{item.get("company_name") or company_name or "Dataset"} · {stamp}'
         ids = [item["analysis_id"] for item in saved_workspaces]
-        active_id = mine.get("analysis_id") if isinstance(mine, dict) and mine.get("company_id") == company_id else None
+        active_id = (
+            mine.get("analysis_id")
+            if isinstance(mine, dict)
+            and mine.get("company_id") == company_id
+            and not mine.get("session_only")
+            else None
+        )
         selected_default = active_id if active_id in ids else ids[0]
         selected = st.selectbox(
             "Active dataset",
@@ -351,7 +367,11 @@ def workspace_picker():
                 st.session_state.pop("cases", None)
                 st.rerun()
         st.caption("Switching changes the active procurement analysis for this company.")
-    elif isinstance(mine, dict) and mine.get("company_id") == company_id:
+    elif (
+        isinstance(mine, dict)
+        and mine.get("company_id") == company_id
+        and not mine.get("session_only")
+    ):
         st.caption("ACTIVE COMPANY")
         st.write(mine.get("name", company_name or "Your company"))
     else:
@@ -394,8 +414,11 @@ def current(allow_empty=False):
         st.page_link("pages/connect.py", label="Connect your data", icon=":material/upload_file:")
         st.stop()
 
-    if not isinstance(mine, dict):
+    if not isinstance(mine, dict) or mine.get("session_only"):
+        # Do not let a session-only demo pack masquerade as a persisted
+        # company workspace when the user switches back to persistent mode.
         mine = None
+        st.session_state.pop("mine", None)
 
     if mine is not None:
         if mine.get("company_id") != company_id:
