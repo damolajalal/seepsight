@@ -51,33 +51,11 @@ if DEMO_MODE:
     st.warning("DEMO MODE IS ON · Data is held in memory only. Keep this session open until your video is recorded; a refresh or restart may clear it.")
 else:
     st.info("Persistent mode is active. Dataset storage uses your company's Firestore workspace.")
-    with st.expander("Cloud storage diagnostics", expanded=False):
-        try:
-            status = firestore_db.get_firestore_status()
-            st.success("Firestore read access: available.") if status.get("connected") else st.error("Firestore read access: unavailable.")
-        except Exception:
-            st.error("Firestore read access could not be verified.")
 
-st.markdown("### Company workspace")
-st.write(f"**{company_name}**")
-st.caption("Your upload will be associated with the signed-in company account.")
-if DEMO_MODE:
-    saved_groups = []
-    extendable_groups = []
-else:
-    st.markdown("### Database connections")
-    connection_ui.render_company_database_connections(company_id, account)
-    st.markdown("### Saved procurement datasets")
-    try:
-        saved_groups = firestore_db.get_company_dataset_groups(company_id)
-    except Exception:
-        saved_groups = []
-        st.warning("Saved datasets could not be loaded right now.")
-    if saved_groups:
-        for group in saved_groups:
-            st.write(f"**{group.get('company_name') or 'Procurement dataset'}**")
-            st.caption(f"{group.get('file_count', 0)} file(s) · {group.get('record_count', 0):,} normalized rows · {group.get('source_record_count', 0):,} source rows")
-    extendable_groups = [item for item in saved_groups if item.get("extendable") and item.get("file_items")]
+# Populated once below in the persistent-mode section. Keeping placeholders
+# here avoids duplicate Firestore reads and duplicate connection UI rendering.
+saved_groups = []
+extendable_groups = []
 
 CURRENCIES = ["NGN", "KES", "GHS", "ZAR", "USD", "EUR", "GBP", "TZS", "UGX", "INR"]
 NOT_MAPPED = "— Not present in this file —"
