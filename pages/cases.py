@@ -3,7 +3,8 @@ import streamlit as st
 
 from seepsight import plain, ui, workspace
 
-w, f = workspace.current(), workspace.current()["findings"]
+w = workspace.current()
+f = w["findings"]
 ui.page_header("Cases and actions", "Who is looking into each issue, and what has happened so far.")
 cs = workspace.cases()
 rows = []
