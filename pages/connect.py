@@ -118,27 +118,9 @@ def _fingerprint(uploaded_files):
 
 
 def _template_csv():
-    sample = {
-        "po_id": "PO-0001",
-        "supplier": "Example Supplies Ltd",
-        "po_date": "2026-01-15",
-        "ordered_qty": 100,
-        "po_unit_price": 250.00,
-        "branch": "Main branch",
-        "department": "Operations",
-        "product": "Cartons",
-        "promised_date": "2026-01-25",
-        "received_date": "2026-01-24",
-        "received_qty": 95,
-        "invoice_qty": 100,
-        "invoice_unit_price": 250.00,
-        "invoice_date": "2026-01-30",
-        "approval_requested_at": "2026-01-15 09:00",
-        "approval_completed_at": "2026-01-16 14:00",
-    }
+    """Return a genuinely blank template containing headers only."""
     columns = [plain.FIELD_LABELS.get(field, field) for field in engine.FLAT_FIELDS]
-    row = [sample.get(field, "") for field in engine.FLAT_FIELDS]
-    return pd.DataFrame([row], columns=columns).to_csv(index=False)
+    return pd.DataFrame(columns=columns).to_csv(index=False)
 
 
 def _derived_cache():
