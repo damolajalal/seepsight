@@ -115,7 +115,10 @@ else:
     # Remove any legacy session-only demo pack before rendering a page.
     st.session_state["seepsight_demo_mode"] = False
     mine = st.session_state.get("mine")
-    if isinstance(mine, dict) and mine.get("session_only"):
+    if isinstance(mine, dict) and (
+        mine.get("session_only")
+        or str(mine.get("kind", "company")).strip().lower() == "demo"
+    ):
         st.session_state.pop("mine", None)
         st.session_state.pop("seepsight_demo_workspace", None)
 
