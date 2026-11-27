@@ -233,14 +233,16 @@ def execute_company_connection_query(company_id, connection_id, sql,
             timeout_seconds=effective_timeout,
         )
     except Exception:
-        firestore_db.write_company_audit_event(
-            company_id, "connection.query_failed", "connection", connection_id,
-            {"provider": profile.get("provider")},
-        )
+        if not st.session_state.get("seepsight_demo_mode"):
+            firestore_db.write_company_audit_event(
+                company_id, "connection.query_failed", "connection", connection_id,
+                {"provider": profile.get("provider")},
+            )
         raise
-    firestore_db.write_company_audit_event(
-        company_id, "connection.query_executed", "connection", connection_id,
-        {"provider": result.get("provider"), "row_count": result.get("row_count"),
-         "truncated": result.get("truncated")},
-    )
+    if not st.session_state.get("seepsight_demo_mode"):
+        firestore_db.write_company_audit_event(
+            company_id, "connection.query_executed", "connection", connection_id,
+            {"provider": result.get("provider"), "row_count": result.get("row_count"),
+             "truncated": result.get("truncated")},
+        )
     return result
