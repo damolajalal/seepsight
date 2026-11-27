@@ -222,6 +222,11 @@ def restore_latest(company_id, analysis_id=None):
         return None
 
     summary, tables = saved["summary"], saved["tables"]
+    # Historical demonstration workspaces must never appear as customer data.
+    if str(summary.get("kind", "company")).strip().lower() == "demo":
+        cache.pop(cache_key, None)
+        return None
+
     pack = {
         "name": summary.get("company_name", "Your company"),
         "kind": summary.get("kind", "company"),
@@ -272,9 +277,13 @@ def has_company_data():
 
     # Demo workspaces are deliberately ephemeral. Never count one as
     # durable company data after Demo Mode has been switched off.
-    if isinstance(mine, dict) and mine.get("session_only"):
+    if isinstance(mine, dict) and (
+        mine.get("session_only")
+        or str(mine.get("kind", "company")).strip().lower() == "demo"
+    ):
         mine = None
         st.session_state.pop("mine", None)
+        st.session_state.pop("seepsight_demo_workspace", None)
 
     if company_id and not isinstance(mine, dict):
         mine = restore_latest(company_id)
@@ -311,6 +320,7 @@ def workspace_picker():
         isinstance(mine, dict)
         and mine.get("company_id") == company_id
         and not mine.get("session_only")
+        and str(mine.get("kind", "company")).strip().lower() != "demo"
     ):
         st.caption(f"ACTIVE ANALYSIS · {mine.get('name') or company_name or 'Company data'}")
     else:
