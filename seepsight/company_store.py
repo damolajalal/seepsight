@@ -174,15 +174,23 @@ def get_company_for_user(uid):
         raise PermissionError("Your account has no company association.")
 
     company_ref = client.collection("companies").document(company_id)
+    member_ref = company_ref.collection("members").document(uid)
 
-    company_snapshot = company_ref.get()
-    member_snapshot = (
-        company_ref.collection("members")
-        .document(uid)
-        .get()
-    )
+    # Fetch company and membership together to avoid two sequential
+    # Firestore network round trips on every authenticated app rerun.
+    snapshots = {
+        snapshot.reference.path: snapshot
+        for snapshot in client.get_all([company_ref, member_ref])
+    }
+    company_snapshot = snapshots.get(company_ref.path)
+    member_snapshot = snapshots.get(member_ref.path)
 
-    if not company_snapshot.exists or not member_snapshot.exists:
+    if (
+        company_snapshot is None
+        or member_snapshot is None
+        or not company_snapshot.exists
+        or not member_snapshot.exists
+    ):
         raise PermissionError("Your company membership could not be verified.")
 
     company_data = company_snapshot.to_dict() or {}
