@@ -164,7 +164,7 @@ def enrich_question(question, company_id):
                 "project_id": settings["project_id"],
                 "dataset_id": settings["dataset_id"],
             }
-        rendered = json.dumps(records, ensure_ascii=False, default=str, indent=2)
+        rendered = json.dumps(records, ensure_ascii=False, default=str, indent=2).replace("`", "\\u0060")
         return {
             "status": "ok",
             "view": view,
