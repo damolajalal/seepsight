@@ -45,6 +45,31 @@ class AskEngineTests(unittest.TestCase):
         self.assertIn("NGN 120,000.00", result["answer"])
         self.assertIsNotNone(result["table"])
 
+    def test_supplier_specific_question_uses_grouped_finding_supplier_names(self):
+        self.workspace["findings"] = pd.DataFrame([
+            {
+                "finding_id": "F-GROUP-1",
+                "finding_type": "Short delivery",
+                "entity": "Multiple suppliers",
+                "supplier_names": ["Northstar Supplies", "Cedarline Traders"],
+                "severity": "High",
+                "affected_orders": 2,
+                "identified_exposure": 190000.0,
+            }
+        ])
+        self.workspace["evidence"] = pd.DataFrame([
+            {"finding_id": "F-GROUP-1", "supplier": "Northstar Supplies", "exposure": 120000.0},
+            {"finding_id": "F-GROUP-1", "supplier": "Cedarline Traders", "exposure": 70000.0},
+        ])
+
+        result = answer_question(
+            self.workspace, "What is the potential exposure for Cedarline Traders?"
+        )
+
+        self.assertIn("Cedarline Traders", result["answer"])
+        self.assertIn("NGN 70,000.00", result["answer"])
+        self.assertIn("1 finding group", result["answer"])
+
     def test_issue_type_exposure_question_ranks_finding_types(self):
         result = answer_question(
             self.workspace, "Which issue type contributes the most exposure?"
