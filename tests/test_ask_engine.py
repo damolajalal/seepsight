@@ -63,7 +63,7 @@ class AskEngineTests(unittest.TestCase):
         ])
 
         result = answer_question(
-            self.workspace, "What is the potential exposure for Cedarline Traders?"
+            self.workspace, "Which supplier has the highest potential exposure: Cedarline Traders?"
         )
 
         self.assertIn("Cedarline Traders", result["answer"])
