@@ -39,7 +39,7 @@ import pandas as pd
 CONTRACT = {
     "po_id": dict(kind="text", required=True, desc="Order / purchase order number",
                   names=["po", "poid", "pono", "ponumber", "poref", "orderno", "ordernumber", "orderid", "orderref",
-                         "purchaseorder", "purchaseorderno", "purchaseorderid", "purchaseordernumber", "purchaseorderreference", "reference", "ref", "order", "docno", "documentno"),
+                         "purchaseorder", "purchaseorderno", "purchaseorderid", "purchaseordernumber", "purchaseorderreference", "reference", "ref", "order", "docno", "documentno"]),
     "supplier": dict(kind="text", required=True, desc="Supplier / vendor name",
                      names=["supplier", "suppliername", "vendor", "vendorname", "seller", "payee", "creditor",
                             "contractor", "supplierid", "vendorid", "vendorcode", "suppliercode"]),
