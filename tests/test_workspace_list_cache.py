@@ -61,6 +61,25 @@ class CompanyWorkspaceListCacheTests(unittest.TestCase):
         self.assertEqual(restore.call_count, 2)
         self.assertNotIn("mine", self.session)
 
+    def test_workspace_picker_does_not_fetch_saved_analyses_on_initial_load(self):
+        fake_streamlit = SimpleNamespace(
+            session_state=self.session,
+            caption=lambda *args, **kwargs: None,
+            write=lambda *args, **kwargs: None,
+            button=lambda *args, **kwargs: False,
+        )
+        self.session["seepsight_auth"] = {
+            "company_id": "company-a",
+            "company_name": "Company A",
+        }
+        with patch.object(workspace, "st", fake_streamlit), patch.object(
+            workspace.firestore_db,
+            "get_company_analysis_workspaces",
+        ) as fetch:
+            workspace.workspace_picker()
+
+        fetch.assert_not_called()
+
     def test_successful_workspace_save_invalidates_company_cache(self):
         self.session["_workspace_list_cache"] = {
             "company-a": {"fetched_at": 1, "items": [{"analysis_id": "old"}]},
