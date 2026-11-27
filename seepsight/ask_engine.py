@@ -74,14 +74,32 @@ def answer_question(workspace, question):
         )
 
     # Supplier-specific questions should be scoped to the named supplier.
-    supplier_names = []
+    supplier_names = set()
     if "supplier" in findings.columns:
-        supplier_names = sorted(
-            {str(x) for x in findings["supplier"].dropna().unique()},
-            key=len,
-            reverse=True,
+        supplier_names.update(
+            str(value) for value in findings["supplier"].dropna()
         )
-    matched_supplier = next((name for name in supplier_names if name.casefold() in text), None)
+    if "supplier_names" in findings.columns:
+        for values in findings["supplier_names"].dropna():
+            if isinstance(values, (list, tuple, set)):
+                supplier_names.update(str(value) for value in values if value)
+    if "entity" in findings.columns:
+        supplier_names.update(
+            str(value) for value in findings["entity"].dropna()
+            if str(value).casefold() != "multiple suppliers"
+        )
+    if {"supplier"}.issubset(exposure.columns):
+        supplier_names.update(
+            str(value) for value in exposure["supplier"].dropna()
+        )
+    if "supplier" in evidence.columns:
+        supplier_names.update(
+            str(value) for value in evidence["supplier"].dropna()
+        )
+    supplier_names = sorted(supplier_names, key=len, reverse=True)
+    matched_supplier = next(
+        (name for name in supplier_names if name.casefold() in text), None
+    )
 
     # List/count questions about the full set of findings.
     if _contains(text, [r"how many", r"number of", r"count", r"all findings", r"list (?:the )?(?:issues|findings)", r"what did you find"]):
@@ -127,10 +145,48 @@ def answer_question(workspace, question):
     # Highest exposure / supplier comparison.
     if _contains(text, [r"which supplier", r"top supplier", r"supplier.*(?:highest|most|largest)", r"who.*(?:cost|exposure|overpay)"]):
         if matched_supplier:
-            subset = findings[findings["supplier"].astype(str).str.casefold() == matched_supplier.casefold()]
-            amount = pd.to_numeric(subset.get("identified_exposure", 0), errors="coerce").fillna(0).sum()
+            if not exposure.empty and {"supplier", "total"}.issubset(exposure.columns):
+                supplier_rows = exposure[
+                    exposure["supplier"].astype(str).str.casefold()
+                    == matched_supplier.casefold()
+                ]
+                amount = pd.to_numeric(
+                    supplier_rows["total"], errors="coerce"
+                ).fillna(0).sum()
+            else:
+                supplier_rows = pd.DataFrame()
+                if {"supplier", "exposure"}.issubset(evidence.columns):
+                    supplier_rows = evidence[
+                        evidence["supplier"].astype(str).str.casefold()
+                        == matched_supplier.casefold()
+                    ]
+                amount = pd.to_numeric(
+                    supplier_rows.get("exposure", pd.Series(dtype="float64")),
+                    errors="coerce",
+                ).fillna(0).sum()
+
+            if "supplier_names" in findings.columns:
+                relevant = findings[
+                    findings["supplier_names"].map(
+                        lambda values: isinstance(values, (list, tuple, set))
+                        and any(
+                            str(value).casefold() == matched_supplier.casefold()
+                            for value in values
+                        )
+                    )
+                ]
+            elif "supplier" in findings.columns:
+                relevant = findings[
+                    findings["supplier"].astype(str).str.casefold()
+                    == matched_supplier.casefold()
+                ]
+            else:
+                relevant = findings[
+                    findings.get("entity", pd.Series(index=findings.index, dtype="object"))
+                    .astype(str).str.casefold() == matched_supplier.casefold()
+                ]
             return finish(
-                f"{matched_supplier} has {len(subset)} finding(s) in this analysis, with "
+                f"{matched_supplier} appears in {len(relevant)} finding group(s) in this analysis, with "
                 f"{_money(currency, amount)} in potential cost exposure to review. "
                 "This is an investigation amount, not a confirmed loss."
             )
