@@ -46,6 +46,21 @@ class CompanyWorkspaceListCacheTests(unittest.TestCase):
         self.assertEqual(company_b[0]["analysis_id"], "b1")
         self.assertEqual(fetch.call_count, 2)
 
+
+    def test_session_only_demo_pack_is_not_counted_as_persistent_data(self):
+        self.session["seepsight_demo_mode"] = False
+        self.session["seepsight_auth"] = {"company_id": "company-a"}
+        self.session["mine"] = {
+            "company_id": "company-a",
+            "session_only": True,
+            "findings": [],
+        }
+        with patch.object(workspace, "restore_latest", return_value=None) as restore:
+            self.assertFalse(workspace.has_company_data())
+            self.assertIsNone(workspace.current(allow_empty=True))
+        self.assertEqual(restore.call_count, 2)
+        self.assertNotIn("mine", self.session)
+
     def test_successful_workspace_save_invalidates_company_cache(self):
         self.session["_workspace_list_cache"] = {
             "company-a": {"fetched_at": 1, "items": [{"analysis_id": "old"}]},
