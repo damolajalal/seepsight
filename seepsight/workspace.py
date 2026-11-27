@@ -8,6 +8,7 @@ the authenticated company. Demonstration datasets are not loaded here.
 import json
 import os
 import tempfile
+import time
 
 import pandas as pd
 import streamlit as st
@@ -106,6 +107,45 @@ def from_result(result, company, company_id):
 # 3. DURABLE WORKSPACE RESTORATION
 # =========================================================
 
+_WORKSPACE_LIST_CACHE_TTL_SECONDS = 15
+
+
+def _invalidate_workspace_list_cache(company_id=None):
+    """Invalidate only the current session's workspace-list cache."""
+    cache = st.session_state.get("_workspace_list_cache", {})
+    if not isinstance(cache, dict):
+        st.session_state.pop("_workspace_list_cache", None)
+        return
+    if company_id is None:
+        st.session_state.pop("_workspace_list_cache", None)
+    else:
+        cache.pop(str(company_id).strip(), None)
+
+
+def _company_workspace_list(company_id):
+    """Return a briefly cached, company-scoped list of saved analyses.
+
+    The cache is session-local and keyed by company ID, so it cannot share
+    workspace labels or IDs between company accounts. Successful saves
+    invalidate it immediately; the short TTL also bounds staleness when
+    another session changes the company's analyses.
+    """
+    company_id = str(company_id).strip()
+    cache = st.session_state.setdefault("_workspace_list_cache", {})
+    now = time.monotonic()
+    entry = cache.get(company_id)
+    if (
+        isinstance(entry, dict)
+        and isinstance(entry.get("items"), list)
+        and now - float(entry.get("fetched_at", 0)) < _WORKSPACE_LIST_CACHE_TTL_SECONDS
+    ):
+        return entry["items"]
+
+    items = firestore_db.get_company_analysis_workspaces(company_id)
+    cache[company_id] = {"fetched_at": now, "items": items}
+    return items
+
+
 def persist(pack, analysis_id):
     """Persist normally, or retain the pack in session-only demo mode."""
     if st.session_state.get("seepsight_demo_mode"):
@@ -127,7 +167,13 @@ def persist(pack, analysis_id):
             raise TypeError(f"Workspace table '{name}' is not a DataFrame.")
     summary = {"company_name": pack.get("name", ""), "currency": pack.get("cur", "NGN"), "run_log": pack.get("log", {}), "kind": pack.get("kind", "company")}
     dataset_group_id = pack.get("dataset_group_id")
-    return firestore_db.save_analysis_workspace(company_id, analysis_id, summary, tables, dataset_group_id=dataset_group_id)
+    saved = firestore_db.save_analysis_workspace(
+        company_id, analysis_id, summary, tables,
+        dataset_group_id=dataset_group_id,
+    )
+    if saved:
+        _invalidate_workspace_list_cache(company_id)
+    return saved
 
 
 def restore_latest(company_id, analysis_id=None):
@@ -212,8 +258,10 @@ def workspace_picker():
 
     mine = st.session_state.get("mine")
     try:
-        saved_workspaces = firestore_db.get_company_analysis_workspaces(company_id)
+        saved_workspaces = _company_workspace_list(company_id)
     except Exception:
+        # Do not cache failures: a transient Firestore issue should be retried
+        # on the next rerun rather than hiding newly available workspaces.
         saved_workspaces = []
 
     if saved_workspaces:
