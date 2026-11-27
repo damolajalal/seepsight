@@ -1,6 +1,8 @@
 
 """Seepsight AI-powered procurement intelligence and Firebase authentication."""
 
+import time
+
 import requests
 import streamlit as st
 
@@ -746,10 +748,25 @@ def _refresh_session_token(refresh_token):
         return None
 
 
+_AUTH_SESSION_CACHE_TTL_SECONDS = 1800
+
+
 def _verified_account(account):
-    """Verify the Firebase identity and re-resolve active company membership."""
+    """Verify Firebase identity once per short demo session, not on every rerun."""
     if not isinstance(account, dict):
         return None
+
+    uid_hint = str(account.get("uid") or "").strip()
+    cache = st.session_state.get("_verified_auth_session")
+    if (
+        uid_hint
+        and isinstance(cache, dict)
+        and cache.get("uid") == uid_hint
+        and isinstance(cache.get("verified"), dict)
+        and time.monotonic() - float(cache.get("verified_at", 0))
+        < _AUTH_SESSION_CACHE_TTL_SECONDS
+    ):
+        return cache["verified"]
 
     id_token = account.get("id_token")
     refresh_token = account.get("refresh_token")
@@ -812,10 +829,16 @@ def _verified_account(account):
         "id_token": id_token,
         "refresh_token": refresh_token,
     }
+    st.session_state["_verified_auth_session"] = {
+        "uid": uid,
+        "verified_at": time.monotonic(),
+        "verified": verified,
+    }
     return verified
 
 
 def logout():
+    st.session_state.pop("_verified_auth_session", None)
     st.session_state.pop("seepsight_auth", None)
     st.session_state.pop("mine", None)
     st.session_state.pop("chat", None)
