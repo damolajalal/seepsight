@@ -1549,6 +1549,22 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
     dropped["duplicate_orders_removed"] = n0 - len(o)
     order_keys = set(o["_key"].dropna())
 
+    def _apply_order_aggregates(order_frame, aggregate_frame):
+        """Attach one row per PO without creating pandas _x/_y measure columns."""
+        if aggregate_frame is None or aggregate_frame.empty:
+            return order_frame
+        lookup = aggregate_frame.set_index("_key")
+        for column in lookup.columns:
+            incoming = order_frame["_key"].map(lookup[column])
+            if column in order_frame.columns:
+                # A mapped transaction table is the more granular source. Use
+                # its aggregate where present, retaining the order export value
+                # only when the transaction table has no value for that PO.
+                order_frame[column] = incoming.combine_first(order_frame[column])
+            else:
+                order_frame[column] = incoming
+        return order_frame
+
     if "receipts" in typed_tables:
         r = typed_tables["receipts"]
         if "_key" in r and ({"received_date", "received_qty"} & set(r.columns)):
@@ -1558,7 +1574,8 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
             if "received_qty" in r.columns:
                 agg["received_qty"] = ("received_qty", "sum")
             if agg:
-                o = o.merge(r.groupby("_key").agg(**agg).reset_index(), on="_key", how="left")
+                receipt_aggregates = r.groupby("_key").agg(**agg).reset_index()
+                o = _apply_order_aggregates(o, receipt_aggregates)
 
     if "invoices" in typed_tables:
         v = typed_tables["invoices"].copy()
@@ -1603,7 +1620,7 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
                 "_overpriced_count": "invoice_overpriced_count",
                 "_overpriced_ids": "overpriced_invoice_ids",
             })
-            o = o.merge(g, on="_key", how="left")
+            o = _apply_order_aggregates(o, g)
         else:
             warnings.append("The invoices dataset was recognised but contained no mapped invoice measures to aggregate.")
 
@@ -1613,7 +1630,11 @@ def onboard_tables(files, sheets=None, overrides=None, config=None, client=None,
             if "approval_stage" in a and a["approval_stage"].astype(str).str.contains("financ", case=False, na=False).any():
                 a = a[a["approval_stage"].astype(str).str.contains("financ", case=False, na=False)]
             a = a.sort_values("approval_completed_at").groupby("_key").tail(1)
-            o = o.merge(a[["_key", "approval_requested_at", "approval_completed_at"]], on="_key", how="left")
+            approval_aggregates = (
+                a[["_key", "approval_requested_at", "approval_completed_at"]]
+                .drop_duplicates("_key", keep="last")
+            )
+            o = _apply_order_aggregates(o, approval_aggregates)
 
     # Relationship coverage is diagnostic only: unmatched source rows are kept.
     rel_tables = {k: v.drop(columns=["_key"], errors="ignore") for k, v in typed_tables.items()}
