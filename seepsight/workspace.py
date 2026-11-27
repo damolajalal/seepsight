@@ -123,13 +123,14 @@ def _invalidate_workspace_list_cache(company_id=None):
 
 
 def _company_workspace_list(company_id):
-    """Return a briefly cached, company-scoped list of saved analyses.
+    """Return saved analyses only when persistent workspace mode is active.
 
-    The cache is session-local and keyed by company ID, so it cannot share
-    workspace labels or IDs between company accounts. Successful saves
-    invalidate it immediately; the short TTL also bounds staleness when
-    another session changes the company's analyses.
+    Session-only demonstration mode must not read procurement workspaces from
+    Firestore, even if this helper is called directly.
     """
+    if st.session_state.get("seepsight_demo_mode"):
+        return []
+
     company_id = str(company_id).strip()
     cache = st.session_state.setdefault("_workspace_list_cache", {})
     now = time.monotonic()
@@ -196,7 +197,10 @@ def _invalidate_workspace_restore_cache(company_id=None):
 
 
 def restore_latest(company_id, analysis_id=None):
-    """Restore a company workspace, reusing a short-lived session-local result."""
+    """Restore a company workspace only when persistent mode is active."""
+    if st.session_state.get("seepsight_demo_mode"):
+        return None
+
     company_id = str(company_id or "").strip()
     if not company_id:
         raise ValueError("An authenticated company ID is required.")
@@ -314,6 +318,10 @@ def workspace_picker():
 
     st.caption("COMPANY WORKSPACE")
     st.write(company_name or "Your company")
+
+    if st.session_state.get("seepsight_demo_mode"):
+        st.caption("Saved procurement analyses are paused during this session-only demonstration.")
+        return
 
     mine = st.session_state.get("mine")
     if (
