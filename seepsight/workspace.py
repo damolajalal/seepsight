@@ -173,18 +173,71 @@ def persist(pack, analysis_id):
     )
     if saved:
         _invalidate_workspace_list_cache(company_id)
+        _invalidate_workspace_restore_cache(company_id)
     return saved
 
 
+_WORKSPACE_RESTORE_CACHE_TTL_SECONDS = 15
+
+
+def _invalidate_workspace_restore_cache(company_id=None):
+    """Invalidate restored workspace data for this session."""
+    cache = st.session_state.get("_workspace_restore_cache", {})
+    if not isinstance(cache, dict):
+        st.session_state.pop("_workspace_restore_cache", None)
+        return
+    if company_id is None:
+        st.session_state.pop("_workspace_restore_cache", None)
+        return
+    company_id = str(company_id).strip()
+    for key in list(cache):
+        if isinstance(key, tuple) and key and key[0] == company_id:
+            cache.pop(key, None)
+
+
 def restore_latest(company_id, analysis_id=None):
-    """Rebuild a dashboard workspace from the authenticated company's latest run."""
-    saved = firestore_db.get_latest_analysis_workspace(company_id, analysis_id=analysis_id)
+    """Restore a company workspace, reusing a short-lived session-local result."""
+    company_id = str(company_id or "").strip()
+    if not company_id:
+        raise ValueError("An authenticated company ID is required.")
+
+    cache = st.session_state.setdefault("_workspace_restore_cache", {})
+    cache_key = (company_id, str(analysis_id or "__latest__"))
+    now = time.monotonic()
+    entry = cache.get(cache_key)
+    if (
+        isinstance(entry, dict)
+        and isinstance(entry.get("pack"), dict)
+        and now - float(entry.get("fetched_at", 0)) < _WORKSPACE_RESTORE_CACHE_TTL_SECONDS
+    ):
+        return entry["pack"]
+
+    saved = firestore_db.get_latest_analysis_workspace(
+        company_id, analysis_id=analysis_id
+    )
     if not saved:
+        # Do not cache missing results; a newly saved workspace should appear
+        # immediately on the next attempt.
+        cache.pop(cache_key, None)
         return None
+
     summary, tables = saved["summary"], saved["tables"]
-    pack = {"name": summary.get("company_name", "Your company"), "kind": summary.get("kind", "company"), "cur": summary.get("currency", "NGN"), "log": summary.get("run_log", {}), "company_id": company_id, "analysis_id": saved["analysis_id"], "dataset_group_id": summary.get("dataset_group_id")}
-    for name in ("findings", "evidence", "exposure", "monthly", "supplier_month", "risk", "explanations", "scorecard"):
+    pack = {
+        "name": summary.get("company_name", "Your company"),
+        "kind": summary.get("kind", "company"),
+        "cur": summary.get("currency", "NGN"),
+        "log": summary.get("run_log", {}),
+        "company_id": company_id,
+        "analysis_id": saved["analysis_id"],
+        "dataset_group_id": summary.get("dataset_group_id"),
+    }
+    for name in (
+        "findings", "evidence", "exposure", "monthly",
+        "supplier_month", "risk", "explanations", "scorecard",
+    ):
         pack[name] = pd.DataFrame(tables.get(name, []))
+
+    cache[cache_key] = {"fetched_at": now, "pack": pack}
     return pack
 
 # =========================================================
