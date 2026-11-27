@@ -16,7 +16,16 @@ def _build_excel_report(summary_frame, records_frame):
     return buf.getvalue()
 
 w = workspace.current()
-cur, f, ev = w["cur"], w["findings"], w["evidence"]
+cur = w.get("cur", "NGN")
+f = w.get("findings")
+if not isinstance(f, pd.DataFrame):
+    f = pd.DataFrame()
+ev = w.get("evidence")
+if not isinstance(ev, pd.DataFrame):
+    ev = pd.DataFrame()
+for column in ("finding_id", "severity", "identified_exposure", "order_value_held_up"):
+    if column not in f.columns:
+        f[column] = pd.Series(dtype="object")
 ui.page_header("Reports", "A summary you can share, with the records behind it.")
 cs = workspace.cases()
 summary = f.assign(Issue=f.apply(plain.title, axis=1),
