@@ -200,6 +200,38 @@ class DatasetRecordPersistenceTests(unittest.TestCase):
         self.assertTrue(result["coverage_complete"])
         self.assertFalse(result["scan_limited"])
 
+    def test_search_can_explicitly_scan_more_than_default_read_budget(self):
+        total = 5001
+        metadata = MagicMock(exists=True)
+        metadata.to_dict.return_value = {
+            "records_status": "complete",
+            "record_count": total,
+        }
+        self.dataset_ref.get.return_value = metadata
+        snapshots = []
+        for number in range(total):
+            row = MagicMock()
+            row.to_dict.return_value = {
+                "po_id": f"PO-{number}",
+                "supplier": "Target Supplier" if number == total - 1 else "Other Supplier",
+                "_record_number": number,
+            }
+            snapshots.append(row)
+
+        with patch.object(
+            firestore_db, "_stream_query_pages", return_value=iter(snapshots)
+        ):
+            result = firestore_db.search_dataset_records(
+                "company-a", "dataset-a", ["Target Supplier"],
+                limit=5, scan_limit=None,
+            )
+
+        self.assertEqual(result["scanned_count"], total)
+        self.assertEqual(result["match_count"], 1)
+        self.assertEqual(result["records"][0]["po_id"], f"PO-{total - 1}")
+        self.assertTrue(result["coverage_complete"])
+        self.assertFalse(result["scan_limited"])
+
     def test_search_rejects_unbounded_result_limits(self):
         with self.assertRaisesRegex(ValueError, "between 1 and 25"):
             firestore_db.search_dataset_records(
