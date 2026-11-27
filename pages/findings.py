@@ -6,7 +6,13 @@ import streamlit as st
 from seepsight import hybrid_ai, plain, ui, workspace
 
 w = workspace.current()
-cur, f = w["cur"], w["findings"]
+cur = w.get("cur", "NGN")
+f = w.get("findings")
+if not isinstance(f, pd.DataFrame):
+    f = pd.DataFrame()
+evidence_frame = w.get("evidence")
+if not isinstance(evidence_frame, pd.DataFrame):
+    evidence_frame = pd.DataFrame()
 ui.page_header("Findings", "Grouped procurement issues, with affected orders and supporting evidence.")
 
 # ---------------------------------------------------------
@@ -143,7 +149,11 @@ if st.session_state.get("pick_issue") not in ids:
 fid = st.selectbox("Choose an issue to review", ids, key="pick_issue",
                    format_func=lambda i: f"{plain.title(f[f['finding_id'] == i].iloc[0])}")
 r = f[f["finding_id"] == fid].iloc[0]
-ev = w["evidence"][w["evidence"]["finding_id"] == fid]
+ev = (
+    evidence_frame[evidence_frame["finding_id"] == fid].copy()
+    if "finding_id" in evidence_frame.columns
+    else pd.DataFrame()
+)
 case = workspace.cases().setdefault(fid, {"status": "Open", "owner": "", "note": "", "history": []})
 
 st.markdown(f"## {plain.title(r)}")
