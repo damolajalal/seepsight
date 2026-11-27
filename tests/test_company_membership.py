@@ -53,6 +53,17 @@ class CompanyMembershipTests(unittest.TestCase):
             "companies": self.companies_collection,
         }[name]
 
+        # Mirror Firestore get_all() results for the company and membership
+        # references while preserving the production path-based lookup.
+        company_ref = self.companies_collection.document.return_value
+        member_ref = company_ref.collection.return_value.document.return_value
+        self.company_snapshot.reference.path = company_ref.path
+        self.member_snapshot.reference.path = member_ref.path
+        self.client.get_all.return_value = [
+            self.company_snapshot,
+            self.member_snapshot,
+        ]
+
         self.client_patch = patch.object(
             company_store, "get_firestore_client", return_value=self.client
         )
