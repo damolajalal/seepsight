@@ -1837,9 +1837,10 @@ def search_dataset_records(
 ):
     """Search a tenant-owned dataset in record order using paginated reads.
 
-    Returned AI context remains bounded by limit. By default every stored row
-    is scanned so a matching record in the middle cannot be silently missed.
-    An explicit scan_limit is a read budget and reports incomplete coverage.
+    Returned AI context remains bounded by limit. Scanning is capped at 5,000
+    rows by default to protect Firestore read usage and response time. Callers
+    may pass scan_limit=None to request a full scan; coverage_complete and
+    scan_limited always disclose whether every stored row was examined.
     """
     if collection_name not in {"records", "source_records"}:
         raise ValueError("collection_name must be 'records' or 'source_records'.")
