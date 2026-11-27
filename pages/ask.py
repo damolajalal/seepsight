@@ -4,7 +4,7 @@ import uuid
 
 import streamlit as st
 
-from seepsight import ask_engine, hybrid_ai, hybrid_retrieval, ui, workspace
+from seepsight import ask_engine, bigquery_enrichment, hybrid_ai, hybrid_retrieval, ui, workspace
 
 w = workspace.current()
 company_id = w.get("company_id")
@@ -12,6 +12,14 @@ ui.page_header(
     "Ask Seepsight",
     "Ask questions grounded in your company's saved procurement analysis and evidence.",
 )
+account = st.session_state.get("seepsight_auth") or {}
+if account.get("role") == "owner" and company_id:
+    with st.expander("BigQuery connection setup", expanded=False):
+        st.caption(
+            "Use this company ID in the BigQuery enrichment allowlist in "
+            "Streamlit Cloud secrets. It is an identifier, not a password."
+        )
+        st.code(str(company_id))
 
 # ---------------------------------------------------------
 # Grounded question answering
@@ -78,6 +86,24 @@ if question:
     result = ask_engine.answer_question(w, question)
     response = result["answer"]
     table = result.get("table")
+    # Optional BigQuery context is additive. Any connection/query failure leaves
+    # the existing workspace answer and supporting table unchanged.
+    bigquery_result = bigquery_enrichment.enrich_question(question, company_id)
+    if bigquery_result.get("status") == "ok":
+        response += (
+            "\n\n**Additional BigQuery reference** "
+            f"(`{bigquery_result['project_id']}.{bigquery_result['dataset_id']}."
+            f"{bigquery_result['view']}`):\n"
+            "The following read-only records come from the separately configured "
+            "BigQuery dataset; they are supplementary and are not merged with "
+            "the current session upload.\n\n"
+            "```json\n"
+            + bigquery_result["records_text"]
+            + "\n```"
+        )
+    elif bigquery_result.get("status") == "unavailable":
+        # Deliberately keep the fallback quiet: the original answer remains valid.
+        pass
     chat.extend([
         {"role": "user", "content": question},
         {"role": "assistant", "content": response, "table": table},
