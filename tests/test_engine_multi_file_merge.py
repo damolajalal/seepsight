@@ -175,6 +175,55 @@ class MultiFileDatasetMergeTests(unittest.TestCase):
         self.assertTrue(pd.isna(cleaned.iloc[2]))
         self.assertTrue(pd.isna(cleaned.iloc[3]))
 
+    def test_transaction_aggregates_do_not_shadow_order_columns_with_suffixes(self):
+        orders = pd.DataFrame([{
+            "po_id": "PO-1",
+            "supplier": "Supplier A",
+            "po_date": "2026-01-01",
+            "ordered_qty": 10,
+            "po_unit_price": 10,
+            "received_qty": 2,
+            "received_date": "2026-01-02",
+            "invoice_qty": 2,
+            "invoice_unit_price": 10,
+            "approval_requested_at": "2026-01-01",
+            "approval_completed_at": "2026-01-02",
+        }])
+        receipts = pd.DataFrame([{
+            "receipt_id": "REC-1", "po_id": "PO-1",
+            "received_qty": 8, "received_date": "2026-01-05",
+        }])
+        invoices = pd.DataFrame([{
+            "invoice_id": "INV-1", "po_id": "PO-1",
+            "invoice_qty": 9, "invoice_unit_price": 12,
+            "invoice_date": "2026-01-06",
+        }])
+        approvals = pd.DataFrame([{
+            "approval_event_id": "APR-1", "po_id": "PO-1",
+            "approval_requested_at": "2026-01-01",
+            "approval_completed_at": "2026-01-04",
+            "approval_stage": "Finance",
+        }])
+
+        result = engine.onboard_tables({
+            "orders": orders,
+            "receipts": receipts,
+            "invoices": invoices,
+            "approvals": approvals,
+        }, verbose=False, with_ml=False)
+
+        self.assertNotIn("stopped", result)
+        ledger = result["ledger"]
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(ledger.loc[0, "received_qty"], 8)
+        self.assertEqual(ledger.loc[0, "received_date"], pd.Timestamp("2026-01-05"))
+        self.assertEqual(ledger.loc[0, "invoice_qty"], 9)
+        self.assertEqual(ledger.loc[0, "invoice_unit_price"], 12)
+        self.assertEqual(
+            ledger.loc[0, "approval_completed_at"], pd.Timestamp("2026-01-04")
+        )
+        self.assertFalse(any(column.endswith(("_x", "_y")) for column in ledger.columns))
+
     def test_missing_transaction_identifier_requires_review_not_silent_acceptance(self):
         result = engine.onboard_tables({
             "orders": pd.DataFrame([{
