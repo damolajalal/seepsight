@@ -1,6 +1,8 @@
 """Failure-safety tests for revisioned durable analysis workspaces."""
 
+import json
 import unittest
+import zlib
 from unittest.mock import MagicMock, patch
 
 from seepsight import firestore_db
@@ -37,6 +39,38 @@ class AnalysisWorkspacePersistenceTests(unittest.TestCase):
         )
         self.cleanup_patch.start()
         self.addCleanup(self.cleanup_patch.stop)
+
+    def test_analysis_table_loader_reads_and_validates_compressed_chunks(self):
+        data_ref = MagicMock()
+        table_ref = MagicMock()
+        data_ref.collection.return_value.document.return_value = table_ref
+        table_ref.get.return_value.exists = True
+        table_ref.get.return_value.to_dict.return_value = {
+            "storage_format": "zlib-json-v1",
+            "row_count": 1,
+        }
+        chunk_payload = zlib.compress(
+            json.dumps([{"finding_id": "F-1"}]).encode("utf-8")
+        )
+        chunk_snapshot = MagicMock()
+        chunk_snapshot.to_dict.return_value = {
+            "payload_zlib_json": chunk_payload,
+        }
+        with patch.object(
+            firestore_db,
+            "_stream_query_pages",
+            return_value=[chunk_snapshot],
+        ), patch.object(
+            firestore_db,
+            "_denormalise_workspace_value",
+            side_effect=lambda value: value,
+        ):
+            name, rows = firestore_db._load_analysis_workspace_table(
+                data_ref, "findings"
+            )
+
+        self.assertEqual(name, "findings")
+        self.assertEqual(rows, [{"finding_id": "F-1"}])
 
     def test_complete_revision_is_activated_only_after_rows_commit(self):
         with patch(
