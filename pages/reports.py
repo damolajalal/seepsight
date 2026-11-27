@@ -1,5 +1,6 @@
 import io
 
+import pandas as pd
 import streamlit as st
 
 from seepsight import plain, ui, workspace
