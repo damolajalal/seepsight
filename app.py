@@ -118,6 +118,10 @@ else:
     if not st.session_state.get("_seepsight_session_workspace_initialized"):
         for key in (
             "mine", "seepsight_demo_workspace", "cases", "chat",
+            "connect_raw", "connect_source_file_bytes", "connect_upload_fingerprint",
+            "connect_check", "connect_check_signature", "connect_dataset_types",
+            "connect_dataset_group_signature", "connect_dataset_group_id",
+            "_connect_derived_cache", "_connect_saved_group_cache",
             "_workspace_list_cache", "_workspace_restore_cache",
             "_show_saved_analysis_picker",
         ):
