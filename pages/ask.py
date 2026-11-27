@@ -12,6 +12,14 @@ ui.page_header(
     "Ask Seepsight",
     "Ask questions grounded in your company's saved procurement analysis and evidence.",
 )
+account = st.session_state.get("seepsight_auth") or {}
+if account.get("role") == "owner" and company_id:
+    with st.expander("BigQuery connection setup", expanded=False):
+        st.caption(
+            "Use this company ID in the BigQuery enrichment allowlist in "
+            "Streamlit Cloud secrets. It is an identifier, not a password."
+        )
+        st.code(str(company_id))
 
 # ---------------------------------------------------------
 # Grounded question answering
