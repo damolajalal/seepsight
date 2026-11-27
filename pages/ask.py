@@ -83,15 +83,15 @@ if question:
     bigquery_result = bigquery_enrichment.enrich_question(question, company_id)
     if bigquery_result.get("status") == "ok":
         response += (
-            "\\n\\n**Additional BigQuery reference** "
+            "\n\n**Additional BigQuery reference** "
             f"(`{bigquery_result['project_id']}.{bigquery_result['dataset_id']}."
-            f"{bigquery_result['view']}`):\\n"
+            f"{bigquery_result['view']}`):\n"
             "The following read-only records come from the separately configured "
             "BigQuery dataset; they are supplementary and are not merged with "
-            "the current session upload.\\n\\n"
-            "```json\\n"
+            "the current session upload.\n\n"
+            "```json\n"
             + bigquery_result["records_text"]
-            + "\\n```"
+            + "\n```"
         )
     elif bigquery_result.get("status") == "unavailable":
         # Deliberately keep the fallback quiet: the original answer remains valid.
