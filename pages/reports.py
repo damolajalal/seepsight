@@ -6,12 +6,8 @@ from seepsight import plain, ui, workspace
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _build_excel_report(summary_csv, records_csv):
+def _build_excel_report(summary_frame, records_frame):
     """Build identical report workbooks once per distinct report payload."""
-    import pandas as pd
-
-    summary_frame = pd.read_csv(io.StringIO(summary_csv))
-    records_frame = pd.read_csv(io.StringIO(records_csv))
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
         summary_frame.to_excel(xw, sheet_name="Issues identified", index=False)
@@ -36,10 +32,7 @@ st.caption("Amounts are potential extra costs to review, not confirmed or recove
 
 records = ev.rename(columns={**plain.EVIDENCE_LABELS, "finding_id": "Reference", "exposure_basis": "What the amount means"})
 with st.spinner("Preparing your report..."):
-    report_xlsx = _build_excel_report(
-        summary.to_csv(index=False),
-        records.to_csv(index=False),
-    )
+    report_xlsx = _build_excel_report(summary, records)
 a, b, c = st.columns(3)
 a.download_button("Download report (Excel)", report_xlsx, file_name="seepsight_report.xlsx",
                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
