@@ -111,19 +111,22 @@ else:
     # Display authenticated account information and branding.
     auth.require_auth()
 
-    # Customer workspaces always use authenticated, persistent company data.
-    # Remove any legacy session-only demo pack before rendering a page.
-    st.session_state["seepsight_demo_mode"] = False
-    mine = st.session_state.get("mine")
-    if isinstance(mine, dict) and (
-        mine.get("session_only")
-        or str(mine.get("kind", "company")).strip().lower() == "demo"
-    ):
-        st.session_state.pop("mine", None)
-        st.session_state.pop("seepsight_demo_workspace", None)
+    # Demonstration mode: procurement data exists only in this browser session.
+    # Clear any workspace restored by an earlier persistent-mode release once
+    # when this authenticated session starts; never query saved analyses here.
+    st.session_state["seepsight_demo_mode"] = True
+    if not st.session_state.get("_seepsight_session_workspace_initialized"):
+        for key in (
+            "mine", "seepsight_demo_workspace", "cases", "chat",
+            "_workspace_list_cache", "_workspace_restore_cache",
+            "_show_saved_analysis_picker",
+        ):
+            st.session_state.pop(key, None)
+        st.session_state["_seepsight_session_workspace_initialized"] = True
 
     ui.sidebar_header()
-    workspace.workspace_picker()
+    st.sidebar.caption("SESSION-ONLY DEMONSTRATION")
+    st.sidebar.caption("Uploaded procurement data is cleared when this session ends.")
 
     # Render the selected workspace page.
     page.run()
