@@ -1854,10 +1854,27 @@ def build_data_pack(result, company, source_file="", answer_key=None, explanatio
             late_rate=(g["days_late"] > cfg["late_days"]).mean() if "days_late" in g else np.nan,
             fill_rate=(g.loc[known, "received_qty"].sum() / g.loc[known, "ordered_qty"].sum()) if known.any() else np.nan,
             avg_approval_days=g["approval_days"].mean() if "approval_days" in g else np.nan))
-    pd.DataFrame([dict(po_month=k, **agg(g).to_dict()) for k, g in led.groupby("po_month")]) \
-        .to_csv(os.path.join(out_dir, "monthly_trend.csv"), index=False)
-    pd.DataFrame([dict(supplier=k[0], po_month=k[1], **agg(g).to_dict()) for k, g in led.groupby(["supplier", "po_month"])]) \
-        .to_csv(os.path.join(out_dir, "supplier_month.csv"), index=False)
+    trend_metrics = [
+        "orders", "spend", "avg_days_late", "late_rate",
+        "fill_rate", "avg_approval_days",
+    ]
+    monthly_rows = [
+        dict(po_month=k, **agg(g).to_dict())
+        for k, g in led.groupby("po_month")
+    ]
+    supplier_month_rows = [
+        dict(supplier=k[0], po_month=k[1], **agg(g).to_dict())
+        for k, g in led.groupby(["supplier", "po_month"])
+    ]
+    # Keep a readable CSV schema even when every source order is rejected
+    # during validation. A headerless empty CSV makes pandas.read_csv raise
+    # EmptyDataError and prevents the company workspace from loading.
+    pd.DataFrame(
+        monthly_rows, columns=["po_month", *trend_metrics]
+    ).to_csv(os.path.join(out_dir, "monthly_trend.csv"), index=False)
+    pd.DataFrame(
+        supplier_month_rows, columns=["supplier", "po_month", *trend_metrics]
+    ).to_csv(os.path.join(out_dir, "supplier_month.csv"), index=False)
 
     # 5. predicted risk (kept separate from confirmed findings)
     tr = result.get("trace_all")
