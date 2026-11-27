@@ -838,12 +838,18 @@ def _verified_account(account):
 
 
 def logout():
-    st.session_state.pop("_verified_auth_session", None)
-    st.session_state.pop("seepsight_auth", None)
-    st.session_state.pop("mine", None)
-    st.session_state.pop("chat", None)
-    st.session_state.pop("cases", None)
-    st.session_state.pop("seepsight_pending_verification_token", None)
+    for key in (
+        "_verified_auth_session", "seepsight_auth", "mine",
+        "seepsight_demo_workspace", "chat", "cases",
+        "connect_raw", "connect_source_file_bytes",
+        "connect_upload_fingerprint", "connect_check",
+        "connect_check_signature", "connect_dataset_types",
+        "connect_dataset_group_signature", "connect_dataset_group_id",
+        "_connect_derived_cache", "_connect_saved_group_cache",
+        "_seepsight_session_workspace_initialized",
+        "seepsight_pending_verification_token",
+    ):
+        st.session_state.pop(key, None)
     st.rerun()
 
 
