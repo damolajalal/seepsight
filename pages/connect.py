@@ -895,7 +895,12 @@ if result and st.session_state.get("connect_check_signature") == check_signature
 
         st.markdown("### Step 6. Open your company workspace")
         st.caption("Your results will stay in this session." if DEMO_MODE else "Your results will be attached to the signed-in company identity shown at the top of this page.")
-        if DEMO_MODE:
+        if DEMO_MODE and not (
+            st.session_state.get("_done")
+            and isinstance(st.session_state.get("mine"), dict)
+            and st.session_state["mine"].get("session_only")
+            and st.session_state["mine"].get("dataset_group_id") == dataset_group_id
+        ):
             try:
                 with st.spinner("Building your session-only procurement intelligence..."):
                     normalized_tables = st.session_state.get("connect_file_normalized_tables", {})
@@ -919,7 +924,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
             except Exception as exc:
                 logging.exception("Session-only demo workspace build failed")
                 st.error(f"Could not prepare the demo workspace: {type(exc).__name__}: {exc}")
-        else:
+        elif not DEMO_MODE:
                 try:
                     status_message = "Saving original files and preparing your company workspace..."
                     stage = "Starting company workspace persistence"
