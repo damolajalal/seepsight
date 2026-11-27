@@ -118,6 +118,11 @@ def _read_upload(upload):
     return _read_bytes(upload.name, upload.getvalue())
 
 
+def _upload_size(upload):
+    size = getattr(upload, "size", None)
+    return int(size if size is not None else len(upload.getvalue()))
+
+
 def _fingerprint(uploaded_files):
     """Identify the current Streamlit upload without re-hashing large files on every rerun."""
     digest = hashlib.sha256()
@@ -532,12 +537,9 @@ uploaded = st.file_uploader(
 if uploaded:
     oversized = [
         item.name for item in uploaded
-        if int(getattr(item, "size", len(item.getvalue()))) > MAX_UPLOAD_FILE_BYTES
+        if _upload_size(item) > MAX_UPLOAD_FILE_BYTES
     ]
-    total_upload_bytes = sum(
-        int(item.size if getattr(item, "size", None) is not None else len(item.getvalue()))
-        for item in uploaded
-    )
+    total_upload_bytes = sum(_upload_size(item) for item in uploaded)
     if oversized or total_upload_bytes > MAX_UPLOAD_BATCH_BYTES:
         if oversized:
             st.error(
