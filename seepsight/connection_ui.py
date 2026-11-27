@@ -55,8 +55,12 @@ def render_company_database_connections(company_id, account):
                     min_value=1, max_value=60, value=15, step=1,
                 )
                 submitted = st.form_submit_button(
-                    "Save connection profile", use_container_width=True
+                    "Save connection profile",
+                    use_container_width=True,
+                    disabled=bool(st.session_state.get("seepsight_demo_mode")),
                 )
+            if st.session_state.get("seepsight_demo_mode"):
+                st.caption("Saving new or changing saved profiles is paused during the session-only demo.")
             if submitted:
                 try:
                     connection_id = uuid.uuid4().hex
@@ -115,6 +119,7 @@ def render_company_database_connections(company_id, account):
                                     result = database_connectors.execute_company_connection_query(
                                         company_id, connection_id,
                                         "SELECT 1 AS seepsight_connection_test",
+                                        audit=not st.session_state.get("seepsight_demo_mode"),
                                     )
                                     st.success(
                                         f"Connection successful. {result['row_count']} test row returned."
@@ -128,6 +133,7 @@ def render_company_database_connections(company_id, account):
                                 "Disable",
                                 key=f"disable_connection_{connection_id}",
                                 use_container_width=True,
+                                disabled=bool(st.session_state.get("seepsight_demo_mode")),
                             ):
                                 try:
                                     firestore_db.set_company_connection_profile_status(
@@ -141,6 +147,7 @@ def render_company_database_connections(company_id, account):
                                 "Enable",
                                 key=f"enable_connection_{connection_id}",
                                 use_container_width=True,
+                                disabled=bool(st.session_state.get("seepsight_demo_mode")),
                             ):
                                 try:
                                     firestore_db.set_company_connection_profile_status(
