@@ -39,18 +39,15 @@ if not company_id or not company_name:
     st.error("Your company identity could not be confirmed. Please sign in again before connecting data.")
     st.stop()
 
-# Session-only demo mode avoids all dataset reads and writes to Firestore.
-if "seepsight_demo_mode" not in st.session_state:
-    st.session_state["seepsight_demo_mode"] = True
-DEMO_MODE = st.toggle(
-    "Temporary Demo Mode (session-only; no Firestore dataset access)",
-    key="seepsight_demo_mode",
-    help="Uploads, mappings, analysis, findings and cases remain in this session only.",
-)
-if DEMO_MODE:
-    st.warning("DEMO MODE IS ON · Data is held in memory only. Keep this session open until your video is recorded; a refresh or restart may clear it.")
-else:
-    st.info("Persistent mode is active. Dataset storage uses your company's Firestore workspace.")
+# Customer uploads are company data, not temporary demonstrations.
+# Remove any legacy session-only demo workspace left by an earlier app version.
+st.session_state["seepsight_demo_mode"] = False
+legacy_workspace = st.session_state.get("mine")
+if isinstance(legacy_workspace, dict) and legacy_workspace.get("session_only"):
+    st.session_state.pop("mine", None)
+    st.session_state.pop("seepsight_demo_workspace", None)
+DEMO_MODE = False
+st.caption("Uploads are validated, analysed and saved to your authenticated company's workspace.")
 
 # Populated once below in the persistent-mode section. Keeping placeholders
 # here avoids duplicate Firestore reads and duplicate connection UI rendering.
@@ -968,7 +965,7 @@ if result and st.session_state.get("connect_check_signature") == check_signature
             except Exception as exc:
                 logging.exception("Session-only demo workspace build failed")
                 st.error(f"Could not prepare the demo workspace: {type(exc).__name__}: {exc}")
-        elif not DEMO_MODE:
+        elif not DEMO_MODE and not st.session_state.get("_done"):
                 try:
                     status_message = "Saving original files and preparing your company workspace..."
                     stage = "Starting company workspace persistence"
@@ -1051,7 +1048,9 @@ if result and st.session_state.get("connect_check_signature") == check_signature
                         stage = "Saving the analysis workspace"
                         stage_started_at = time.perf_counter()
                         status.write("Saving analysis workspace")
-                        workspace.persist(pack, analysis_id)
+                        saved_analysis_id = workspace.persist(pack, analysis_id)
+                        if not saved_analysis_id:
+                            raise RuntimeError("The analysis workspace was not confirmed as saved.")
                         pack["analysis_id"] = analysis_id
                         st.session_state["mine"] = pack
                         status.update(label="Your procurement review is ready", state="complete")
