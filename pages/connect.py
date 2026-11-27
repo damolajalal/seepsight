@@ -242,7 +242,25 @@ def _mapping_editor(df, fields, key_prefix, required_fields=None, saved_mapping=
     selected = {}
     columns = list(df.columns)
 
-    for field in fields:
+    # Keep the first view compact: required fields and fields with an actual
+    # suggested/saved match are shown. Unmapped optional fields remain available
+    # on demand instead of creating dozens of empty dropdowns on every rerun.
+    visible_fields = [
+        field for field in fields
+        if field in required_fields
+        or field in saved_mapping
+        or suggested.get(field)
+    ]
+    show_all_optional = st.checkbox(
+        "Show all optional mapping fields",
+        value=False,
+        key=f"{key_prefix}_show_all_optional",
+        help="Reveal optional fields that have no suggested source-column match.",
+    )
+    if show_all_optional:
+        visible_fields = list(fields)
+
+    for field in visible_fields:
         info = suggested.get(field)
         saved_choice = saved_mapping.get(field)
         if saved_choice in columns or saved_choice == NOT_MAPPED:
@@ -517,7 +535,8 @@ if uploaded:
         if int(getattr(item, "size", len(item.getvalue()))) > MAX_UPLOAD_FILE_BYTES
     ]
     total_upload_bytes = sum(
-        int(getattr(item, "size", len(item.getvalue()))) for item in uploaded
+        int(item.size if getattr(item, "size", None) is not None else len(item.getvalue()))
+        for item in uploaded
     )
     if oversized or total_upload_bytes > MAX_UPLOAD_BATCH_BYTES:
         if oversized:
@@ -710,15 +729,19 @@ if st.session_state.get("connect_check_signature") != check_signature:
     st.session_state.pop("connect_check", None)
     st.session_state.pop("_done", None)
 
-desired_group_id = target_group_id or uuid.uuid4().hex
-if (
-    st.session_state.get("connect_dataset_group_signature") != check_signature
-    or st.session_state.get("connect_dataset_group_id") != desired_group_id
-):
-    st.session_state["connect_dataset_group_signature"] = check_signature
-    st.session_state["connect_dataset_group_id"] = desired_group_id
-
-dataset_group_id = st.session_state["connect_dataset_group_id"]
+# Keep one stable dataset identity for this exact upload + mapping configuration.
+# Generating a fresh UUID on every Streamlit rerun invalidates the workspace and
+# can repeatedly rebuild the same analysis.
+previous_signature = st.session_state.get("connect_dataset_group_signature")
+previous_group_id = st.session_state.get("connect_dataset_group_id")
+if target_group_id:
+    dataset_group_id = target_group_id
+elif previous_signature == check_signature and previous_group_id:
+    dataset_group_id = previous_group_id
+else:
+    dataset_group_id = uuid.uuid4().hex
+st.session_state["connect_dataset_group_signature"] = check_signature
+st.session_state["connect_dataset_group_id"] = dataset_group_id
 
 st.markdown("### Step 4. Validate your procurement records")
 st.caption("The check uses the mappings shown above. Review uncertain matches before proceeding.")
