@@ -47,7 +47,7 @@ if isinstance(legacy_workspace, dict) and legacy_workspace.get("session_only"):
     st.session_state.pop("mine", None)
     st.session_state.pop("seepsight_demo_workspace", None)
 DEMO_MODE = False
-st.caption("Uploads are validated, analysed and saved to your authenticated company's workspace.")
+st.caption("No demonstration records are preloaded. Only your uploaded company files are analysed and saved to your authenticated workspace.")
 
 # Populated once below in the persistent-mode section. Keeping placeholders
 # here avoids duplicate Firestore reads and duplicate connection UI rendering.
@@ -746,7 +746,7 @@ st.session_state["connect_dataset_group_id"] = dataset_group_id
 st.markdown("### Step 4. Validate your procurement records")
 st.caption("The check uses the mappings shown above. Review uncertain matches before proceeding.")
 
-if st.button("Validate and analyse records", type="primary", use_container_width=True, key="run_connect_check"):
+if st.button("Validate, analyse and save to Overview", type="primary", use_container_width=True, key="run_connect_check"):
     config = {"currency": currency}
     try:
         with st.spinner("Recognising fields, validating records and running available checks..."):
