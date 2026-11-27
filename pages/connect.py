@@ -579,18 +579,59 @@ if target_group_id:
     if not selected_group:
         st.error("The selected saved dataset is no longer available. Refresh and choose it again.")
         st.stop()
+
+    # Original files and mappings are immutable for a saved dataset group.
+    # Reuse their parsed session copy on Streamlit reruns instead of repeating
+    # one Firestore file read, one mapping read and one file parse per item.
+    file_items = selected_group.get("file_items", [])
+    saved_group_cache_key = (
+        str(company_id),
+        str(target_group_id),
+        tuple(sorted(str(item.get("dataset_id") or "") for item in file_items)),
+    )
+    saved_group_cache = st.session_state.setdefault("_connect_saved_group_cache", {})
+    cached_group = saved_group_cache.get(saved_group_cache_key)
+    cache_is_fresh = (
+        isinstance(cached_group, dict)
+        and time.monotonic() - float(cached_group.get("fetched_at", 0)) < 300
+    )
+
     try:
-        for file_item in selected_group.get("file_items", []):
-            saved = firestore_db.get_original_file(company_id, file_item["dataset_id"])
-            filename = saved.get("filename") or file_item.get("filename")
-            if filename in raw:
-                st.error(f"A new upload named '{filename}' conflicts with a file already in the selected dataset. Rename the new file and retry.")
-                st.stop()
-            raw[filename] = _read_bytes(filename, saved["data"])
-            source_file_bytes[filename] = saved["data"]
-            saved_file_kinds[filename] = file_item.get("dataset_type")
-            saved_mapping = firestore_db.get_company_mapping(company_id, file_item["dataset_id"]) or {}
-            saved_file_mappings[filename] = saved_mapping.get("mapping", saved_mapping)
+        if cache_is_fresh:
+            restored = cached_group["restored"]
+        else:
+            restored = {
+                "raw": {},
+                "source_file_bytes": {},
+                "saved_file_kinds": {},
+                "saved_file_mappings": {},
+            }
+            for file_item in file_items:
+                dataset_id = file_item["dataset_id"]
+                saved = firestore_db.get_original_file(company_id, dataset_id)
+                filename = saved.get("filename") or file_item.get("filename")
+                restored["raw"][filename] = _read_bytes(filename, saved["data"])
+                restored["source_file_bytes"][filename] = saved["data"]
+                restored["saved_file_kinds"][filename] = file_item.get("dataset_type")
+                saved_mapping = firestore_db.get_company_mapping(company_id, dataset_id) or {}
+                restored["saved_file_mappings"][filename] = saved_mapping.get("mapping", saved_mapping)
+            saved_group_cache[saved_group_cache_key] = {
+                "fetched_at": time.monotonic(),
+                "restored": restored,
+            }
+
+        conflicts = sorted(set(restored["raw"]).intersection(raw))
+        if conflicts:
+            st.error(
+                "A new upload conflicts with a file already in the selected dataset: "
+                + ", ".join(repr(name) for name in conflicts)
+                + ". Rename the new file and retry."
+            )
+            st.stop()
+        raw.update(restored["raw"])
+        source_file_bytes.update(restored["source_file_bytes"])
+        saved_file_kinds.update(restored["saved_file_kinds"])
+        saved_file_mappings.update(restored["saved_file_mappings"])
     except Exception:
         st.error("The saved dataset's original files could not all be restored and verified. No combined analysis was started.")
         st.stop()
