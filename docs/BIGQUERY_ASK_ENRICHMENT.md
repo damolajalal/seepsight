@@ -34,7 +34,7 @@ project_id = "traceiq-514409"
 dataset_id = "traceiq"
 allowed_company_ids = ["PASTE_THE_COMPANY_ID_SHOWN_IN_ASK_SEEPSIGHT"]
 maximum_bytes_billed = 50000000
-service_account_json = """PASTE_THE_COMPLETE_SERVICE_ACCOUNT_JSON_HERE"""
+service_account_json = '''PASTE_THE_COMPLETE_SERVICE_ACCOUNT_JSON_HERE'''
 ```
 
 Save the secrets and allow Streamlit to restart the app. The feature remains disabled until this configuration is present and the current company ID matches the allowlist.
